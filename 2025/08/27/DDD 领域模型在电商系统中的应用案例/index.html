@@ -1,0 +1,486 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>DDD 领域模型在订单系统中的应用案例 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="如何在电商系统中使用 DDD 领域模型，以订单管理为例">
+<meta property="og:type" content="article">
+<meta property="og:title" content="DDD 领域模型在订单系统中的应用案例">
+<meta property="og:url" content="https://haeng2015.github.io/2025/08/27/DDD%20%E9%A2%86%E5%9F%9F%E6%A8%A1%E5%9E%8B%E5%9C%A8%E7%94%B5%E5%95%86%E7%B3%BB%E7%BB%9F%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8%E6%A1%88%E4%BE%8B/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="如何在电商系统中使用 DDD 领域模型，以订单管理为例">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://www.toopic.cn/public/uploads/small/1712590480744171259048056.jpg">
+<meta property="article:published_time" content="2025-08-27T04:02:14.924Z">
+<meta property="article:modified_time" content="2025-08-27T16:07:35.565Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="领域模型">
+<meta property="article:tag" content="DDD">
+<meta property="article:tag" content="架构设计">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://www.toopic.cn/public/uploads/small/1712590480744171259048056.jpg"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "DDD 领域模型在订单系统中的应用案例",
+  "url": "https://haeng2015.github.io/2025/08/27/DDD%20%E9%A2%86%E5%9F%9F%E6%A8%A1%E5%9E%8B%E5%9C%A8%E7%94%B5%E5%95%86%E7%B3%BB%E7%BB%9F%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8%E6%A1%88%E4%BE%8B/",
+  "image": "https://www.toopic.cn/public/uploads/small/1712590480744171259048056.jpg",
+  "datePublished": "2025-08-27T04:02:14.924Z",
+  "dateModified": "2025-08-27T16:07:35.565Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://haeng2015.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="https://haeng2015.github.io/2025/08/27/DDD%20%E9%A2%86%E5%9F%9F%E6%A8%A1%E5%9E%8B%E5%9C%A8%E7%94%B5%E5%95%86%E7%B3%BB%E7%BB%9F%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8%E6%A1%88%E4%BE%8B/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: undefined,
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'DDD 领域模型在订单系统中的应用案例',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background-image: url(https://haowallpaper.com/link/common/file/previewFileImg/17299420645805440);"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/butterfly-icon.png" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">6</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">16</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">10</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 归档</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于俺</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://www.toopic.cn/public/uploads/small/1712590480744171259048056.jpg);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">DDD 领域模型在订单系统中的应用案例</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 归档</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于俺</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">DDD 领域模型在订单系统中的应用案例</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-08-27T04:02:14.924Z" title="发表于 2025-08-27 12:02:14">2025-08-27</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2025-08-27T16:07:35.565Z" title="更新于 2025-08-28 00:07:35">2025-08-28</time></span><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/">架构</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/DDD/">DDD</a></span></div><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>DDD 领域模型</h1>
+<p>领域驱动设计（Domain-driven design）是一种通过将实现连接到持续进化的模型来满足复杂需求的软件开发方法。</p>
+<p><strong>DDD 核心思想是通过领域驱动设计方法定义领域模型，从而确定业务和应用边界，保证业务模型与代码模型的一致性</strong>。</p>
+<blockquote>
+<p>领域驱动设计是一种由<strong>域模型</strong>来驱动着系统设计的思想。</p>
+<ul class="lvl-1">
+<li class="lvl-2">一种解决复杂系统的建模与分析方法</li>
+<li class="lvl-2">将业务概念和规则转为对象和对象的属性行为</li>
+<li class="lvl-2">通过封装、继承和多态降低业务复杂性</li>
+<li class="lvl-2"><strong>不是数据库表结构的映射</strong>，而是对业务逻辑、规则、流程的建模。</li>
+<li class="lvl-2">包含实体、值对象、聚合、领域服务、领域事件等元素。</li>
+</ul>
+<p>举个例子：在一个电商系统中，“订单”不是一个简单的 <code>Order</code> 表，而是一个包含下单、支付、取消、发货等行为和状态流转逻辑的复杂对象。</p>
+</blockquote>
+<h2 id="五层架构">五层架构</h2>
+<p>原则：每层只能与位于其下方的层发生耦合。</p>
+<p>分层架构可以简单分为两种，即严格分层架构和松散分层架构。在<strong>严格分层架构</strong>中，某层只能与位于其直接下方的层发生耦合，而在<strong>松散分层架构</strong>中，则允许某层与它的任意下方层发生耦合。</p>
+<img src="/imgs/at4uaznghdxgm_a3d40698d6354ed5af6fc331081774d3.webp" alt="img" style="zoom:33%;" />
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>降低了系统的性能。因为增加了中间层，可以通过缓存机制来改善。</p>
+</li>
+<li class="lvl-2">
+<p>可能会导致级联的修改。这种修改尤其体现在自上而下的方向，可以通过依赖倒置来改善。</p>
+</li>
+</ul>
+</blockquote>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>领域层</strong>domain（核心业务层）</p>
+<ul class="lvl-2">
+<li class="lvl-4"><strong>领域对象</strong>：实体对象、值对象、聚合、聚合根 （充血模型：业务方法在实体对象里，负责维护实体自身的生命周期和状态）</li>
+<li class="lvl-4"><strong>领域服务</strong>：接口服务，业务的具体实现（围绕实体）：商品服务、电子围栏、订单服务、运单服务、</li>
+<li class="lvl-4"><strong>领域仓储</strong>：持久化的细节隐藏，减少领域层对基础设施层的依赖（需要使用到基础设施层，包括DB、Feign调用等）</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>防腐层</strong>（外部API）</p>
+<ul class="lvl-2">
+<li class="lvl-4">三方API：隔离业务，防止污染业务代码，可通过代理或适配器实现转换</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>应用层（业务逻辑层）</strong></p>
+<ul class="lvl-2">
+<li class="lvl-4">应用服务：调用和组合领域层的服务，不包含任何业务逻辑（简单除外），只是组合模型业务（类似模块化）</li>
+<li class="lvl-4">数据转换：接口参数DTO的简单校验，以及DTO和实体值对象的数据转换</li>
+<li class="lvl-4">事件订阅：管理多个消息主体</li>
+<li class="lvl-4">消息订阅：多个微服务间协作解耦的异步实现方式</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>基础设施层</strong></p>
+<ul class="lvl-2">
+<li class="lvl-4">数据库、缓存、消息队列、配置</li>
+<li class="lvl-4">对外隐藏技术实现细节，提供粗粒度的数据输出服务</li>
+<li class="lvl-4">数据库操作：领域层传递的是数据对象，在这里可以按数据表的实现方式进行拆分实现</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>用户接口层（表现层）</strong></p>
+<ul class="lvl-2">
+<li class="lvl-4">面向服务间API调用，WEB接口</li>
+<li class="lvl-4">身份认证和权限验证</li>
+<li class="lvl-4">限流和熔断服务</li>
+<li class="lvl-4">VO和DTO数据转换</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>简单查询不涉及业务，是可以直接从应用层穿透到PO查询，不需要经过domain层</p>
+<p>DTO是不能存在于domain层的，DDD设计不认为DTO是业务对象，entity才是</p>
+</blockquote>
+<h1>订单建模示例</h1>
+<ol>
+<li class="lvl-3">
+<p><strong>DDD 分层模型</strong>：</p>
+</li>
+</ol>
+<blockquote>
+<p><strong>用户接口层（Interface / API 层）</strong>：提供 REST 接口，接收外部请求。</p>
+<p><strong>应用层（Application 层）</strong>：编排领域服务，处理用例逻辑，如“创建订单”。</p>
+<p><strong>领域层（Domain 层）</strong>：包含核心业务逻辑，如 Order 聚合根、领域事件、状态机、仓储接口等。</p>
+<p><strong>基础设施层（Infrastructure 层）</strong>：实现仓储接口、防腐层、外部服务调用、事件发布等。</p>
+</blockquote>
+<ol start="2">
+<li class="lvl-3">
+<p><strong>防腐层（Anti-Corruption Layer, ACL）</strong>：</p>
+</li>
+</ol>
+<blockquote>
+<p>用于与外部系统（如库存服务）交互，避免领域模型被外部污染。</p>
+<p>在基础设施层实现，通过 ACL 将外部模型转换为内部领域模型。</p>
+</blockquote>
+<ol start="3">
+<li class="lvl-3">
+<p><strong>事件与状态机</strong>：</p>
+</li>
+</ol>
+<blockquote>
+<p>使用领域事件（如 OrderCreatedEvent, OrderPaidEvent）表达领域内发生的重要事情。</p>
+<p>使用状态机（如 OrderStateMachine）管理订单状态的合法流转（如：待支付 -&gt; 已支付 -&gt; 已发货 / 已取消）。</p>
+</blockquote>
+<p><strong>代码结构展示</strong></p>
+<blockquote>
+<p>├── src/<br>
+│   └── main/<br>
+│       ├── java/<br>
+│       │   └── com/example/order/<br>
+│       │       ├── OrderApplication.java<br>
+│       │       │<br>
+│       │       ├── application/                 # 应用层<br>
+│       │       │   ├── service/<br>
+│       │       │   │   └── OrderService.java<br>
+│       │       │   └── dto/<br>
+│       │       │       └── OrderDTO.java<br>
+│       │       │<br>
+│       │       ├── domain/                      # 领域层（核心）<br>
+│       │       │   ├── model/                   # 聚合根、实体、值对象<br>
+│       │       │   │   ├── Order.java<br>
+│       │       │   │   ├── OrderItem.java<br>
+│       │       │   │   └── OrderStatus.java<br>
+│       │       │   │<br>
+│       │       │   ├── event/                   # 领域事件<br>
+│       │       │   │   ├── OrderCreatedEvent.java<br>
+│       │       │   │   ├── OrderPaidEvent.java<br>
+│       │       │   │   ├── OrderShippedEvent.java<br>
+│       │       │   │   └── OrderCancelledEvent.java<br>
+│       │       │   │<br>
+│       │       │   ├── repository/              # 领域仓库接口<br>
+│       │       │   │   └── OrderRepository.java<br>
+│       │       │   │<br>
+│       │       │   ├── service/                 # 领域服务<br>
+│       │       │   │   └── OrderDomainService.java<br>
+│       │       │   │<br>
+│       │       │   └── statemachine/            # 状态机配置<br>
+│       │       │       ├── OrderState.java<br>
+│       │       │       ├── OrderEvent.java<br>
+│       │       │       └── OrderStateMachineConfig.java<br>
+│       │       │<br>
+│       │       ├── infrastructure/              # 基础设施层<br>
+│       │       │   ├── persistence/             # 持久化实现<br>
+│       │       │   │   ├── jpa/<br>
+│       │       │   │   │   ├── OrderEntity.java<br>
+│       │       │   │   │   └── OrderRepository.java<br>
+│       │       │   │   └── mapper/<br>
+│       │       │   │       └── OrderMapper.java<br>
+│       │       │   │<br>
+│       │       │   ├── messaging/               # 消息发布（事件）<br>
+│       │       │   │   └── KafkaEventPublisher.java<br>
+│       │       │   │<br>
+│       │       │   └── integration/             # 外部系统集成（含防腐层）<br>
+│       │       │       ├── inventory/<br>
+│       │       │       │   ├── InventoryClient.java<br>
+│       │       │       │   ├── InventoryResponse.java<br>
+│       │       │       │   └── acl/             # 防腐层<br>
+│       │       │       │       ├── InventoryServiceAcl.java<br>
+│       │       │       │       └── InventoryRequestDTO.java<br>
+│       │       │       └── payment/<br>
+│       │       │           ├── PaymentClient.java<br>
+│       │       │           └── acl/<br>
+│       │       │               └── PaymentServiceAcl.java<br>
+│       │       │<br>
+│       │       └── interfaces/                  # 接口层（Controller）<br>
+│       │           └── web/<br>
+│       │               └── OrderController.java<br>
+│       │<br>
+│       └── resources/<br>
+│           ├── application.yml<br>
+│           ├── statemachine/                    # 状态机配置</p>
+</blockquote>
+<h2 id="订单管理建模">订单管理建模</h2>
+<p>核心对象：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>聚合根对象：<code>Order</code>（订单）</p>
+</li>
+<li class="lvl-2">
+<p>值对象：订单项（<code>OrderItem</code>）、地址（<code>Address</code>）、金额（<code>Money</code>）等</p>
+</li>
+<li class="lvl-2">
+<p>一致性边界：一次下单操作必须保证所有订单项和状态一致</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="实体与值对象定义">实体与值对象定义</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>值对象</strong>：<code>Money</code>（金额）</p>
+</li>
+</ul>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">Money</span> &#123;</span><br><span class="line">    <span class="keyword">private</span> BigDecimal amount;</span><br><span class="line">    <span class="keyword">private</span> String currency;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">Money</span><span class="params">(BigDecimal amount, String currency)</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (amount.compareTo(BigDecimal.ZERO) &lt; <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;金额不能为负&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="built_in">this</span>.amount = amount;</span><br><span class="line">        <span class="built_in">this</span>.currency = currency;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> Money <span class="title function_">add</span><span class="params">(Money other)</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (!<span class="built_in">this</span>.currency.equals(other.currency)) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;货币不一致&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">Money</span>(<span class="built_in">this</span>.amount.add(other.amount), <span class="built_in">this</span>.currency);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// equals, hashCode 基于 amount 和 currency</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>实体</strong>：<code>OrderItem</code>（订单项）</p>
+</li>
+</ul>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderItem</span> &#123;</span><br><span class="line">    <span class="keyword">private</span> String productId;</span><br><span class="line">    <span class="keyword">private</span> String productName;</span><br><span class="line">    <span class="keyword">private</span> Money unitPrice;</span><br><span class="line">    <span class="keyword">private</span> <span class="type">int</span> quantity;</span><br><span class="line">    <span class="keyword">private</span> Money totalPrice;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">OrderItem</span><span class="params">(String productId, String productName, Money unitPrice, <span class="type">int</span> quantity)</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.productId = productId;</span><br><span class="line">        <span class="built_in">this</span>.productName = productName;</span><br><span class="line">        <span class="built_in">this</span>.unitPrice = unitPrice;</span><br><span class="line">        <span class="built_in">this</span>.quantity = quantity;</span><br><span class="line">        <span class="built_in">this</span>.totalPrice = unitPrice.multiply(quantity);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 可提供 increaseQuantity(), changePrice() 等方法</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>聚合根</strong>：<code>Order</code>（订单）</p>
+</li>
+</ul>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">Order</span> &#123;</span><br><span class="line">    <span class="keyword">private</span> String orderId;</span><br><span class="line">    <span class="keyword">private</span> String customerId;</span><br><span class="line">    <span class="keyword">private</span> List&lt;OrderItem&gt; items = <span class="keyword">new</span> <span class="title class_">ArrayList</span>&lt;&gt;();</span><br><span class="line">    <span class="keyword">private</span> Address shippingAddress;</span><br><span class="line">    <span class="keyword">private</span> Money totalAmount;</span><br><span class="line">    <span class="keyword">private</span> OrderStatus status;</span><br><span class="line">    <span class="keyword">private</span> DateTime createdAt;</span><br><span class="line">    <span class="keyword">private</span> List&lt;DomainEvent&gt; events = <span class="keyword">new</span> <span class="title class_">ArrayList</span>&lt;&gt;();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 私有构造，强制使用工厂创建</span></span><br><span class="line">    <span class="keyword">private</span> <span class="title function_">Order</span><span class="params">()</span> &#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 下单：创建订单</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> Order <span class="title function_">createFromCart</span><span class="params">(</span></span><br><span class="line"><span class="params">            String orderId,</span></span><br><span class="line"><span class="params">            String customerId,</span></span><br><span class="line"><span class="params">            List&lt;CartItem&gt; cartItems,</span></span><br><span class="line"><span class="params">            Address address)</span> &#123;</span><br><span class="line"></span><br><span class="line">        <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Order</span>();</span><br><span class="line">        order.orderId = orderId;</span><br><span class="line">        order.customerId = customerId;</span><br><span class="line">        order.shippingAddress = address;</span><br><span class="line">        order.createdAt = LocalDateTime.now();</span><br><span class="line">        order.status = OrderStatus.PENDING;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">for</span> (CartItem item : cartItems) &#123;</span><br><span class="line">            <span class="type">ProductPrice</span> <span class="variable">price</span> <span class="operator">=</span> ProductService.getCurrentPrice(item.getProductId());</span><br><span class="line">            order.addItem(<span class="keyword">new</span> <span class="title class_">OrderItem</span>(</span><br><span class="line">                item.getProductId(),</span><br><span class="line">                item.getProductName(),</span><br><span class="line">                price.getAmount(),</span><br><span class="line">                item.getQuantity()</span><br><span class="line">            ));</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        order.calculateTotal();</span><br><span class="line">        <span class="keyword">return</span> order;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 添加订单项（业务规则：仅在 PENDING 状态下允许）</span></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">addItem</span><span class="params">(OrderItem item)</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (status != OrderStatus.PENDING) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;订单已锁定，无法添加商品&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        items.add(item);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 计算总金额</span></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">calculateTotal</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.totalAmount = items.stream()</span><br><span class="line">            .map(OrderItem::getTotalPrice)</span><br><span class="line">            .reduce(Money.ZERO, Money::add);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 支付成功：确认订单</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">confirmPayment</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (status != OrderStatus.PENDING) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;订单状态异常，无法确认支付&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="built_in">this</span>.status = OrderStatus.PAID;</span><br><span class="line">        <span class="comment">// 发布领域事件</span></span><br><span class="line">        DomainEventPublisher.publish(<span class="keyword">new</span> <span class="title class_">OrderPaidEvent</span>(orderId, totalAmount));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 取消订单</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">cancel</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (status == OrderStatus.SHIPPED) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;已发货订单不能取消&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (status == OrderStatus.CANCELLED) &#123;</span><br><span class="line">            <span class="keyword">return</span>; <span class="comment">// 幂等处理</span></span><br><span class="line">        &#125;</span><br><span class="line">        <span class="built_in">this</span>.status = OrderStatus.CANCELLED;</span><br><span class="line">        DomainEventPublisher.publish(<span class="keyword">new</span> <span class="title class_">OrderCancelledEvent</span>(orderId, customerId));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 发货</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">ship</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (status != OrderStatus.PAID) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;订单未支付，不能发货&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="built_in">this</span>.status = OrderStatus.SHIPPED;</span><br><span class="line">        DomainEventPublisher.publish(<span class="keyword">new</span> <span class="title class_">OrderShippedEvent</span>(orderId));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">addEvent</span><span class="params">(DomainEvent event)</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.events.add(event);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// getter 方法省略...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>枚举及其他</strong>：<code>OrderStatus</code></p>
+</li>
+</ul>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">enum</span> <span class="title class_">OrderStatus</span> &#123;</span><br><span class="line">    PENDING,    <span class="comment">// 待支付</span></span><br><span class="line">    PAID,       <span class="comment">// 已支付</span></span><br><span class="line">    SHIPPED,    <span class="comment">// 已发货</span></span><br><span class="line">    CANCELLED   <span class="comment">// 已取消</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="领域事件（Domain-Events）">领域事件（Domain Events）</h3>
+<p>领域事件可通过事件总线异步通知库存、物流、用户积分等系统。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 订单已支付</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderPaidEvent</span> <span class="keyword">implements</span> <span class="title class_">DomainEvent</span> &#123;</span><br><span class="line">    <span class="keyword">private</span> String orderId;</span><br><span class="line">    <span class="keyword">private</span> Money amount;</span><br><span class="line">    <span class="keyword">private</span> LocalDateTime occurredAt;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">OrderPaidEvent</span><span class="params">(String orderId, Money amount)</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.orderId = orderId;</span><br><span class="line">        <span class="built_in">this</span>.amount = amount;</span><br><span class="line">        <span class="built_in">this</span>.occurredAt = LocalDateTime.now();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 订单已取消</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderCancelledEvent</span> <span class="keyword">implements</span> <span class="title class_">DomainEvent</span> &#123;</span><br><span class="line">    <span class="keyword">private</span> String orderId;</span><br><span class="line">    <span class="keyword">private</span> String customerId;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">OrderCancelledEvent</span><span class="params">(String orderId, String customerId)</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.orderId = orderId;</span><br><span class="line">        <span class="built_in">this</span>.customerId = customerId;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 订单已发货</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderShippedEvent</span> <span class="keyword">implements</span> <span class="title class_">DomainEvent</span> &#123;</span><br><span class="line">    <span class="keyword">private</span> String orderId;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">OrderShippedEvent</span><span class="params">(String orderId)</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.orderId = orderId;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="领域服务：OrderFulfillmentService">领域服务：<code>OrderFulfillmentService</code></h3>
+<p>处理跨聚合或跨上下文的复杂逻辑：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Service</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderFulfillmentService</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> InventoryService inventoryService;</span><br><span class="line">    <span class="keyword">private</span> PaymentQueryService paymentQueryService;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Transactional</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">handleOrderPaymentConfirmed</span><span class="params">(String orderId)</span> &#123;</span><br><span class="line">        <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> orderRepository.findById(orderId);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 1. 检查支付是否真实完成</span></span><br><span class="line">        <span class="keyword">if</span> (!paymentQueryService.isPaymentValid(orderId)) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;支付未验证通过&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 2. 锁定库存（调用库存上下文）</span></span><br><span class="line">        <span class="type">boolean</span> <span class="variable">locked</span> <span class="operator">=</span> inventoryService.reserveInventory(order.getItems());</span><br><span class="line">        <span class="keyword">if</span> (!locked) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;库存不足&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 3. 确认订单</span></span><br><span class="line">        order.confirmPayment();</span><br><span class="line">        orderRepository.save(order); <span class="comment">// 触发事件发布</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="仓储接口（Repository）">仓储接口（Repository）</h3>
+<p>定义在领域层，实现放在基础设施层：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 领域层接口</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">interface</span> <span class="title class_">OrderRepository</span> &#123;</span><br><span class="line">    Order <span class="title function_">findById</span><span class="params">(String orderId)</span>;</span><br><span class="line">    <span class="keyword">void</span> <span class="title function_">save</span><span class="params">(Order order)</span>;</span><br><span class="line">    List&lt;Order&gt; <span class="title function_">findByCustomer</span><span class="params">(String customerId)</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="工厂封装（Factory）">工厂封装（Factory）</h3>
+<p>封装复杂创建逻辑：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderFactory</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> Order <span class="title function_">createFromCart</span><span class="params">(</span></span><br><span class="line"><span class="params">            String orderId,</span></span><br><span class="line"><span class="params">            Customer customer,</span></span><br><span class="line"><span class="params">            ShoppingCart cart,</span></span><br><span class="line"><span class="params">            Address address)</span> &#123;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 校验用户是否可下单</span></span><br><span class="line">        <span class="keyword">if</span> (!customer.isActive()) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;用户被禁用&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 校验购物车非空</span></span><br><span class="line">        <span class="keyword">if</span> (cart.getItems().isEmpty()) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(<span class="string">&quot;购物车为空&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> Order.createFromCart(orderId, customer.getId(), cart.getItems(), address);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="事件驱动的订单状态机设计">事件驱动的订单状态机设计</h2>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>订单的状态流转不再由“硬编码 if-else”控制，而是通过 <strong>监听领域事件</strong> 触发状态变更。</p>
+</li>
+<li class="lvl-2">
+<p>使用 <strong>状态机（State Machine）</strong> 模型来管理 <code>OrderStatus</code> 的合法转换。</p>
+</li>
+<li class="lvl-2">
+<p>所有状态变更由 <strong>领域事件驱动</strong>，保证逻辑集中、可追溯、可扩展。</p>
+</li>
+</ul>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>当前状态 → 新状态</th>
+<th>触发事件</th>
+<th>是否允许</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PENDING → PAID</td>
+<td>OrderPaidEvent</td>
+<td>✅ 是</td>
+</tr>
+<tr>
+<td>PENDING → CANCELLED</td>
+<td>OrderCancelledEvent</td>
+<td>✅ 是</td>
+</tr>
+<tr>
+<td>PAID → SHIPPED</td>
+<td>OrderShippedEvent</td>
+<td>✅ 是</td>
+</tr>
+<tr>
+<td>PAID → CANCELLED</td>
+<td>OrderRefundedEvent</td>
+<td>✅ 是（退款后取消）</td>
+</tr>
+<tr>
+<td>SHIPPED → CANCELLED</td>
+<td>❌</td>
+<td>❌ 否</td>
+</tr>
+<tr>
+<td>任意 → PENDING</td>
+<td>❌</td>
+<td>❌ 不允许回退</td>
+</tr>
+</tbody>
+</table>
+<h3 id="状态机实现：OrderStateMachine">状态机实现：<code>OrderStateMachine</code></h3>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Component</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderStateMachine</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 定义合法的状态转移</span></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> Map&lt;OrderStatus, List&lt;OrderStatus&gt;&gt; transitions = Map.of(</span><br><span class="line">        OrderStatus.PENDING, Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED),</span><br><span class="line">        OrderStatus.PAID, Arrays.asList(OrderStatus.SHIPPED, OrderStatus.CANCELLED)</span><br><span class="line">        <span class="comment">// SHIPPED 没有出边 → 不可变更</span></span><br><span class="line">    );</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">canTransition</span><span class="params">(OrderStatus from, OrderStatus to)</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (from == <span class="literal">null</span> || to == <span class="literal">null</span>) <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">        List&lt;OrderStatus&gt; allowed = transitions.getOrDefault(from, Collections.emptyList());</span><br><span class="line">        <span class="keyword">return</span> allowed.contains(to);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 执行状态变更（由事件处理器调用）</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">applyEvent</span><span class="params">(Order order, DomainEvent event)</span> &#123;</span><br><span class="line">        <span class="type">OrderStatus</span> <span class="variable">newStatus</span> <span class="operator">=</span> <span class="literal">null</span>;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (event <span class="keyword">instanceof</span> OrderPaidEvent) &#123;</span><br><span class="line">            newStatus = OrderStatus.PAID;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (event <span class="keyword">instanceof</span> OrderShippedEvent) &#123;</span><br><span class="line">            newStatus = OrderStatus.SHIPPED;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (event <span class="keyword">instanceof</span> OrderCancelledEvent || event <span class="keyword">instanceof</span> OrderRefundedEvent) &#123;</span><br><span class="line">            newStatus = OrderStatus.CANCELLED;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (newStatus != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">if</span> (canTransition(order.getStatus(), newStatus)) &#123;</span><br><span class="line">                order.setStatusInternal(newStatus); <span class="comment">// 注意：内部私有方法，不暴露给外部，避免外部随意修改状态</span></span><br><span class="line">            &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessRuleViolation</span>(</span><br><span class="line">                    <span class="string">&quot;非法状态转移: &quot;</span> + order.getStatus() + <span class="string">&quot; → &quot;</span> + newStatus);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="事件处理器（Event-Handlers）">事件处理器（Event Handlers）</h3>
+<p>使用 Spring 的事件机制或自定义事件总线监听领域事件：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Component</span></span><br><span class="line"><span class="meta">@RequiredArgsConstructor</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderEventHandlers</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> OrderRepository orderRepository;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> OrderStateMachine stateMachine;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@EventListener</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">handle</span><span class="params">(OrderPaidEvent event)</span> &#123;</span><br><span class="line">        <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> orderRepository.findById(event.getOrderId());</span><br><span class="line">        stateMachine.applyEvent(order, event);</span><br><span class="line">        orderRepository.save(order);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@EventListener</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">handle</span><span class="params">(OrderShippedEvent event)</span> &#123;</span><br><span class="line">        <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> orderRepository.findById(event.getOrderId());</span><br><span class="line">        stateMachine.applyEvent(order, event);</span><br><span class="line">        orderRepository.save(order);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@EventListener</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">handle</span><span class="params">(OrderCancelledEvent event)</span> &#123;</span><br><span class="line">        <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> orderRepository.findById(event.getOrderId());</span><br><span class="line">        stateMachine.applyEvent(order, event);</span><br><span class="line">        orderRepository.save(order);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="支持事件溯源">支持事件溯源</h3>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 伪代码：从事件重建订单</span></span><br><span class="line"><span class="keyword">public</span> Order <span class="title function_">reconstituteFromHistory</span><span class="params">(String orderId, List&lt;DomainEvent&gt; events)</span> &#123;</span><br><span class="line">    <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Order</span>();</span><br><span class="line">    <span class="keyword">for</span> (DomainEvent event : events) &#123;</span><br><span class="line">        event.applyTo(order); <span class="comment">// 每个事件自己知道如何影响订单</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> order;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="防腐层：支付、库存等">防腐层：支付、库存等</h2>
+<p><strong>在限界上下文之间建立翻译与隔离层</strong>，防止外部概念“侵蚀”本领域的纯洁性。 外部系统（如支付系统、库存系统）</p>
+<blockquote>
+<p>外部系统（支付宝）<br>
+↓ HTTP 回调<br>
+[ 支付回调 Controller ]<br>
+↓<br>
+[ AlipayAclAdapter ] → 验签 + 校验<br>
+↓<br>
+[ PaymentEventMapper ] → 映射为 OrderPaidEvent<br>
+↓<br>
+[ Domain Event Bus ]<br>
+├──→ [OrderEventHandlers] → 触发 Order 状态机<br>
+└──→ [OrderStateMachine]   → 更新订单状态<br>
+↓<br>
+[OrderRepository] →  数据持久化</p>
+</blockquote>
+<ol>
+<li class="lvl-3">
+<h5 id="外部支付回调-DTO（来自支付宝）">外部支付回调 DTO（来自支付宝）</h5>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">AlipayCallback</span> &#123;</span><br><span class="line">    <span class="keyword">private</span> String tradeNo;</span><br><span class="line">    <span class="keyword">private</span> String outTradeNo; <span class="comment">// 我方订单号</span></span><br><span class="line">    <span class="keyword">private</span> String tradeStatus;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<h5 id="防腐层适配器（ACL-Adapter）">防腐层适配器（ACL Adapter）</h5>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Component</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">AlipayAclAdapter</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> PaymentEventMapper eventMapper;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> DomainEventPublisher eventPublisher;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">handleCallback</span><span class="params">(AlipayCallback callback)</span> &#123;</span><br><span class="line">        <span class="comment">// 1. 校验签名（安全）</span></span><br><span class="line">        <span class="keyword">if</span> (!verifySignature(callback)) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">SecurityException</span>(<span class="string">&quot;非法回调&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 2. 映射为本地下游事件</span></span><br><span class="line">        <span class="type">DomainEvent</span> <span class="variable">domainEvent</span> <span class="operator">=</span> eventMapper.toDomainEvent(callback);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 3. 发布事件，驱动本域逻辑</span></span><br><span class="line">        <span class="keyword">if</span> (domainEvent != <span class="literal">null</span>) &#123;</span><br><span class="line">            eventPublisher.publish(domainEvent);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="type">boolean</span> <span class="title function_">verifySignature</span><span class="params">(AlipayCallback callback)</span> &#123;</span><br><span class="line">        <span class="comment">// 调用支付宝 SDK 验签</span></span><br><span class="line">        <span class="keyword">return</span> AlipaySignature.rsaCheckV2(...) == <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<h5 id="事件映射器（Mapping-Logic）">事件映射器（Mapping Logic）</h5>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Component</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">PaymentEventMapper</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> DomainEvent <span class="title function_">toDomainEvent</span><span class="params">(AlipayCallback callback)</span> &#123;</span><br><span class="line">        <span class="type">String</span> <span class="variable">orderId</span> <span class="operator">=</span> callback.getOutTradeNo();</span><br><span class="line"></span><br><span class="line">        <span class="keyword">switch</span> (callback.getTradeStatus()) &#123;</span><br><span class="line">            <span class="keyword">case</span> <span class="string">&quot;TRADE_SUCCESS&quot;</span>:</span><br><span class="line">            <span class="keyword">case</span> <span class="string">&quot;TRADE_FINISHED&quot;</span>:</span><br><span class="line">                <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">OrderPaidEvent</span>(orderId, Money.of(<span class="number">999</span>, <span class="string">&quot;CNY&quot;</span>)); <span class="comment">// 可结合查询订单金额</span></span><br><span class="line">            <span class="keyword">case</span> <span class="string">&quot;TRADE_CLOSED&quot;</span>:</span><br><span class="line">                <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">OrderRefundedEvent</span>(orderId);</span><br><span class="line">            <span class="keyword">default</span>:</span><br><span class="line">                <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h2 id="应用层：-Service">应用层： Service</h2>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Service</span></span><br><span class="line"><span class="meta">@Transactional</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderService</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Autowired</span></span><br><span class="line">    <span class="keyword">private</span> OrderRepository orderRepository;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Autowired</span></span><br><span class="line">    <span class="keyword">private</span> PaymentService paymentService;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Autowired</span></span><br><span class="line">    <span class="keyword">private</span> DomainEventPublisher eventPublisher;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> OrderId <span class="title function_">createOrder</span><span class="params">(CreateOrderCommand command)</span> &#123;</span><br><span class="line">        <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Order</span>(command.getOrderId(), command.getAmount());</span><br><span class="line">        order.create();</span><br><span class="line">        orderRepository.save(order);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 发布事件</span></span><br><span class="line">        order.getEvents().forEach(eventPublisher::publish);</span><br><span class="line">        <span class="keyword">return</span> order.getId();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">payOrder</span><span class="params">(PayOrderCommand command)</span> &#123;</span><br><span class="line">        <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> orderRepository.findById(command.getOrderId())</span><br><span class="line">            .orElseThrow(() -&gt; <span class="keyword">new</span> <span class="title class_">BusinessException</span>(<span class="string">&quot;Order not found&quot;</span>));</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 先调用支付</span></span><br><span class="line">        <span class="type">PaymentResult</span> <span class="variable">result</span> <span class="operator">=</span> paymentService.processPayment(</span><br><span class="line">            <span class="keyword">new</span> <span class="title class_">PaymentRequest</span>(order.getAmount(), command.getCardToken())</span><br><span class="line">        );</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (result.getStatus() == PaymentStatus.SUCCESS) &#123;</span><br><span class="line">            order.pay();</span><br><span class="line">            orderRepository.save(order);</span><br><span class="line">            order.getEvents().forEach(eventPublisher::publish);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">BusinessException</span>(<span class="string">&quot;Payment failed&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="接口层：Controller">接口层：Controller</h2>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@RestController</span></span><br><span class="line"><span class="meta">@RequestMapping(&quot;/api/orders&quot;)</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">OrderController</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Autowired</span></span><br><span class="line">    <span class="keyword">private</span> OrderService orderService;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@PostMapping</span></span><br><span class="line">    <span class="keyword">public</span> ResponseEntity&lt;String&gt; <span class="title function_">createOrder</span><span class="params">(<span class="meta">@RequestBody</span> OrderRequestDTO dto)</span> &#123;</span><br><span class="line">        <span class="type">OrderId</span> <span class="variable">id</span> <span class="operator">=</span> orderService.createOrder(<span class="keyword">new</span> <span class="title class_">CreateOrderCommand</span>(dto.getAmount()));</span><br><span class="line">        <span class="keyword">return</span> ResponseEntity.ok(id.getValue());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@PostMapping(&quot;/&#123;orderId&#125;/pay&quot;)</span></span><br><span class="line">    <span class="keyword">public</span> ResponseEntity&lt;String&gt; <span class="title function_">payOrder</span><span class="params">(<span class="meta">@PathVariable</span> String orderId, <span class="meta">@RequestBody</span> PaymentRequestDTO dto)</span> &#123;</span><br><span class="line">        orderService.payOrder(<span class="keyword">new</span> <span class="title class_">PayOrderCommand</span>(<span class="keyword">new</span> <span class="title class_">OrderId</span>(orderId), dto.getCardToken()));</span><br><span class="line">        <span class="keyword">return</span> ResponseEntity.ok(<span class="string">&quot;Paid&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://haeng2015.github.io">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://haeng2015.github.io/2025/08/27/DDD%20%E9%A2%86%E5%9F%9F%E6%A8%A1%E5%9E%8B%E5%9C%A8%E7%94%B5%E5%95%86%E7%B3%BB%E7%BB%9F%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8%E6%A1%88%E4%BE%8B/">https://haeng2015.github.io/2025/08/27/DDD 领域模型在电商系统中的应用案例/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://haeng2015.github.io" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E9%A2%86%E5%9F%9F%E6%A8%A1%E5%9E%8B/">领域模型</a><a class="post-meta__tags" href="/tags/DDD/">DDD</a><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a></div><div class="post-share"><div class="social-share" data-image="https://www.toopic.cn/public/uploads/small/1712590480744171259048056.jpg" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/08/27/docker-compose%20%E5%AE%89%E8%A3%85%E8%84%9A%E6%9C%AC%E9%9B%86%E7%BB%B5/" title="docker-compose 安装脚本大集绵"><img class="cover" src="/img/%E4%B9%A1%E9%97%B4%E5%B0%8F%E8%B7%AF-%E4%BA%91%E6%9C%B5%E6%9C%88%E4%BA%AE.png" onerror="onerror=null;src='/img/404.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">docker-compose 安装脚本大集绵</div></div><div class="info-2"><div class="info-item-1">包含各种组件的docker compose 安装脚本，如：nacos、skywalking、kafka</div></div></div></a><a class="pagination-related" href="/2025/08/26/Redis%20%E6%95%B0%E6%8D%AE%E8%BF%87%E6%9C%9F%E5%88%A0%E9%99%A4%E7%AD%96%E7%95%A5/" title="Redis 过期数据删除策略"><img class="cover" src="https://www.toopic.cn/public/uploads/small/1753692691876175369269194.jpg" onerror="onerror=null;src='/img/404.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">Redis 过期数据删除策略</div></div><div class="info-2"><div class="info-item-1">设置过期时间的key如何清除，以及未设置过期时间的key如何淘汰</div></div></div></a></nav></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">DDD 领域模型</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E5%B1%82%E6%9E%B6%E6%9E%84"><span class="toc-number">1.1.</span> <span class="toc-text">五层架构</span></a></li></ol></li><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">2.</span> <span class="toc-text">订单建模示例</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%AE%A2%E5%8D%95%E7%AE%A1%E7%90%86%E5%BB%BA%E6%A8%A1"><span class="toc-number">2.1.</span> <span class="toc-text">订单管理建模</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%9E%E4%BD%93%E4%B8%8E%E5%80%BC%E5%AF%B9%E8%B1%A1%E5%AE%9A%E4%B9%89"><span class="toc-number">2.1.1.</span> <span class="toc-text">实体与值对象定义</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A2%86%E5%9F%9F%E4%BA%8B%E4%BB%B6%EF%BC%88Domain-Events%EF%BC%89"><span class="toc-number">2.1.2.</span> <span class="toc-text">领域事件（Domain Events）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A2%86%E5%9F%9F%E6%9C%8D%E5%8A%A1%EF%BC%9AOrderFulfillmentService"><span class="toc-number">2.1.3.</span> <span class="toc-text">领域服务：OrderFulfillmentService</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%93%E5%82%A8%E6%8E%A5%E5%8F%A3%EF%BC%88Repository%EF%BC%89"><span class="toc-number">2.1.4.</span> <span class="toc-text">仓储接口（Repository）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E5%8E%82%E5%B0%81%E8%A3%85%EF%BC%88Factory%EF%BC%89"><span class="toc-number">2.1.5.</span> <span class="toc-text">工厂封装（Factory）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8%E7%9A%84%E8%AE%A2%E5%8D%95%E7%8A%B6%E6%80%81%E6%9C%BA%E8%AE%BE%E8%AE%A1"><span class="toc-number">2.2.</span> <span class="toc-text">事件驱动的订单状态机设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%8A%B6%E6%80%81%E6%9C%BA%E5%AE%9E%E7%8E%B0%EF%BC%9AOrderStateMachine"><span class="toc-number">2.2.1.</span> <span class="toc-text">状态机实现：OrderStateMachine</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BA%8B%E4%BB%B6%E5%A4%84%E7%90%86%E5%99%A8%EF%BC%88Event-Handlers%EF%BC%89"><span class="toc-number">2.2.2.</span> <span class="toc-text">事件处理器（Event Handlers）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%94%AF%E6%8C%81%E4%BA%8B%E4%BB%B6%E6%BA%AF%E6%BA%90"><span class="toc-number">2.2.3.</span> <span class="toc-text">支持事件溯源</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%98%B2%E8%85%90%E5%B1%82%EF%BC%9A%E6%94%AF%E4%BB%98%E3%80%81%E5%BA%93%E5%AD%98%E7%AD%89"><span class="toc-number">2.3.</span> <span class="toc-text">防腐层：支付、库存等</span></a><ol class="toc-child"><li class="toc-item toc-level-5"><a class="toc-link" href="#%E5%A4%96%E9%83%A8%E6%94%AF%E4%BB%98%E5%9B%9E%E8%B0%83-DTO%EF%BC%88%E6%9D%A5%E8%87%AA%E6%94%AF%E4%BB%98%E5%AE%9D%EF%BC%89"><span class="toc-number">2.3.0.0.1.</span> <span class="toc-text">外部支付回调 DTO（来自支付宝）</span></a></li><li class="toc-item toc-level-5"><a class="toc-link" href="#%E9%98%B2%E8%85%90%E5%B1%82%E9%80%82%E9%85%8D%E5%99%A8%EF%BC%88ACL-Adapter%EF%BC%89"><span class="toc-number">2.3.0.0.2.</span> <span class="toc-text">防腐层适配器（ACL Adapter）</span></a></li><li class="toc-item toc-level-5"><a class="toc-link" href="#%E4%BA%8B%E4%BB%B6%E6%98%A0%E5%B0%84%E5%99%A8%EF%BC%88Mapping-Logic%EF%BC%89"><span class="toc-number">2.3.0.0.3.</span> <span class="toc-text">事件映射器（Mapping Logic）</span></a></li></ol></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BA%94%E7%94%A8%E5%B1%82%EF%BC%9A-Service"><span class="toc-number">2.4.</span> <span class="toc-text">应用层： Service</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8E%A5%E5%8F%A3%E5%B1%82%EF%BC%9AController"><span class="toc-number">2.5.</span> <span class="toc-text">接口层：Controller</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"></div><script src="/js/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
