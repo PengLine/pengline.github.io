@@ -4,6 +4,39 @@
   
     
     <entry>
+      <title>VMware 如何扩展 Centos7 的磁盘容量</title>
+      <link href="/2025/09/15/35f4ef2aabae45d4b9f215b1a36ac023/"/>
+      <url>/2025/09/15/35f4ef2aabae45d4b9f215b1a36ac023/</url>
+      
+        <content type="html"><![CDATA[<p>场景：使用 VMware 搭建的 Centos 7.6 系统，使用过程中发现磁盘容量不够，通过 VMware 的图形界面进行扩容成功后，但是执行系统的 <code>df -h</code> 指令后并未显示已扩容的空间。</p><blockquote><p>当前磁盘组为  centos_master，需要新增一个 sd3</p></blockquote><h2 id="新增分区">新增分区</h2><p>新添加的容量需要通过新增的分区分配到系统中</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">查看待扩展的磁盘总空间：</span></span><br><span class="line">lsblk</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">查看磁盘的详细信息：</span> </span><br><span class="line">fdisk -l</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">对新增加的硬盘进行分区：执行：m-&gt;n-&gt;p-&gt;输入分区号(一般都是最新加入的盘，3或者4)-&gt;回车-&gt;回车-&gt;w</span></span><br><span class="line">fdisk /dev/sda</span><br><span class="line"></span><br><span class="line">fdisk -l</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">发现/dev/sda2的Id是83，需要改成8e，保持和/dev/sda2是一样的。</span></span><br></pre></td></tr></table></figure><img src="/imgs/Centos7%20%E7%A3%81%E7%9B%98%E6%89%A9%E5%AE%B9/image-20250718225436566.png" alt="image-20250718225436566" style="zoom:67%;" /><h2 id="修改分区">修改分区</h2><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">将system类型改成Linux LVM类型，执行命令：</span></span><br><span class="line">fdisk /dev/sda</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">参数如下图所示</span></span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">修改后查看：</span></span><br><span class="line">fdisk -l</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">重启系统 ：</span></span><br><span class="line">shutdown -r now</span><br></pre></td></tr></table></figure><img src="/imgs/Centos7%20%E7%A3%81%E7%9B%98%E6%89%A9%E5%AE%B9/image-20250718225713990.png" alt="image-20250718225713990" style="zoom:67%;" /><h2 id="磁盘格式化">磁盘格式化</h2><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">对新增加的硬盘格式化：如下图</span></span><br><span class="line">mkfs.ext3 /dev/sda3</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">添加新LVM到已有的LVM组，实现扩容：</span></span><br><span class="line">pvcreate /dev/sda3</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">查看是否创建成功：</span></span><br><span class="line">pvdisplay</span><br></pre></td></tr></table></figure><img src="/imgs/Centos7%20%E7%A3%81%E7%9B%98%E6%89%A9%E5%AE%B9/image-20250718230053864.png" alt="image-20250718230053864" style="zoom:67%;" /><img src="/imgs/Centos7%20%E7%A3%81%E7%9B%98%E6%89%A9%E5%AE%B9/image-20250718230437266.png" alt="image-20250718230437266" style="zoom:67%;" /><h2 id="扩展磁盘">扩展磁盘</h2><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">扩展 centos_master</span></span><br><span class="line">vgextend centos_master /dev/sda3</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">查看是否修改成功：</span></span><br><span class="line">pvdisplay</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">执行扩容：每个 PE 占了 4.00MiB，所以不足30g</span></span><br><span class="line">lvextend -L +29.99G /dev/mapper/centos_master-root</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">查看是否扩容成功：</span></span><br><span class="line">lvs</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">查看磁盘空间采用的文件系统：</span> </span><br><span class="line">df -T</span><br></pre></td></tr></table></figure><img src="/imgs/Centos7%20%E7%A3%81%E7%9B%98%E6%89%A9%E5%AE%B9/image-20250718231108241.png" alt="image-20250718231108241" style="zoom:67%;" /><h2 id="刷新磁盘">刷新磁盘</h2><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">执行命令：</span></span><br><span class="line">xfs_growfs /dev/mapper/centos_master-root</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">查看结果</span></span><br><span class="line">df -T</span><br><span class="line">df -h</span><br></pre></td></tr></table></figure><img src="/imgs/Centos7%20%E7%A3%81%E7%9B%98%E6%89%A9%E5%AE%B9/image-20250718231500513.png" alt="image-20250718231500513" style="zoom:67%;" /><h2 id="修复-PV">修复 PV</h2><p>执行两次 pvcreate 后，会出现 unknown 的 Physical volume（之前的会变成 unknown  ），如下图：</p><figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">pvdisplay 查看pv 发现有一个unknown pv</span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">去除未知或已丢失的VG</span></span><br><span class="line">vgreduce --removemissing /dev/centos_master</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">查看</span></span><br><span class="line">pvdisplay </span><br><span class="line">pvs</span><br><span class="line">vgs</span><br></pre></td></tr></table></figure><img src="/imgs/Centos7%20%E7%A3%81%E7%9B%98%E6%89%A9%E5%AE%B9/image-20250718232007920.png" alt="image-20250718232007920" style="zoom:67%;" /><p>使用 <code>pvs </code> 查看有 unknown 名称的 PV</p><img src="/imgs/Centos7%20%E7%A3%81%E7%9B%98%E6%89%A9%E5%AE%B9/image-20250718232301393.png" alt="image-20250718232301393" style="zoom:67%;" />]]></content>
+      
+      
+      <categories>
+          
+          <category> Linux </category>
+          
+          <category> Centos </category>
+          
+      </categories>
+      
+      
+        <tags>
+            
+            <tag> VMware </tag>
+            
+            <tag> Centos7 </tag>
+            
+            <tag> Centos7磁盘扩容 </tag>
+            
+            <tag> VMware系统磁盘扩容 </tag>
+            
+        </tags>
+      
+    </entry>
+    
+    
+    
+    <entry>
       <title>系统架构设计的实施考量和演进过程</title>
       <link href="/2025/09/11/64e3ec6a2be5436b9bd931ad7a023235/"/>
       <url>/2025/09/11/64e3ec6a2be5436b9bd931ad7a023235/</url>
@@ -302,7 +335,7 @@
     
     
     <entry>
-      <title>基于 LangChain + RAG + Ollama 构建智能医疗问答系统</title>
+      <title>基于 LangChain + RAG 构建医疗问答Agent</title>
       <link href="/2025/09/04/92bb519d826e4443936d4cce27ceb524/"/>
       <url>/2025/09/04/92bb519d826e4443936d4cce27ceb524/</url>
       
