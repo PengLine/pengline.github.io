@@ -1,0 +1,422 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Hexo 如何自定义类似主页的分页列表 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="如何给 Hexo 的其他页面定义类似首页的分页列表，构建入口列表展示和查看详细（Hexo + Butterfly）">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Hexo 如何自定义类似主页的分页列表">
+<meta property="og:url" content="https://pengline.github.io/2025/09/19/474520ec174b490f96586dfa50bb510f/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="如何给 Hexo 的其他页面定义类似首页的分页列表，构建入口列表展示和查看详细（Hexo + Butterfly）">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://www.toopic.cn/public/uploads/small/1743145804105174314580490.jpg">
+<meta property="article:published_time" content="2025-09-18T16:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-20T10:18:51.871Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Hexo">
+<meta property="article:tag" content="Hexo自定义分页">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://www.toopic.cn/public/uploads/small/1743145804105174314580490.jpg"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Hexo 如何自定义类似主页的分页列表",
+  "url": "https://pengline.github.io/2025/09/19/474520ec174b490f96586dfa50bb510f/",
+  "image": "https://www.toopic.cn/public/uploads/small/1743145804105174314580490.jpg",
+  "datePublished": "2025-09-18T16:00:00.000Z",
+  "dateModified": "2025-09-20T10:18:51.871Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="https://pengline.github.io/2025/09/19/474520ec174b490f96586dfa50bb510f/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'Hexo 如何自定义类似主页的分页列表',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background-image: url(/img/rqerwc4u0er.jpg);"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.jpg" data-lazy-src="/img/butterfly-icon.png" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">22</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">97</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">26</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC创意平台</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="/ai/agent/stocks/"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-book"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随笔</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://www.toopic.cn/public/uploads/small/1743145804105174314580490.jpg);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.jpg" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Hexo 如何自定义类似主页的分页列表</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC创意平台</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="/ai/agent/stocks/"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-book"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随笔</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Hexo 如何自定义类似主页的分页列表</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-09-18T16:00:00.000Z" title="发表于 2025-09-19 00:00:00">2025-09-19</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2025-09-20T10:18:51.871Z" title="更新于 2025-09-20 18:18:51">2025-09-20</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Tools/">Tools</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Tools/Hexo/">Hexo</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><blockquote>
+<p><strong>注意版本</strong>：框架 <a target="_blank" rel="noopener" href="https://hexo.io/">Hexo 7.3.0</a>|主题 <a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></p>
+</blockquote>
+<p><strong>需求</strong>：构建一个文学列表栏目，根据不同类别（三行诗集、诗词歌赋等），每个栏目可以有多个作品展示（类似首页，每页展示10条，数据为标题、时间、描述、作者、图片等）。</p>
+<p>具体效果可参考博客： ”文学-三行诗集“</p>
+<h2 id="注意事项">注意事项</h2>
+<p>Front-matter 必须严格格式（md文件）：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">---</span><br><span class="line">title: 春日偶得</span><br><span class="line">type: poems</span><br><span class="line">date: <span class="number">2025</span>-<span class="number">04</span>-<span class="number">01</span></span><br><span class="line">---</span><br></pre></td></tr></table></figure>
+<p><strong>对于脚本的放置位置</strong>：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>放在项目根 scripts（推荐用于全局逻辑）</p>
+</li>
+<li class="lvl-2">
+<p>放在主题 scripts（推荐用于主题专属逻辑）</p>
+</li>
+</ul>
+<p>我是放在主题butterfly之下  <code>themes/butterfly/scripts/custom/</code></p>
+</blockquote>
+<p><strong>对于模板文件的配置</strong>：</p>
+<blockquote>
+<p>三个地方必须完全一致：</p>
+<ol>
+<li class="lvl-3">Front-matter: <code>layout: custom/literature</code></li>
+<li class="lvl-3">Generator: <code>layout: ['custom/literature']</code></li>
+<li class="lvl-3">文件路径: <code>layout/custom/literature.pug</code></li>
+</ol>
+<p>如果没有加载到模板，会自动用 <code>archive</code> 模板（时间轴形式）</p>
+</blockquote>
+<p><strong>对于路径的配置</strong>：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>Generator 中的 basePath，必须和你的文件路径 <strong>完全一致</strong>！如果文件路径是 <code>literature/poems/</code>，但 <code>basePath</code> 是 <code>literature/three-line-poems/</code>  会导致路由不匹配，找不到模板。</p>
+</li>
+<li class="lvl-2">
+<p><strong>路径不能有符号</strong>，如：我之前 <code>literature/three-line-poems/</code> ，存在符号导致一直路由不到自定义模板中</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>其他文件异常</strong>：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Cannot read properties of undefined (reading &#x27;length&#x27;)</span></span><br><span class="line"><span class="comment">// 可以在报错的指定行，添加判断条件  &amp;&amp; page.categories.data</span></span><br><span class="line"><span class="keyword">if</span> theme.<span class="property">post_meta</span>.<span class="property">post</span>.<span class="property">categories</span> &amp;&amp; page.<span class="property">categories</span> &amp;&amp; page.<span class="property">categories</span>.<span class="property">data</span> &amp;&amp; page.<span class="property">categories</span>.<span class="property">data</span>.<span class="property">length</span> &gt; <span class="number">0</span></span><br></pre></td></tr></table></figure>
+<p><strong>项目结构</strong>：</p>
+<blockquote>
+<p>hexo-blog/<br>
+├── source/<br>
+│   	├── _posts/文学/<br>
+│ 	  │  	 ├── <a target="_blank" rel="noopener" href="http://xn--4yqs28akwekh.md">春日偶得.md</a>     		      ← 包含 type: three-line-poem<br>
+│  	 │  	 └── <a target="_blank" rel="noopener" href="http://xn--ess69p03e5y8b.md">夜读有感.md</a><br>
+│  	 └── literature/<br>
+│   		    └──poems/<br>
+│     			      └── <a target="_blank" rel="noopener" href="http://index.md">index.md</a>    		  ← layout: custom/literature<br>
+├── themes/<br>
+│   └── butterfly/<br>
+│    	   ├── layout/custom/<br>
+│   	    │   	└── literature.pug<br>
+│   	    ├── scripts/custom/<br>
+│   	    │  	 └──poems.js			  ← layout: custom/literature<br>
+│   	    ├── source/css/custom/<br>
+│    	   │  	 └──literature.css<br>
+└── _config.yml</p>
+</blockquote>
+<h2 id="前提条件">前提条件</h2>
+<ol>
+<li class="lvl-3">
+<p>你已安装 Hexo 并创建了博客项目。</p>
+</li>
+<li class="lvl-3">
+<p>已安装 <code>hexo-pagination</code> 插件（用于分页逻辑）：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">npm install hexo-pagination --save</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p>使用 Pug 作为模板引擎（默认是 EJS，需配置）：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">npm install hexo-renderer-pug --save</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p>在 <code>_config.yml</code> 中设置主题：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">theme: butterfly</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h2 id="创建自定义页面">创建自定义页面</h2>
+<blockquote>
+<p><strong>注意</strong>：框架会自动创建该文件。你也可以自己手动创建，指定相关信息。</p>
+</blockquote>
+<p>创建页面文件（列表）：在 <code>source/literature/poems/index.md</code>：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">---</span><br><span class="line">title: 三行诗集</span><br><span class="line">layout: custom/literature</span><br><span class="line">pagination: <span class="literal">true</span></span><br><span class="line">per_page: <span class="number">5</span></span><br><span class="line">type: three-line-poem</span><br><span class="line">---</span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><code>layout: custom/literature</code> → 指定使用自定义模板（模板所在位置：<strong>路径/文件名</strong>）</p>
+</li>
+<li class="lvl-2">
+<p><code>per_page: 5</code> → 每页显示5首诗</p>
+</li>
+<li class="lvl-2">
+<p><code>type: three-line-poem</code> → 自定义类型，用于筛选文章</p>
+</li>
+</ul>
+</blockquote>
+<h2 id="准备文章数据">准备文章数据</h2>
+<p><code>source/_posts/文学/春日偶得.md</code></p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">---</span><br><span class="line">title: 春日偶得</span><br><span class="line">date: <span class="number">2025</span>-<span class="number">04</span>-<span class="number">01</span></span><br><span class="line">categories: [文学, 诗集]</span><br><span class="line">tags: [三行情诗, 春日偶得]</span><br><span class="line">type: three-line-poem</span><br><span class="line">---</span><br><span class="line"></span><br><span class="line">春风拂面不须酒，</span><br><span class="line">落花随步即成诗。</span><br><span class="line">心静自然天地宽。</span><br></pre></td></tr></table></figure>
+<p><code>source/_posts/文学/夜读有感.md</code></p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">---</span><br><span class="line">title: 夜读有感</span><br><span class="line">date: <span class="number">2025</span>-<span class="number">04</span>-<span class="number">02</span></span><br><span class="line">categories: [文学, 诗集]</span><br><span class="line">tags: [三行情诗, 夜读有感]</span><br><span class="line">type: three-line-poem</span><br><span class="line">---</span><br><span class="line"></span><br><span class="line">灯下翻书夜已深，</span><br><span class="line">字里行间见古人。</span><br><span class="line">合卷方知月照襟。</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>所有你想在 <code>/literature/poems</code> 页面展示的诗，都加上 <code>type: three-line-poem</code>。</p>
+<p>路径可以随意，如： <code>source/_posts/test/test.md</code></p>
+</blockquote>
+<h2 id="创建分页模板（pug）">创建分页模板（pug）</h2>
+<p>在主题目录（ <code>themes/butterfly/layout/</code>）下创建模板（模板一定要与 hexo-pagination 版本对应，否则会出错，目前是4.0.0）</p>
+<p><code>themes/butterfly/layout/custom/literature.pug</code></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br></pre></td><td class="code"><pre><span class="line">extends ../includes/layout.pug</span><br><span class="line"></span><br><span class="line">block content</span><br><span class="line">  style.</span><br><span class="line">    @import url(&#x27;/css/custom/literature.css&#x27;);</span><br><span class="line"></span><br><span class="line">  .poetry-page</span><br><span class="line">    .container</span><br><span class="line">      .poetry-header</span><br><span class="line">        h1= page.title || &#x27;诗集&#x27;</span><br><span class="line">      </span><br><span class="line">      - var poemPosts = page.posts || [];</span><br><span class="line">      if poemPosts.length === 0</span><br><span class="line">        .no-poems</span><br><span class="line">          p 📖 暂无诗歌，敬请期待...</span><br><span class="line">      else</span><br><span class="line">        .poem-container</span><br><span class="line">          each post in poemPosts</span><br><span class="line">            .poem-card</span><br><span class="line">              .card-header</span><br><span class="line">                h3.poem-title= post.title</span><br><span class="line">                if post.author</span><br><span class="line">                  p.poem-author 【#&#123;post.author&#125;】</span><br><span class="line">                .poem-meta</span><br><span class="line">                  if post.date &amp;&amp; post.address</span><br><span class="line">                    span #&#123;new Date(post.date).toLocaleDateString(&#x27;zh-CN&#x27;, &#123; year: &#x27;numeric&#x27;, month: &#x27;long&#x27;, day: &#x27;numeric&#x27; &#125;)&#125; • #&#123;post.address&#125;</span><br><span class="line">                  else if post.date</span><br><span class="line">                    span #&#123;new Date(post.date).toLocaleDateString(&#x27;zh-CN&#x27;, &#123; year: &#x27;numeric&#x27;, month: &#x27;long&#x27;, day: &#x27;numeric&#x27; &#125;)&#125;</span><br><span class="line">                  else if post.address</span><br><span class="line">                    span #&#123;post.address&#125;</span><br><span class="line">                if post.description</span><br><span class="line">                  p.poem-description= post.description</span><br><span class="line">            </span><br><span class="line">              .poem-body</span><br><span class="line">                .poem-content</span><br><span class="line">                  -</span><br><span class="line">                    var contentText = post.content || &#x27;&#x27;;</span><br><span class="line">                    var cleanText = contentText.replace(/&lt;[^&gt;]*&gt;/g, &#x27;&#x27;).replace(/\s*\n\s*/g, &#x27;\n&#x27;).trim();</span><br><span class="line">                    var lines = cleanText.split(&#x27;\n&#x27;).filter(line =&gt; line.trim() !== &#x27;&#x27;);</span><br><span class="line">                  if lines.length &gt; 0</span><br><span class="line">                    each line, i in lines</span><br><span class="line">                      - var cleanLine = line.trim().replace(/^(《[^》]*》\s*)/, &#x27;&#x27;);</span><br><span class="line">                      if cleanLine</span><br><span class="line">                        p.poem-line= cleanLine</span><br><span class="line">                  else</span><br><span class="line">                    p.poem-line(style=&#x27;text-align: center; color: #999;&#x27;) 无诗句内容</span><br><span class="line"></span><br><span class="line">              .card-footer</span><br><span class="line">                a.read-more(href=url_for(post.path)) 📖 阅读全文</span><br><span class="line"></span><br><span class="line">      if page.total &gt; 1</span><br><span class="line">        .pagination-wrap</span><br><span class="line">          .pagination-title</span><br><span class="line">            | 第 #&#123;page.current&#125; 页，共 #&#123;page.total&#125; 页</span><br><span class="line">          .pagination</span><br><span class="line">            if page.prev &amp;&amp; page.prev &gt; 0</span><br><span class="line">              a.page-link.prev(href=url_for(page.prev_link))</span><br><span class="line">                span.page-nav &amp;laquo; 上一页</span><br><span class="line">            else</span><br><span class="line">              span.page-link.disabled</span><br><span class="line">                span.page-nav &amp;laquo; 上一页</span><br><span class="line"></span><br><span class="line">            - for (let i = 1; i &lt;= page.total; i++)</span><br><span class="line">              if i === page.current</span><br><span class="line">                span.page-link.current= i</span><br><span class="line">              else</span><br><span class="line">                - var pageLink = i === 1 ? page.base : page.base + &#x27;page/&#x27; + i;</span><br><span class="line">                  a.page-link(href=url_for(pageLink))= i</span><br><span class="line"></span><br><span class="line">            if page.next &amp;&amp; page.next &gt; 0</span><br><span class="line">              a.page-link.next(href=url_for(page.next_link))</span><br><span class="line">                span.page-nav 下一页 &amp;raquo;</span><br><span class="line">            else</span><br><span class="line">              span.page-link.disabled</span><br><span class="line">                span.page-nav 下一页 &amp;raquo;</span><br></pre></td></tr></table></figure>
+<p>如果你希望更精确控制“诗句预览”，可以在生成器或模板中预处理。</p>
+<p>每首诗显示为一张精美卡片：</p>
+<blockquote>
+<p>┌──────────────────────────────────────┐<br>
+│  				《春日偶得》                         		      │ ← 渐变标题栏<br>
+│  				余一叶知秋尽  	          			   │<br>
+│  							 己亥年正月 •  老家 	    ├<br>
+│  春日散步偶得小诗，心随景动。    					    │ ← 描述（斜体灰色）<br>
+│                                    						 		   │<br>
+│ 				 春风拂面不须酒，               		        │ ← 第一行（橙色）<br>
+│  				落花随步即成诗。              			 │ ← 第二行（蓝色）<br>
+│  				心静自然天地宽。            		           │ ← 第三行（绿色加粗）<br>
+├──────────────────────────────────────┤<br>
+│                                				  📖 阅读全文 		│ ← 右下角按钮<br>
+└──────────────────────────────────────┘</p>
+<ul class="lvl-1">
+<li class="lvl-2">网格自适应（PC 3列，平板 2列，手机 1列）</li>
+<li class="lvl-2">鼠标悬停轻微上浮 + 阴影加深</li>
+<li class="lvl-2">点击标题或“阅读全文”进入详情页</li>
+<li class="lvl-2">分页导航 + 页码跳转</li>
+</ul>
+</blockquote>
+<p>如果显示：未提取到诗句内容</p>
+<p>可能问题：你的Generator 与 模板中的数据不对应，获取数据的属性不同，或者缺少文章</p>
+<h2 id="pug-模板样式（CSS）">pug 模板样式（CSS）</h2>
+<p>在主题目录（ <code>themes/butterfly/source/</code>）下创建样式	<code>themes\butterfly\source\css\custom\literature.css</code></p>
+<p>你可以根据自己的需求，随意更改样式。</p>
+<figure class="highlight css"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br></pre></td><td class="code"><pre><span class="line"><span class="selector-class">.poetry-page</span> &#123;</span><br><span class="line">  <span class="attribute">padding</span>: <span class="number">2rem</span> <span class="number">0</span>;</span><br><span class="line">  <span class="attribute">background</span>: <span class="number">#f8f9fa</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poetry-header</span> &#123;</span><br><span class="line">  <span class="attribute">text-align</span>: center;</span><br><span class="line">  <span class="attribute">margin</span>: <span class="number">2rem</span> <span class="number">0</span>;</span><br><span class="line">  <span class="attribute">padding</span>: <span class="number">1.5rem</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poetry-header</span> <span class="selector-tag">h1</span> &#123;</span><br><span class="line">  <span class="attribute">font-size</span>: <span class="number">2.2rem</span>;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#2c3e50</span>;</span><br><span class="line">  <span class="attribute">margin</span>: <span class="number">0</span>;</span><br><span class="line">  <span class="attribute">font-weight</span>: <span class="number">600</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-grid</span> &#123;</span><br><span class="line">  <span class="attribute">display</span>: grid;</span><br><span class="line">  <span class="attribute">grid-template-columns</span>: <span class="built_in">repeat</span>(<span class="number">2</span>, <span class="number">1</span>fr);</span><br><span class="line">  <span class="attribute">gap</span>: <span class="number">2rem</span>;</span><br><span class="line">  <span class="attribute">padding</span>: <span class="number">0</span> <span class="number">2rem</span>;</span><br><span class="line">  <span class="attribute">max-width</span>: <span class="number">1200px</span>;</span><br><span class="line">  <span class="attribute">margin</span>: <span class="number">0</span> auto;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">@media</span> (<span class="attribute">max-width</span>: <span class="number">768px</span>) &#123;</span><br><span class="line">  <span class="selector-class">.poem-grid</span> &#123;</span><br><span class="line">	<span class="attribute">grid-template-columns</span>: <span class="number">1</span>fr;</span><br><span class="line">	<span class="attribute">padding</span>: <span class="number">0</span> <span class="number">1rem</span>;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-card</span> &#123;</span><br><span class="line">  <span class="attribute">background</span>: white;</span><br><span class="line">  <span class="attribute">border-radius</span>: <span class="number">12px</span>;</span><br><span class="line">  <span class="attribute">box-shadow</span>: <span class="number">0</span> <span class="number">4px</span> <span class="number">12px</span> <span class="built_in">rgba</span>(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0.05</span>);</span><br><span class="line">  <span class="attribute">overflow</span>: hidden;</span><br><span class="line">  <span class="attribute">transition</span>: all <span class="number">0.3s</span> ease;</span><br><span class="line">  <span class="attribute">border</span>: <span class="number">1px</span> solid <span class="number">#eee</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-card</span><span class="selector-pseudo">:hover</span> &#123;</span><br><span class="line">  <span class="attribute">box-shadow</span>: <span class="number">0</span> <span class="number">8px</span> <span class="number">24px</span> <span class="built_in">rgba</span>(<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0.1</span>);</span><br><span class="line">  <span class="attribute">transform</span>: <span class="built_in">translateY</span>(-<span class="number">2px</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.card-header</span> &#123;</span><br><span class="line">  <span class="attribute">padding</span>: <span class="number">1.5rem</span> <span class="number">1.5rem</span> <span class="number">1rem</span> <span class="number">1.5rem</span>;</span><br><span class="line">  <span class="attribute">border-bottom</span>: <span class="number">1px</span> solid <span class="number">#f0f0f0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-title</span> &#123;</span><br><span class="line">  <span class="attribute">font-size</span>: <span class="number">1.3rem</span>;</span><br><span class="line">  <span class="attribute">font-weight</span>: <span class="number">600</span>;</span><br><span class="line">  <span class="attribute">margin</span>: <span class="number">0</span> <span class="number">0</span> <span class="number">0.5rem</span> <span class="number">0</span>;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#2c3e50</span>;</span><br><span class="line">  <span class="attribute">line-height</span>: <span class="number">1.4</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-meta</span> &#123;</span><br><span class="line">  <span class="attribute">display</span>: flex;</span><br><span class="line">  <span class="attribute">flex-wrap</span>: wrap;</span><br><span class="line">  <span class="attribute">gap</span>: <span class="number">1rem</span>;</span><br><span class="line">  <span class="attribute">font-size</span>: <span class="number">0.85rem</span>;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#7f8c8d</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-body</span> &#123;</span><br><span class="line">  <span class="attribute">padding</span>: <span class="number">1.5rem</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-content</span> &#123;</span><br><span class="line">  <span class="attribute">margin</span>: <span class="number">1rem</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-line</span> &#123;</span><br><span class="line">  <span class="attribute">text-align</span>: center;</span><br><span class="line">  <span class="attribute">font-size</span>: <span class="number">1.1rem</span>;</span><br><span class="line">  <span class="attribute">line-height</span>: <span class="number">1.8</span>;</span><br><span class="line">  <span class="attribute">margin</span>: <span class="number">0.4rem</span> <span class="number">0</span>;</span><br><span class="line">  <span class="attribute">padding</span>: <span class="number">0.3rem</span> <span class="number">0</span>;</span><br><span class="line">  <span class="attribute">font-family</span>: <span class="string">&quot;STKaiti&quot;</span>, <span class="string">&quot;KaiTi&quot;</span>, serif;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-line</span><span class="selector-pseudo">:nth-child</span>(<span class="number">1</span>) &#123;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#e74c3c</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-line</span><span class="selector-pseudo">:nth-child</span>(<span class="number">2</span>) &#123;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#3498db</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.poem-line</span><span class="selector-pseudo">:nth-child</span>(<span class="number">3</span>) &#123;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#27ae60</span>;</span><br><span class="line">  <span class="attribute">font-weight</span>: <span class="number">500</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.card-footer</span> &#123;</span><br><span class="line">  <span class="attribute">padding</span>: <span class="number">1rem</span> <span class="number">1.5rem</span>;</span><br><span class="line">  <span class="attribute">background</span>: <span class="number">#f8f9fa</span>;</span><br><span class="line">  <span class="attribute">text-align</span>: right;</span><br><span class="line">  <span class="attribute">border-top</span>: <span class="number">1px</span> solid <span class="number">#eee</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.read-more</span> &#123;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#5d8aa8</span>;</span><br><span class="line">  <span class="attribute">text-decoration</span>: none;</span><br><span class="line">  <span class="attribute">font-size</span>: <span class="number">0.9rem</span>;</span><br><span class="line">  <span class="attribute">font-weight</span>: <span class="number">500</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.read-more</span><span class="selector-pseudo">:hover</span> &#123;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#2c5aa0</span>;</span><br><span class="line">  <span class="attribute">text-decoration</span>: underline;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="selector-class">.no-poems</span> &#123;</span><br><span class="line">  <span class="attribute">text-align</span>: center;</span><br><span class="line">  <span class="attribute">padding</span>: <span class="number">3rem</span> <span class="number">2rem</span>;</span><br><span class="line">  <span class="attribute">color</span>: <span class="number">#666</span>;</span><br><span class="line">  <span class="attribute">font-size</span>: <span class="number">1.1rem</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="注入分页数据（Generator）">注入分页数据（Generator）</h2>
+<p>你需要在主题的脚本或插件中为该页面生成分页器。在主题的 <code>scripts/custom</code> 目录创建 <code>three-line-poem.js</code></p>
+<blockquote>
+<p><strong>注意</strong>： 此处的 register generators名称 “three-line-poem”，必须保持唯一，否则会与其他冲突而不起效果。</p>
+<p>插件的使用 参照 <a target="_blank" rel="noopener" href="https://github.com/hexojs/hexo-pagination">Git 文档</a>，配置错误会导致加载不到模板，一直使用默认的。</p>
+</blockquote>
+<p>你可以随意在 <code>processedPosts</code> 中添加任意返回值，然后在pug模板中获取展示。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// themes/butterfly/scripts/three-line-poem-pagination.js</span></span><br><span class="line"><span class="keyword">const</span> pagination = <span class="built_in">require</span>(<span class="string">&#x27;hexo-pagination&#x27;</span>);</span><br><span class="line"></span><br><span class="line">hexo.<span class="property">extend</span>.<span class="property">generator</span>.<span class="title function_">register</span>(<span class="string">&#x27;three-line-poem&#x27;</span>, <span class="keyword">function</span>(<span class="params">locals</span>) &#123;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">const</span> &#123; config &#125; = <span class="variable language_">this</span>;</span><br><span class="line">  <span class="keyword">const</span> &#123; posts &#125; = locals;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 筛选 type: poems 的文章</span></span><br><span class="line">  <span class="keyword">const</span> poemPosts = posts</span><br><span class="line">    .<span class="title function_">sort</span>(<span class="string">&#x27;-date&#x27;</span>)</span><br><span class="line">    .<span class="title function_">filter</span>(<span class="function"><span class="params">post</span> =&gt;</span> post.<span class="property">type</span> === <span class="string">&#x27;three-line-poem&#x27;</span>);</span><br><span class="line"></span><br><span class="line">  <span class="keyword">const</span> processedPosts = poemPosts.<span class="title function_">map</span>(<span class="function"><span class="params">post</span> =&gt;</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> &#123;</span><br><span class="line">		<span class="attr">title</span>: post.<span class="property">title</span>,</span><br><span class="line">		<span class="attr">author</span>: post.<span class="property">author</span>,</span><br><span class="line">		<span class="attr">date</span>: post.<span class="property">date</span>,</span><br><span class="line">		<span class="attr">content</span>: post.<span class="property">content</span>,</span><br><span class="line">		<span class="attr">description</span>: post.<span class="property">description</span>,</span><br><span class="line">	&#125;</span><br><span class="line">  &#125;);</span><br><span class="line"></span><br><span class="line">  <span class="keyword">const</span> basePath = <span class="string">&#x27;literature/poems/&#x27;</span>;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">const</span> paginated = <span class="title function_">pagination</span>(basePath, processedPosts, &#123;</span><br><span class="line">    <span class="attr">perPage</span>: config.<span class="property">theme</span>.<span class="property">per_page</span> || <span class="number">10</span>,</span><br><span class="line">    <span class="attr">layout</span>: [<span class="string">&quot;custom/literature&quot;</span>], 		<span class="comment">// ← 和你的模板路径一致 , &#x27;index&#x27;, &#x27;archive&#x27;</span></span><br><span class="line">    <span class="attr">format</span>: <span class="string">&#x27;page/%d/&#x27;</span>,</span><br><span class="line">    <span class="attr">data</span>: &#123;</span><br><span class="line">	  <span class="attr">title</span>: <span class="string">&quot;三行情诗&quot;</span>,</span><br><span class="line">	  <span class="attr">tag</span>: <span class="string">&quot;三行情诗&quot;</span>,</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;);</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> paginated;</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>这个脚本会在生成时为 <code>/literature/poems/</code> 创建分页，并注入 <code>paginator</code> 对象到模板上下文。</p>
+<p>在脚本中加 <code>console.log</code>， 验证脚本是否被加载</p>
+<p>在主题配置（<code>themes/butterfly/_config.yml</code>）中添加：<code>per_page: 10</code>，这样你可以统一控制每页数量。</p>
+</blockquote>
+<h2 id="生成并预览">生成并预览</h2>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta prompt_"># </span><span class="language-bash">执行</span></span><br><span class="line">hexo clean &amp; hexo g &amp; hexo s</span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">运行生成后，检查输出文件：</span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">public/literature/poems/index.html</span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">public/literature/poems/page/2/index.html</span></span><br><span class="line">hexo g --debug &gt; debug.log 2&gt;&amp;1</span><br><span class="line"><span class="meta prompt_"></span></span><br><span class="line"><span class="meta prompt_"># </span><span class="language-bash">预览</span></span><br><span class="line">http://localhost:4000/literature/poems/</span><br><span class="line">http://localhost:4000/literature/poems/page/2/</span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>访问 <code>/literature/poems/</code> 显示第一页诗歌列表（每页10首）。</p>
+</li>
+<li class="lvl-2">
+<p>底部有“上一页 / 页码 / 下一页”导航。</p>
+</li>
+<li class="lvl-2">
+<p>支持输入页码跳转。</p>
+</li>
+<li class="lvl-2">
+<p>每首诗标题可点击进入详情页。</p>
+</li>
+<li class="lvl-2">
+<p>响应式、语义化 Pug 结构。</p>
+</li>
+</ul>
+</blockquote>
+<p><img src= "/img/20241215205335173426721579192.jpg" data-lazy-src="/imgs/image-20250920181655896.png" alt="image-20250920181655896"></p>
+<h2 id="隐藏文章">隐藏文章</h2>
+<p>如果需要在首页或其他栏目隐藏，可以使用 插件  <a target="_blank" rel="noopener" href="https://github.com/prinsss/hexo-hide-posts/blob/master/README_ZH.md">hexo-hide-posts</a>，支持在特定标签显示或隐藏指定文章。</p>
+<p>详细教程参考  <a target="_blank" rel="noopener" href="https://github.com/prinsss/hexo-hide-posts/blob/master/README_ZH.md">插件Github说明</a>  或  <a target="_blank" rel="noopener" href="https://insectmk.cn/posts/9c83ed78/#%E5%89%8D%E8%A8%80">博客</a></p>
+<p>如我的配置，其他地方隐藏，只在 “文学-三行诗集” 栏目显示</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">hide_posts:</span></span><br><span class="line">  <span class="attr">enable:</span> <span class="literal">true</span>     <span class="comment"># 是否启用 hexo-hide-posts</span></span><br><span class="line">  <span class="attr">filter:</span> <span class="string">hidden</span>     <span class="comment"># 隐藏文章的 front-matter 标识，也可以改成其他你喜欢的名字</span></span><br><span class="line">  <span class="attr">noindex:</span> <span class="literal">false</span>    <span class="comment"># 为隐藏的文章添加 noindex meta 标签，阻止搜索引擎收录</span></span><br><span class="line">  <span class="comment"># 设置白名单，白名单中的 generator 可以访问隐藏文章</span></span><br><span class="line">  <span class="comment"># 常见的 generators 有：index, tag, category, archive, sitemap, feed, etc.</span></span><br><span class="line">  <span class="comment"># allowlist_generators: [&#x27;*&#x27;]</span></span><br><span class="line">  <span class="attr">allowlist_generators:</span> [<span class="string">&#x27;three-line-poem&#x27;</span>]</span><br><span class="line">  </span><br><span class="line">  <span class="comment"># 设置黑名单，黑名单中的 generator 不可以访问隐藏文章</span></span><br><span class="line">  <span class="comment"># 如果同时设置了黑名单和白名单，白名单的优先级更高</span></span><br><span class="line">  <span class="comment"># blocklist_generators: [&#x27;*&#x27;]</span></span><br><span class="line">  <span class="attr">blocklist_generators:</span> [<span class="string">&#x27;index&#x27;</span>, <span class="string">&#x27;tag&#x27;</span>, <span class="string">&#x27;archive&#x27;</span>]</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.github.io">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.github.io/2025/09/19/474520ec174b490f96586dfa50bb510f/">https://pengline.github.io/2025/09/19/474520ec174b490f96586dfa50bb510f/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.github.io" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Hexo/">Hexo</a><a class="post-meta__tags" href="/tags/Hexo%E8%87%AA%E5%AE%9A%E4%B9%89%E5%88%86%E9%A1%B5/">Hexo自定义分页</a></div><div class="post-share"><div class="social-share" data-image="https://www.toopic.cn/public/uploads/small/1743145804105174314580490.jpg" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/09/20/84109943ebba4ffb9278daf2c200c0aa/" title="Hexo 提供的默认图标样式（4.7.0）"><img class="cover" src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://www.toopic.cn/public/uploads/small/175514400277175514400262.jpg" onerror="onerror=null;src='/img/k3zssqvjw2d.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">Hexo 提供的默认图标样式（4.7.0）</div></div><div class="info-2"><div class="info-item-1">Hexo 提供的默认图标样式，完整的675个图标样式CSS参考</div></div></div></a><a class="pagination-related" href="/2025/09/16/ba484d8d518d4691bc0c1737da33d517/" title="表达式的概念和求值实现"><img class="cover" src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://www.toopic.cn/public/uploads/small/1638860292714163886029214.jpg" onerror="onerror=null;src='/img/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">表达式的概念和求值实现</div></div><div class="info-2"><div class="info-item-1">三种表达式的概念特性，以及如何计算出人类熟知表达式的值（中缀表达式）。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/08/15/fe387890751447178380123929a383e3/" title="Hexo + Butterfly 动态切换夜间模式"><img class="cover" src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://www.toopic.cn/public/uploads/small/1634204389694163420438918.jpg" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-15</div><div class="info-item-2">Hexo + Butterfly 动态切换夜间模式</div></div><div class="info-2"><div class="info-item-1">Hexo + Butterfly 实现切换夜间模式的动画效果</div></div></div></a><a class="pagination-related" href="/2025/09/20/84109943ebba4ffb9278daf2c200c0aa/" title="Hexo 提供的默认图标样式（4.7.0）"><img class="cover" src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://www.toopic.cn/public/uploads/small/175514400277175514400262.jpg" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-20</div><div class="info-item-2">Hexo 提供的默认图标样式（4.7.0）</div></div><div class="info-2"><div class="info-item-1">Hexo 提供的默认图标样式，完整的675个图标样式CSS参考</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9"><span class="toc-number">1.</span> <span class="toc-text">注意事项</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%89%8D%E6%8F%90%E6%9D%A1%E4%BB%B6"><span class="toc-number">2.</span> <span class="toc-text">前提条件</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%9B%E5%BB%BA%E8%87%AA%E5%AE%9A%E4%B9%89%E9%A1%B5%E9%9D%A2"><span class="toc-number">3.</span> <span class="toc-text">创建自定义页面</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%87%86%E5%A4%87%E6%96%87%E7%AB%A0%E6%95%B0%E6%8D%AE"><span class="toc-number">4.</span> <span class="toc-text">准备文章数据</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%9B%E5%BB%BA%E5%88%86%E9%A1%B5%E6%A8%A1%E6%9D%BF%EF%BC%88pug%EF%BC%89"><span class="toc-number">5.</span> <span class="toc-text">创建分页模板（pug）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#pug-%E6%A8%A1%E6%9D%BF%E6%A0%B7%E5%BC%8F%EF%BC%88CSS%EF%BC%89"><span class="toc-number">6.</span> <span class="toc-text">pug 模板样式（CSS）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B3%A8%E5%85%A5%E5%88%86%E9%A1%B5%E6%95%B0%E6%8D%AE%EF%BC%88Generator%EF%BC%89"><span class="toc-number">7.</span> <span class="toc-text">注入分页数据（Generator）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%94%9F%E6%88%90%E5%B9%B6%E9%A2%84%E8%A7%88"><span class="toc-number">8.</span> <span class="toc-text">生成并预览</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%9A%90%E8%97%8F%E6%96%87%E7%AB%A0"><span class="toc-number">9.</span> <span class="toc-text">隐藏文章</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.jpg" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = {"mapping":"pathname","reactions_enabled":1,"emit_metadata":0,"input_position":"top","theme":"preferred_color_scheme","crossorigin":"anonymous","async":true}
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js?lang=zh-CN',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      lang: 'zh-CN',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'  // 强制中文
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
