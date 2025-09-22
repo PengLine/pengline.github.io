@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleButton.textContent = '折叠';
     
     // 定义最大深度，控制JSON格式化时的折叠行为
-    const maxDepth = 50;
+    const maxDepth = 100;
 
     // 格式化按钮点击事件
     formatButton.addEventListener('click', function() {
@@ -43,6 +43,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 .replace(/^\uFEFF/, '')
                 // 规范化换行符
                 .replace(/\r\n/g, '\n');
+            
+            // 验证是否为有效的JSON数据
+            if (!isValidJson(preprocessedText)) {
+                throw new Error('请输入有效的JSON数据');
+            }
             
             // 尝试使用增强的JSON解析方法
             const parsedJson = enhancedParseJson(preprocessedText);
@@ -136,6 +141,29 @@ document.addEventListener('DOMContentLoaded', function() {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    // 验证是否为有效的JSON数据
+    function isValidJson(str) {
+        // 检查参数是否有效
+        if (!str || typeof str !== 'string') {
+            return false;
+        }
+        
+        // 检查字符串是否以 { 或 [ 开头，并以 } 或 ] 结尾
+        const trimmed = str.trim();
+        if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('[')) || 
+            (!trimmed.endsWith('}') && !trimmed.endsWith(']'))) {
+            return false;
+        }
+        
+        // 尝试使用标准JSON.parse解析
+        try {
+            JSON.parse(trimmed);
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     // 预处理JSON字符串，增强对转义符和格式问题的支持
@@ -824,7 +852,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     if (keys.length > 0) {
                         // 只显示对象的开始括号，并将整个内容折叠
-                    collapsedHtml = `<div class="json-container" data-depth="0" data-type="object"><div class="json-item" style="margin-left: 0px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span><span class="collapsed" data-content="${escapeHtml(JSON.stringify(parsedJson))}">${keys.length} 个属性</span></div><div class="json-item" style="margin-left: 0px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
+                        collapsedHtml = `<div class="json-container" data-depth="0" data-type="object"><div class="json-item" style="margin-left: 0px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span><span class="collapsed" data-content="${escapeHtml(JSON.stringify(parsedJson))}">${keys.length} 个属性</span></div><div class="json-item" style="margin-left: 0px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
                     }
                 } else {
                     // 如果根节点不是对象，使用普通的折叠方法 
@@ -933,12 +961,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             } else {
                 // 展开状态
-                // 检查是否有原始内容可以恢复
-                if (container.dataset.originalContent) {
-                    container.innerHTML = container.dataset.originalContent;
-                    // 清除保存的原始内容，避免重复应用
-                    container.dataset.originalContent = '';
-                } else if (jsonItems.length > 2) {
+                // 不再使用innerHTML替换，而是直接修改现有元素的显示状态
+                if (jsonItems.length > 2) {
                     // 找到所有子级内容（跳过开始括号和结束括号）
                     for (let i = 1; i < jsonItems.length - 1; i++) {
                         jsonItems[i].style.display = 'block';
@@ -950,6 +974,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         collapsedIndicator.remove();
                     }
                 }
+                // 清除保存的原始内容
+                container.dataset.originalContent = '';
             }
             
             // 更新全局折叠按钮状态
