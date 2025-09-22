@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     const rawJsonInput = document.getElementById('raw-json');
     const formatButton = document.getElementById('format-btn');
     const clearButton = document.getElementById('clear-btn');
@@ -12,12 +12,12 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleButton.disabled = true;
     toggleButton.classList.add('disabled');
     toggleButton.textContent = '折叠';
-    
+
     // 定义最大深度，控制JSON格式化时的折叠行为
     const maxDepth = 100;
 
     // 格式化按钮点击事件
-    formatButton.addEventListener('click', function() {
+    formatButton.addEventListener('click', function () {
         try {
             // 修复：连续点击格式化报错的问题
             // 检查编辑器是否已经是只读状态（已格式化过）
@@ -28,13 +28,13 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 // 否则获取当前输入的文本
                 inputText = rawJsonInput.textContent.trim();
-                
+
                 // 检查输入是否为空
                 if (!inputText) {
                     throw new Error('请输入JSON内容');
                 }
             }
-            
+
             // 预处理输入，移除可能导致问题的字符
             let preprocessedText = inputText
                 // 移除行首和行尾的空白字符
@@ -43,49 +43,55 @@ document.addEventListener('DOMContentLoaded', function() {
                 .replace(/^\uFEFF/, '')
                 // 规范化换行符
                 .replace(/\r\n/g, '\n');
-            
+
+            const result = isValidJSON(preprocessedText, { allowArrays: false });
+
             // 验证是否为有效的JSON数据
-            if (!isValidJson(preprocessedText)) {
-                throw new Error('请输入有效的JSON数据');
+            if (!result.valid) {
+                if (result.line) {
+                    throw new Error(`非法的JSON数据：位置: 第 ${result.line} 行第 ${result.column} 列`);
+                } else {
+                    throw new Error(`非法的JSON数据：${result.error}`);
+                }
+
             }
-            
+
             // 尝试使用增强的JSON解析方法
             const parsedJson = enhancedParseJson(preprocessedText);
-            
+
             // 生成高亮的HTML
             const highlightedHtml = highlightJson(parsedJson);
-            
+
             // 应用高亮的HTML到编辑器
             if (highlightedHtml) {
                 // 保存原始JSON文本，供压缩和转义按钮使用
                 rawJsonInput.dataset.originalJson = JSON.stringify(parsedJson);
-                
+
                 // 设置编辑器为只读
                 rawJsonInput.contentEditable = 'false';
-                
+
                 // 更新编辑器内容
                 rawJsonInput.innerHTML = highlightedHtml;
-                
+
                 // 空错误提示
                 errorMessage.textContent = '';
                 errorMessage.classList.remove('show');
-                
+
                 // 添加-符号到[和{前面
                 // setTimeout(() => {
                 //     addMinusSigns();
                 // }, 0);
-                
+
                 // 格式化成功后启用折叠按钮并显示"折叠"文本
                 toggleButton.disabled = false;
                 toggleButton.classList.remove('disabled');
                 toggleButton.textContent = '折叠';
-                
-                // showNotification('JSON格式化成功');
+
             } else {
                 throw new Error('生成高亮HTML失败');
             }
         } catch (error) {
-            console.error('JSON格式化失败:', error);
+            console.error(error);
             // 显示错误信息
             errorMessage.textContent = `JSON格式化错误: ${error.message}`;
             errorMessage.classList.add('show');
@@ -94,7 +100,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 清空按钮点击事件
-    clearButton.addEventListener('click', function() {
+    clearButton.addEventListener('click', function () {
         rawJsonInput.textContent = '';
         // 隐藏错误消息
         errorMessage.classList.remove('show');
@@ -104,12 +110,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const textNode = document.createTextNode(el.textContent);
             el.parentNode.replaceChild(textNode, el);
         });
-        
+
         // 清空后让输入框获得焦点
         setTimeout(() => {
             rawJsonInput.focus();
         }, 0);
-        
+
         // 清空后禁用折叠按钮并改为'展开'
         toggleButton.disabled = true;
         toggleButton.classList.add('disabled');
@@ -117,14 +123,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 处理contenteditable div的粘贴事件，移除HTML格式
-    rawJsonInput.addEventListener('paste', function(e) {
+    rawJsonInput.addEventListener('paste', function (e) {
         e.preventDefault();
         const text = (e.clipboardData || window.clipboardData).getData('text/plain');
         document.execCommand('insertText', false, text);
     });
 
     // 处理contenteditable div的键盘事件，确保Tab键正常工作
-    rawJsonInput.addEventListener('keydown', function(e) {
+    rawJsonInput.addEventListener('keydown', function (e) {
         if (e.key === 'Tab') {
             e.preventDefault();
             document.execCommand('insertText', false, '  ');
@@ -132,7 +138,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 为输入框添加实时格式化功能
-    rawJsonInput.addEventListener('input', function() {
+    rawJsonInput.addEventListener('input', function () {
         // 可以在这里添加防抖处理，避免频繁格式化
     });
 
@@ -142,45 +148,158 @@ document.addEventListener('DOMContentLoaded', function() {
         div.textContent = text;
         return div.innerHTML;
     }
-    
+
     // 验证是否为有效的JSON数据
-    function isValidJson(str) {
-        // 检查参数是否有效
-        if (!str || typeof str !== 'string') {
-            return false;
+    /**
+     * 校验 JSON 是否合法，返回错误信息（包含行号列号）
+     * @param {any} input - 输入数据
+     * @param {Object} options - 配置选项
+     * @returns {{valid: boolean, error?: string, line?: number, column?: number}}
+     */
+    function isValidJSON(input, options = {}) {
+        const { allowArrays = false, allowPrimitives = false } = options;
+
+        // 处理非字符串输入
+        if (typeof input !== 'string') {
+            if (input === null || input === undefined) {
+                return { valid: false, error: '输入为 null 或 undefined' };
+            }
+            if (typeof input === 'object' && !Array.isArray(input)) {
+                return { valid: true };
+            }
+            return { valid: false, error: '输入必须是 JSON 字符串或对象' };
         }
-        
-        // 检查字符串是否以 { 或 [ 开头，并以 } 或 ] 结尾
-        const trimmed = str.trim();
-        if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('[')) || 
-            (!trimmed.endsWith('}') && !trimmed.endsWith(']'))) {
-            return false;
+
+        const str = input.trim();
+        if (str === '') {
+            return { valid: false, error: '输入为空字符串' };
         }
-        
-        // 尝试使用标准JSON.parse解析
+
         try {
-            JSON.parse(trimmed);
-            return true;
-        } catch (e) {
-            return false;
+            const parsed = JSON.parse(str);
+
+            // 验证解析后的类型
+            if (parsed === null) {
+                return { valid: false, error: 'JSON 不能为 null' };
+            }
+            if (Array.isArray(parsed) && !allowArrays) {
+                return { valid: false, error: 'JSON 不能是数组' };
+            }
+            if (typeof parsed !== 'object' && !allowPrimitives) {
+                return { valid: false, error: 'JSON 必须是对象' };
+            }
+
+            return { valid: true };
+
+        } catch (error) {
+            return parseJSONError(error, str);
         }
+    }
+
+    /**
+     * 解析 JSON 错误信息，提取行号和列号
+     */
+    function parseJSONError(error, jsonString) {
+        const message = error.message.toLowerCase();
+
+        // 提取位置信息
+        const positionMatch = error.message.match(/position\s+(\d+)/);
+        const atPositionMatch = error.message.match(/at\s+position\s+(\d+)/);
+        const charMatch = error.message.match(/at\s+character\s+(\d+)/);
+
+        let position = null;
+        if (positionMatch) position = parseInt(positionMatch[1]);
+        else if (atPositionMatch) position = parseInt(atPositionMatch[1]);
+        else if (charMatch) position = parseInt(charMatch[1]);
+
+        if (position !== null) {
+            const { line, column } = getLineAndColumn(jsonString, position);
+
+            if (message.includes('unexpected token')) {
+                const tokenMatch = error.message.match(/unexpected token\s+([^\s]+)/);
+                const token = tokenMatch ? tokenMatch[1] : '未知字符';
+                return {
+                    valid: false,
+                    error: `第 ${line} 行第 ${column} 列出现意外的字符: ${token}`,
+                    line,
+                    column
+                };
+            }
+
+            if (message.includes('unexpected end')) {
+                return {
+                    valid: false,
+                    error: `第 ${line} 行第 ${column} 列：JSON 不完整，意外结束`,
+                    line,
+                    column
+                };
+            }
+
+            if (message.includes('expected')) {
+                const expectedMatch = error.message.match(/expected\s+([^\\n]+)/);
+                const expected = expectedMatch ? expectedMatch[1] : '特定字符';
+                return {
+                    valid: false,
+                    error: `第 ${line} 行第 ${column} 列：期望 ${expected}`,
+                    line,
+                    column
+                };
+            }
+        }
+
+        // 通用错误处理
+        if (message.includes('bad control character')) {
+            return { valid: false, error: '包含非法控制字符' };
+        }
+
+        if (message.includes('bad escaped character')) {
+            return { valid: false, error: '转义字符格式错误' };
+        }
+
+        if (message.includes('unterminated string')) {
+            return { valid: false, error: '字符串没有正确结束引号' };
+        }
+
+        // 返回原始错误信息（简化版）
+        const simpleError = error.message
+            .replace(/^JSON\.parse:\s*/, '')
+            .replace(/^SyntaxError:\s*/, '')
+            .replace(/position\s+\d+/, '')
+            .trim();
+
+        return { valid: false, error: simpleError };
+    }
+
+    /**
+     * 根据字符位置计算行号和列号
+     */
+    function getLineAndColumn(text, position) {
+        if (position < 0 || position > text.length) {
+            return { line: 1, column: 1 };
+        }
+
+        const lines = text.substring(0, position).split('\n');
+        const line = lines.length;
+        const column = lines[lines.length - 1].length + 1;
+
+        return { line, column };
     }
 
     // 预处理JSON字符串，增强对转义符和格式问题的支持
     function preprocessJson(jsonStr) {
         let processed = jsonStr.trim();
-        
+
         console.log('开始预处理JSON字符串...');
-        
+
         // 尝试多种预处理策略
         const strategies = [
             {
-                name: '原始字符串', 
-                fn: function(str) { return str; }
+                name: '原始字符串',
+                fn: function (str) { return str; }
             },
             {
-                name: '修复双重转义', 
-                fn: function(str) {
+                name: '修复双重转义',
+                fn: function (str) {
                     // 处理双重反斜杠
                     let fixed = str.replace(/\\\\/g, '\\');
                     // 修复转义的引号问题
@@ -189,8 +308,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             },
             {
-                name: '修复缺失引号的键', 
-                fn: function(str) {
+                name: '修复缺失引号的键',
+                fn: function (str) {
                     // 尝试修复没有引号的键名，例如: {key: "value"} -> {"key": "value"}
                     try {
                         return str.replace(/([{,])\s*([a-zA-Z0-9_$]+)\s*:/g, '$1 "$2":');
@@ -200,8 +319,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             },
             {
-                name: '移除多余的逗号', 
-                fn: function(str) {
+                name: '移除多余的逗号',
+                fn: function (str) {
                     // 移除对象或数组末尾的逗号，例如: {"key": "value",} -> {"key": "value"}
                     return str
                         .replace(/,\s*}/g, '}')
@@ -209,14 +328,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             },
             {
-                name: '修复单引号问题', 
-                fn: function(str) {
+                name: '修复单引号问题',
+                fn: function (str) {
                     // 将单引号转换为双引号，同时处理字符串内部的单引号
                     return str.replace(/'([^']*)'/g, '"$1"');
                 }
             }
         ];
-        
+
         // 尝试每种策略
         for (let i = 0; i < strategies.length; i++) {
             const strategy = strategies[i];
@@ -232,16 +351,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 继续尝试下一个策略
             }
         }
-        
+
         // 所有策略都失败，尝试一个综合修复方案
         try {
             console.log('尝试综合修复方案...');
             let combined = processed;
-            
+
             // 应用多个修复策略
             combined = combined.replace(/\\\\/g, '\\'); // 修复双重反斜杠
             combined = combined.replace(/,\s*([}\]])/g, '$1'); // 移除尾部逗号
-            
+
             // 处理特殊情况：如果字符串以引号开头和结尾，但中间有未转义的引号
             if (combined.startsWith('"') && combined.endsWith('"')) {
                 try {
@@ -251,7 +370,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('URI解码失败:', e);
                 }
             }
-            
+
             // 最后验证
             JSON.parse(combined);
             console.log('综合修复方案成功!');
@@ -259,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (e) {
             console.warn('所有修复方案均失败:', e);
         }
-        
+
         // 所有尝试都失败，返回原始字符串
         return jsonStr;
     }
@@ -279,18 +398,18 @@ document.addEventListener('DOMContentLoaded', function() {
             return div.textContent;
         }
     }
-    
+
     // 增强的JSON解析函数 - 专门处理折叠内容
     function enhancedParseJson(jsonStr) {
         try {
             // 检查参数是否有效
             if (!jsonStr || typeof jsonStr !== 'string') {
                 console.warn('输入不是有效的字符串，使用空对象');
-                return {"": ""};
+                return { "": "" };
             }
-            
+
             console.log('原始JSON字符串:', jsonStr);
-            
+
             // 先尝试多次HTML实体解码，确保完全解码
             let decodedStr = jsonStr;
             // 连续解码最多3次，直到没有HTML实体或达到最大次数
@@ -300,22 +419,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 decodeAttempts++;
                 console.log(`第${decodeAttempts}次解码后:`, decodedStr);
             }
-            
+
             // 尝试标准解析
             try {
                 return JSON.parse(decodedStr);
             } catch (error) {
                 console.error('标准解析失败，尝试清理后解析:', error);
-                
+
                 // 尝试清理可能的无效字符
                 let cleanedStr = decodedStr.trim();
-                
+
                 // 如果字符串长度非常小，使用空对象
                 if (cleanedStr.length < 5) {
                     console.warn('字符串长度太小，使用空对象 (长度: ' + cleanedStr.length + ')');
-                    return {"": ""};
+                    return { "": "" };
                 }
-                
+
                 // 尝试再次解析清理后的字符串
                 try {
                     return JSON.parse(cleanedStr);
@@ -333,15 +452,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     } catch (e) {
                         console.error('宽松解析也失败:', e);
                     }
-                    
+
                     // 作为最后的后备，返回一个空对象
-                    return {"": ""};
+                    return { "": "" };
                 }
             }
         } catch (error) {
             console.error('增强解析失败:', error);
             // 作为最后的后备，返回一个空对象
-            return {"": ""};
+            return { "": "" };
         }
     }
 
@@ -379,12 +498,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (depth >= maxDepth) {
                 return `[<span class="collapsed" data-content="${escapeHtml(JSON.stringify(obj))}">${obj.length} 项</span>]`;
             }
-            
+
             // 保留适当的缩进并添加左侧线和折叠图标
             const indent = ' '.repeat(depth * 2);
             const itemIndent = ' '.repeat((depth + 1) * 2);
             let result = `<div class="json-container" data-depth="${depth}" data-type="array"><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">[</span>`;
-            
+
             // 如果数组不为空，添加内容
             if (obj.length > 0) {
                 for (let i = 0; i < obj.length; i++) {
@@ -400,7 +519,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (typeof obj === 'object') {
             const keys = Object.keys(obj);
-            
+
             if (keys.length === 0) {
                 return '{}';
             }
@@ -409,10 +528,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (depth >= maxDepth) {
                 return `{<span class="collapsed" data-content="${escapeHtml(JSON.stringify(obj))}">${keys.length} 个属性</span>}`;
             }
-            
+
             // 保留适当的缩进并添加左侧线和折叠图标
             let result = `<div class="json-container" data-depth="${depth}" data-type="object"><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span>`;
-            
+
             if (keys.length > 0) {
                 for (let i = 0; i < keys.length; i++) {
                     const key = keys[i];
@@ -420,12 +539,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     const highlightedKey = '<span class="key">"' + key + '"</span>';
                     // 对子值应用折叠逻辑
                     const highlightedValue = highlightJson(value, depth + 1);
-                    
+
                     result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * 16}px;">${highlightedKey}: ${highlightedValue}`;
-                    
-                    if (i < keys.length - 1) {
-                        result += ',';
-                    }
+
                 }
             }
             result += `</div><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
@@ -440,15 +556,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (obj === null) {
             return '<span class="null">null</span>';
         }
-        
+
         if (typeof obj === 'boolean') {
             return '<span class="boolean">' + obj + '</span>';
         }
-        
+
         if (typeof obj === 'number') {
             return '<span class="number">' + obj + '</span>';
         }
-        
+
         if (typeof obj === 'string') {
             // 转义HTML特殊字符
             const escapedStr = obj
@@ -459,7 +575,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 .replace(/'/g, '&#039;');
             return '<span class="string">"' + escapedStr + '"</span>';
         }
-        
+
         if (Array.isArray(obj)) {
             if (obj.length === 0) {
                 return '[]';
@@ -469,10 +585,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (depth >= maxDepth) {
                 return `[<span class="collapsed" data-content="${escapeHtml(JSON.stringify(obj))}">${obj.length} 项</span>]`;
             }
-            
+
             // 保留适当的缩进并添加左侧线和折叠图标
             let result = `<div class="json-container" data-depth="${depth}" data-type="array"><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">[</span>`;
-            
+
             // 如果数组为空或只有简单元素，保持一行显示
             if (obj.length === 0) {
                 result += ']</div></div>';
@@ -482,10 +598,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     // 对子元素应用折叠逻辑
                     const highlightedItem = highlightJsonCollapsed(item, depth + 1, maxDepth);
                     result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * 16}px;">${highlightedItem}`;
-                    
-                    if (i < obj.length - 1) {
-                        result += ',';
-                    }
                 }
                 result += `</div><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">]</span></div></div>`;
             }
@@ -494,7 +606,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (typeof obj === 'object') {
             const keys = Object.keys(obj);
-            
+
             if (keys.length === 0) {
                 return '{}';
             }
@@ -503,24 +615,21 @@ document.addEventListener('DOMContentLoaded', function() {
             if (depth >= maxDepth) {
                 return `{<span class="collapsed" data-content="${escapeHtml(JSON.stringify(obj))}">${keys.length} 个属性</span>}`;
             }
-            
+
             // 保留适当的缩进并添加左侧线和折叠图标
             let result = `<div class="json-container" data-depth="${depth}" data-type="object"><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span>`;
-            
+
             for (let i = 0; i < keys.length; i++) {
                 const key = keys[i];
                 const value = obj[key];
                 const highlightedKey = '<span class="key">"' + key + '"</span>';
                 // 对子值应用折叠逻辑
                 const highlightedValue = highlightJsonCollapsed(value, depth + 1, maxDepth);
-                
+
                 result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * 16}px;">${highlightedKey}: ${highlightedValue}`;
-                
-                if (i < keys.length - 1) {
-                    result += ',';
-                }
+
             }
-            
+
             result += `</div><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
             return result;
         }
@@ -529,9 +638,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // 复制按钮点击事件
-    copyButton.addEventListener('click', function() {
+    copyButton.addEventListener('click', function () {
         let textToCopy = '';
-        
+
         // 优先使用格式化时保存的原始JSON数据（这是最准确的）
         if (rawJsonInput.dataset.originalJson) {
             try {
@@ -547,12 +656,12 @@ document.addEventListener('DOMContentLoaded', function() {
             // 如果没有保存的原始JSON数据，直接获取编辑器中的文本内容
             textToCopy = rawJsonInput.textContent;
         }
-        
+
         if (!textToCopy.trim()) {
             showNotification('没有内容可复制');
             return;
         }
-        
+
         // 使用Clipboard API复制文本
         navigator.clipboard.writeText(textToCopy)
             .then(() => {
@@ -568,7 +677,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 压缩按钮点击事件
-    minifyButton.addEventListener('click', function() {
+    minifyButton.addEventListener('click', function () {
         // 首先检查是否有保存的原始JSON数据
         let rawJson;
         if (rawJsonInput.dataset.originalJson) {
@@ -576,12 +685,12 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             rawJson = rawJsonInput.textContent.trim();
         }
-        
+
         if (!rawJson) {
             showNotification('请输入JSON数据');
             return;
         }
-        
+
         try {
             // 尝试使用标准方法处理
             // 预处理JSON字符串
@@ -590,27 +699,27 @@ document.addEventListener('DOMContentLoaded', function() {
             const parsedJson = enhancedParseJson(processedJson);
             // 生成压缩后的JSON字符串（无空格和换行）
             const minifiedJson = JSON.stringify(parsedJson);
-            
+
             // 保存当前的滚动位置
             const scrollTop = rawJsonInput.scrollTop;
-            
+
             // 禁用contenteditable以便设置内容
             rawJsonInput.contentEditable = 'true';
-            
+
             // 直接设置压缩后的字符串内容（不使用语法高亮）
             rawJsonInput.textContent = minifiedJson;
-            
+
             // 清空保存的原始JSON数据
             delete rawJsonInput.dataset.originalJson;
-            
+
             // 恢复滚动位置
             rawJsonInput.scrollTop = scrollTop;
-            
+
             // 清空错误提示
             errorMessage.textContent = '';
             errorMessage.classList.remove('show');
             // showNotification('JSON已压缩');
-            
+
             // 禁用折叠按钮并改为'展开'
             toggleButton.disabled = true;
             toggleButton.classList.add('disabled');
@@ -621,27 +730,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 如果标准方法失败，尝试直接处理当前输入内容
                 // 这种方式会保留所有的转义字符
                 const currentContent = rawJsonInput.textContent.trim();
-                
+
                 if (!currentContent) {
                     showNotification('请输入JSON数据');
                     return;
                 }
-                
+
                 // 保存当前的滚动位置
                 const scrollTop = rawJsonInput.scrollTop;
-                
+
                 // 禁用contenteditable以便设置内容
                 rawJsonInput.contentEditable = 'true';
-                
+
                 // 直接使用当前内容作为压缩结果，保留所有转义字符
                 rawJsonInput.textContent = currentContent;
-                
+
                 // 清空保存的原始JSON数据
                 delete rawJsonInput.dataset.originalJson;
-                
+
                 // 恢复滚动位置
                 rawJsonInput.scrollTop = scrollTop;
-                
+
                 // showNotification('JSON已保留转义字符方式压缩');
             } catch (innerError) {
                 console.error('JSON压缩失败:', innerError);
@@ -652,7 +761,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 转义按钮点击事件
-    escapeButton.addEventListener('click', function() {
+    escapeButton.addEventListener('click', function () {
         // 首先检查是否有保存的原始JSON数据
         let rawJson;
         if (rawJsonInput.dataset.originalJson) {
@@ -660,41 +769,41 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             rawJson = rawJsonInput.textContent.trim();
         }
-        
+
         if (!rawJson) {
             showNotification('请输入JSON数据');
             return;
         }
-        
+
         try {
             // 预处理JSON字符串
             let processedJson = preprocessJson(rawJson);
-            
+
             // 对字符串中的引号进行转义，只在引号前添加一个反斜杠
             const escapedJsonString = processedJson.replace(/"/g, '\\"');
-            
+
             // 保存当前的滚动位置
             const scrollTop = rawJsonInput.scrollTop;
-            
+
             // 禁用contenteditable以便设置内容
             rawJsonInput.contentEditable = 'true';
-            
+
             // 直接设置转义后的字符串内容（不使用语法高亮）
             rawJsonInput.textContent = escapedJsonString;
-            
+
             // 保存转义前的原始JSON数据，供格式化按钮使用
             if (!rawJsonInput.dataset.originalJson) {
                 rawJsonInput.dataset.originalJson = rawJson;
             }
-            
+
             // 恢复滚动位置
             rawJsonInput.scrollTop = scrollTop;
-            
+
             // 清空错误提示
             errorMessage.textContent = '';
             errorMessage.classList.remove('show');
             // showNotification('JSON已转义');
-            
+
             // 禁用折叠按钮并改为'展开'
             toggleButton.disabled = true;
             toggleButton.classList.add('disabled');
@@ -707,17 +816,17 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 切换按钮点击事件（折叠/展开互斥）
-    toggleButton.addEventListener('click', function() {
+    toggleButton.addEventListener('click', function () {
         try {
             // 检查是否有折叠元素（包括折叠图标和折叠内容）
             const hasCollapsedIcons = rawJsonInput.querySelector('.collapse-icon.collapsed') !== null;
             const hasCollapsedContent = rawJsonInput.querySelector('.collapsed[data-content]') !== null;
             const hasCollapsedElements = hasCollapsedIcons || hasCollapsedContent;
-            
+
             if (hasCollapsedElements) {
                 // 如果有折叠元素，执行展开操作
                 let parsedJson = null;
-                
+
                 // 首先尝试使用保存的原始JSON数据（最可靠的来源）
                 if (rawJsonInput.dataset.originalJson) {
                     try {
@@ -726,7 +835,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.warn('解析保存的原始JSON失败，尝试从data-content获取:', e);
                     }
                 }
-                
+
                 // 如果原始数据解析失败，尝试从折叠元素的data-content属性获取JSON
                 if (!parsedJson) {
                     const collapsedElement = rawJsonInput.querySelector('.collapsed[data-content]');
@@ -749,52 +858,52 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 }
-                
+
                 // 如果以上方法都失败，才使用textContent（这是最不可靠的来源）
                 if (!parsedJson) {
                     const inputText = rawJsonInput.textContent.trim();
-                    
+
                     // 检查输入是否为空
                     if (!inputText) {
                         throw new Error('请输入JSON内容');
                     }
-                    
+
                     // 预处理输入，只提取可能的JSON部分
                     let jsonToParse = inputText
                         .trim()
                         .replace(/^\uFEFF/, '')
                         .replace(/\r\n/g, '\n');
-                    
+
                     // 尝试使用增强的JSON解析方法
                     parsedJson = enhancedParseJson(jsonToParse);
                 }
-                
+
                 // 生成展开的HTML
                 const expandedHtml = highlightJson(parsedJson);
-                
+
                 // 安全地替换内容
                 if (expandedHtml) {
                     // 保存当前的滚动位置
                     const scrollTop = rawJsonInput.scrollTop;
-                    
+
                     // 设置编辑器为只读
                     rawJsonInput.contentEditable = 'false';
-                    
+
                     // 更新编辑器内容
                     rawJsonInput.innerHTML = expandedHtml;
-                    
+
                     // 恢复滚动位置
                     rawJsonInput.scrollTop = scrollTop;
-                    
+
                     // 空错误提示
                     errorMessage.textContent = '';
                     errorMessage.classList.remove('show');
-                    
+
                     // 添加-符号到[和{前面
                     // setTimeout(() => {
                     //     addMinusSigns();
                     // }, 0);
-                    
+
                     // 展开操作完成后，将按钮文本改为"折叠"
                     toggleButton.textContent = '折叠';
                 } else {
@@ -804,7 +913,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 如果没有折叠元素，执行折叠操作
                 // 首先尝试使用保存的原始JSON数据
                 let parsedJson = null;
-                
+
                 // 检查是否有保存的原始JSON数据
                 if (rawJsonInput.dataset.originalJson) {
                     try {
@@ -814,42 +923,42 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.warn('解析保存的原始JSON失败，尝试从textContent获取:', e);
                         // 如果解析失败，再尝试其他方法
                         const inputText = rawJsonInput.textContent.trim();
-                        
+
                         if (!inputText) {
                             showNotification('请输入JSON数据');
                             return;
                         }
-                        
+
                         // 预处理JSON字符串
                         const jsonToParse = preprocessJson(inputText);
-                        
+
                         // 解析JSON
                         parsedJson = enhancedParseJson(jsonToParse);
                     }
                 } else {
                     // 如果没有保存的原始数据，才使用当前文本内容
                     const inputText = rawJsonInput.textContent.trim();
-                    
+
                     if (!inputText) {
                         showNotification('请输入JSON数据');
                         return;
                     }
-                    
+
                     // 预处理JSON字符串
                     const jsonToParse = preprocessJson(inputText);
-                    
+
                     // 解析JSON
                     parsedJson = enhancedParseJson(jsonToParse);
                 }
-                
+
                 // 生成HTML，但特殊处理：将第一个{包含的所有节点合起来
                 let collapsedHtml = '';
-                
+
                 // 检查根节点是否是对象
                 if (typeof parsedJson === 'object' && parsedJson !== null && !Array.isArray(parsedJson)) {
                     // 获取对象的键
                     const keys = Object.keys(parsedJson);
-                    
+
                     if (keys.length > 0) {
                         // 只显示对象的开始括号，并将整个内容折叠
                         collapsedHtml = `<div class="json-container" data-depth="0" data-type="object"><div class="json-item" style="margin-left: 0px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span><span class="collapsed" data-content="${escapeHtml(JSON.stringify(parsedJson))}">${keys.length} 个属性</span></div><div class="json-item" style="margin-left: 0px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
@@ -858,40 +967,40 @@ document.addEventListener('DOMContentLoaded', function() {
                     // 如果根节点不是对象，使用普通的折叠方法 
                     collapsedHtml = highlightJsonCollapsed(parsedJson);
                 }
-                
+
                 // 保存当前的滚动位置
                 const scrollTop = rawJsonInput.scrollTop;
-                
+
                 // 禁用contenteditable以便设置HTML内容
                 rawJsonInput.contentEditable = 'false';
-                
+
                 // 设置折叠的HTML内容
                 rawJsonInput.innerHTML = collapsedHtml;
-                
+
                 // 恢复滚动位置
                 rawJsonInput.scrollTop = scrollTop;
-                
+
                 // 确保事件委托正确绑定
                 if (typeof _delegateHandler === 'function') {
                     // 移除所有可能的旧事件监听器
                     rawJsonInput.removeEventListener('click', rawJsonInput._delegateHandler);
                     rawJsonInput.removeEventListener('click', _delegateHandler);
-                    
+
                     // 重新绑定主事件委托函数
                     rawJsonInput._delegateHandler = _delegateHandler;
                     rawJsonInput.addEventListener('click', _delegateHandler);
                 }
-                
+
                 // 添加减号符号
                 addMinusSigns();
-                
+
                 // 重新启用contenteditable
                 rawJsonInput.contentEditable = 'true';
-                
+
                 // 清空错误提示
                 errorMessage.textContent = '';
                 errorMessage.classList.remove('show');
-                
+
                 // 折叠操作完成后，将按钮文本改为"展开"
                 toggleButton.textContent = '展开';
             }
@@ -909,21 +1018,21 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleCollapseIconClick(e) {
         if (e.target.classList.contains('collapse-icon')) {
             e.stopPropagation();
-            
+
             // 切换折叠/展开状态
             const isCollapsed = e.target.classList.toggle('collapsed');
             e.target.classList.toggle('expanded', !isCollapsed);
-            
+
             // 找到对应的JSON容器
             const container = e.target.closest('.json-container');
             if (!container) return;
-            
+
             // 获取类型（数组或对象）
             const type = container.dataset.type || 'object';
-            
+
             // 找到所有子项
             const jsonItems = container.querySelectorAll('.json-item');
-            
+
             // 处理折叠状态
             if (isCollapsed) {
                 // 折叠状态
@@ -931,18 +1040,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!container.dataset.originalContent) {
                     container.dataset.originalContent = container.innerHTML;
                 }
-                
+
                 // 折叠内容
                 if (jsonItems.length > 2) {
                     // 找到第一个和最后一个元素（分别是开始括号和结束括号）
                     const firstItem = jsonItems[0];
                     const lastItem = jsonItems[jsonItems.length - 1];
-                    
+
                     // 只保留第一个和最后一个元素，隐藏中间的内容
                     for (let i = 1; i < jsonItems.length - 1; i++) {
                         jsonItems[i].style.display = 'none';
                     }
-                    
+
                     // 在开始括号后添加折叠指示器
                     const bracketSpan = firstItem.querySelector('.bracket');
                     if (bracketSpan && !firstItem.querySelector('.collapsed')) {
@@ -952,7 +1061,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         } else if (type === 'object') {
                             collapsedCount = Math.floor((jsonItems.length - 2) / 1); // 对象的键值对
                         }
-                        
+
                         const collapsedIndicator = document.createElement('span');
                         collapsedIndicator.className = 'collapsed';
                         collapsedIndicator.textContent = type === 'array' ? `${collapsedCount} 项` : `${collapsedCount} 个属性`;
@@ -967,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     for (let i = 1; i < jsonItems.length - 1; i++) {
                         jsonItems[i].style.display = 'block';
                     }
-                    
+
                     // 移除折叠指示器
                     const collapsedIndicator = container.querySelector('.collapsed');
                     if (collapsedIndicator) {
@@ -977,19 +1086,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 清除保存的原始内容
                 container.dataset.originalContent = '';
             }
-            
+
             // 更新全局折叠按钮状态
             updateToggleButtonState();
         }
     }
-    
+
     // 更新折叠按钮状态的函数
     function updateToggleButtonState() {
         // 检查是否有任何折叠的图标
         const hasCollapsedIcons = rawJsonInput.querySelector('.collapse-icon.collapsed') !== null;
         // 检查是否有任何折叠的内容
         const hasCollapsedContent = rawJsonInput.querySelector('.collapsed[data-content]') !== null;
-        
+
         // 如果有折叠的图标或内容，按钮文本应为"展开"
         if (hasCollapsedIcons || hasCollapsedContent) {
             toggleButton.textContent = '展开';
@@ -1016,7 +1125,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.warn('折叠内容为空，使用默认空对象');
                     content = '{"": ""}';
                 }
-                
+
                 // 尝试使用增强的解析方法
                 let parsedContent;
                 try {
@@ -1024,9 +1133,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } catch (error) {
                     console.error('解析失败，使用默认空对象:', error);
                     // 如果解析失败，使用一个简单的空对象
-                    parsedContent = {"": ""};
+                    parsedContent = { "": "" };
                 }
-                
+
                 // 找到最近的容器
                 const container = e.target.closest('.json-container');
                 if (container) {
@@ -1049,7 +1158,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-    
+
     // 为JSON编辑器添加事件委托
     rawJsonInput.addEventListener('click', _delegateHandler);
 
@@ -1057,7 +1166,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function showNotification(message) {
         // 检查是否已存在通知元素
         let notification = document.getElementById('notification');
-        
+
         if (!notification) {
             // 创建通知元素
             notification = document.createElement('div');
@@ -1065,19 +1174,19 @@ document.addEventListener('DOMContentLoaded', function() {
             notification.className = 'notification';
             document.body.appendChild(notification);
         }
-        
+
         // 设置通知内容
         notification.textContent = message;
-        
+
         // 显示通知
         notification.classList.add('show');
-        
+
         // 3秒后隐藏通知
         setTimeout(() => {
             notification.classList.remove('show');
         }, 3000);
     }
-    
+
     // 页面加载完成后，让输入框自动获得焦点
     setTimeout(() => {
         rawJsonInput.focus();
