@@ -3,15 +3,39 @@ document.addEventListener('DOMContentLoaded', function () {
     const formatButton = document.getElementById('format-btn');
     const clearButton = document.getElementById('clear-btn');
     const copyButton = document.getElementById('copy-btn');
+    const copyButtonBottom = document.getElementById('copy-btn-bottom');
+    const pasteButton = document.getElementById('paste-btn');
     const minifyButton = document.getElementById('minify-btn');
     const escapeButton = document.getElementById('escape-btn');
     const toggleButton = document.getElementById('collapse-btn'); // 重命名为toggleButton，用于切换折叠/展开
     const errorMessage = document.getElementById('error-message');
+    const fullscreenButton = document.getElementById('fullscreen-btn');
+    const editorContainerWrapper = document.querySelector('.editor-container-wrapper');
+    const editorContainer = document.querySelector('.editor-container');
+
+    // 暴露给全局作用域以便全屏功能使用
+    window.editorContainer = editorContainer;
+    window.fullscreenButton = fullscreenButton;
+
+    // 底部按钮引用
+    const pasteButtonBottom = document.getElementById('paste-btn-bottom');
+    const formatButtonBottom = document.getElementById('format-btn-bottom');
+    const toggleButtonBottom = document.getElementById('collapse-btn-bottom');
+    const minifyButtonBottom = document.getElementById('minify-btn-bottom');
+    const escapeButtonBottom = document.getElementById('escape-btn-bottom');
+    const clearButtonBottom = document.getElementById('clear-btn-bottom');
+
+    const indentNum = 8;  // 缩进格
 
     // 页面加载时禁用折叠按钮，但设置文本为'折叠'以与图标的默认展开状态保持一致
     toggleButton.disabled = true;
     toggleButton.classList.add('disabled');
     toggleButton.textContent = '折叠';
+
+    // 初始化底部折叠按钮
+    toggleButtonBottom.disabled = true;
+    toggleButtonBottom.classList.add('disabled');
+    toggleButtonBottom.textContent = '折叠';
 
     // 定义最大深度，控制JSON格式化时的折叠行为
     const maxDepth = 100;
@@ -26,8 +50,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 // 如果已经格式化过，使用保存的原始JSON数据
                 inputText = rawJsonInput.dataset.originalJson;
             } else {
-                // 否则获取当前输入的文本
-                inputText = rawJsonInput.textContent.trim();
+                // 获取当前输入的文本或HTML内容
+                if (rawJsonInput.contentEditable === 'false') {
+                    // 如果是只读状态但没有保存原始数据，尝试从HTML内容中提取
+                    // 这种情况通常是直接填充了格式化后的HTML
+                    inputText = extractJsonFromHtml(rawJsonInput.innerHTML);
+                } else {
+                    // 否则获取当前输入的文本
+                    inputText = rawJsonInput.textContent.trim();
+                }
 
                 // 检查输入是否为空
                 if (!inputText) {
@@ -87,13 +118,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 toggleButton.classList.remove('disabled');
                 toggleButton.textContent = '折叠';
 
+                // 同时启用底部折叠按钮
+                toggleButtonBottom.disabled = false;
+                toggleButtonBottom.classList.remove('disabled');
+                toggleButtonBottom.textContent = '折叠';
+
             } else {
                 throw new Error('生成高亮HTML失败');
             }
         } catch (error) {
             console.error(error);
             // 显示错误信息
-            errorMessage.textContent = `JSON格式化错误: ${error.message}`;
+            errorMessage.textContent = `JSON格式化错误， ${error.message}`;
             errorMessage.classList.add('show');
             showNotification('JSON格式化失败');
         }
@@ -102,6 +138,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // 清空按钮点击事件
     clearButton.addEventListener('click', function () {
         rawJsonInput.textContent = '';
+        // 清空保存的原始JSON数据
+        delete rawJsonInput.dataset.originalJson;
         // 隐藏错误消息
         errorMessage.classList.remove('show');
         // 移除错误高亮
@@ -111,22 +149,74 @@ document.addEventListener('DOMContentLoaded', function () {
             el.parentNode.replaceChild(textNode, el);
         });
 
-        // 清空后让输入框获得焦点
+        // 清空后让输入框获得焦点并设置光标位置
         setTimeout(() => {
+            // 确保输入框可编辑
+            rawJsonInput.contentEditable = 'true';
             rawJsonInput.focus();
+            // 创建一个Range对象并设置到输入框的开始位置
+            const range = document.createRange();
+            range.setStart(rawJsonInput, 0);
+            range.collapse(true);
+            // 创建一个Selection对象并添加Range
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
         }, 0);
 
         // 清空后禁用折叠按钮并改为'展开'
         toggleButton.disabled = true;
         toggleButton.classList.add('disabled');
         toggleButton.textContent = '展开';
+
+        // 同时禁用底部折叠按钮
+        toggleButtonBottom.disabled = true;
+        toggleButtonBottom.classList.add('disabled');
+        toggleButtonBottom.textContent = '展开';
     });
 
-    // 处理contenteditable div的粘贴事件，移除HTML格式
+    // 处理contenteditable div的粘贴事件，移除HTML格式并处理JSON内容
     rawJsonInput.addEventListener('paste', function (e) {
         e.preventDefault();
         const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-        document.execCommand('insertText', false, text);
+
+        try {
+            // 尝试解析是否为JSON
+            const parsedJson = JSON.parse(text.trim());
+            const formattedJson = JSON.stringify(parsedJson, null, 2);
+
+            // 确保输入框是可编辑的
+            rawJsonInput.contentEditable = 'true';
+            // 清空当前内容
+            rawJsonInput.textContent = '';
+            // 插入格式化后的JSON
+            document.execCommand('insertText', false, formattedJson);
+        } catch (e) {
+            // 不是JSON，直接插入原始文本
+            // 确保输入框是可编辑的
+            rawJsonInput.contentEditable = 'true';
+            document.execCommand('insertText', false, text);
+        }
+
+        // 强制更新行号
+        setTimeout(() => {
+            updateLineNumbers();
+            // 同步滚动
+            syncScroll();
+        }, 10);
+
+        // 清空保存的原始JSON数据
+        delete rawJsonInput.dataset.originalJson;
+
+        // 禁用折叠按钮
+        toggleButton.disabled = true;
+        toggleButton.classList.add('disabled');
+        toggleButton.textContent = '展开';
+
+        // 同时禁用底部折叠按钮
+        toggleButtonBottom.disabled = true;
+        toggleButtonBottom.classList.add('disabled');
+        toggleButtonBottom.textContent = '展开';
     });
 
     // 处理contenteditable div的键盘事件，确保Tab键正常工作
@@ -502,7 +592,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // 保留适当的缩进并添加左侧线和折叠图标
             const indent = ' '.repeat(depth * 2);
             const itemIndent = ' '.repeat((depth + 1) * 2);
-            let result = `<div class="json-container" data-depth="${depth}" data-type="array"><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">[</span>`;
+            let result = `<div class="json-container" data-depth="${depth}" data-type="array"><div class="json-item" style="margin-left: ${depth * indentNum}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">[</span>`;
 
             // 如果数组不为空，添加内容
             if (obj.length > 0) {
@@ -510,10 +600,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     const item = obj[i];
                     // 对子元素应用折叠逻辑
                     const highlightedItem = highlightJson(item, depth + 1);
-                    result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * 16}px;">${highlightedItem}`;
+                    result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * indentNum}px;">${highlightedItem}`;
                 }
             }
-            result += `</div><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">]</span></div></div>`;
+            result += `</div><div class="json-item" style="margin-left: ${depth * indentNum}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">]</span></div></div>`;
             return result;
         }
 
@@ -530,7 +620,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             // 保留适当的缩进并添加左侧线和折叠图标
-            let result = `<div class="json-container" data-depth="${depth}" data-type="object"><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span>`;
+            let result = `<div class="json-container" data-depth="${depth}" data-type="object"><div class="json-item" style="margin-left: ${depth * indentNum}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span>`;
 
             if (keys.length > 0) {
                 for (let i = 0; i < keys.length; i++) {
@@ -540,11 +630,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     // 对子值应用折叠逻辑
                     const highlightedValue = highlightJson(value, depth + 1);
 
-                    result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * 16}px;">${highlightedKey}: ${highlightedValue}`;
-
+                    result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * indentNum}px;">${highlightedKey}: ${highlightedValue}`;
+                    // if (i < keys.length - 1) {
+                    //     result += ',';
+                    // }
                 }
             }
-            result += `</div><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
+            result += `</div><div class="json-item" style="margin-left: ${depth * indentNum}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
             return result;
         }
 
@@ -587,7 +679,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             // 保留适当的缩进并添加左侧线和折叠图标
-            let result = `<div class="json-container" data-depth="${depth}" data-type="array"><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">[</span>`;
+            let result = `<div class="json-container" data-depth="${depth}" data-type="array"><div class="json-item" style="margin-left: ${depth * indentNum}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">[</span>`;
 
             // 如果数组为空或只有简单元素，保持一行显示
             if (obj.length === 0) {
@@ -597,9 +689,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     const item = obj[i];
                     // 对子元素应用折叠逻辑
                     const highlightedItem = highlightJsonCollapsed(item, depth + 1, maxDepth);
-                    result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * 16}px;">${highlightedItem}`;
+                    result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * indentNum}px;">${highlightedItem}`;
                 }
-                result += `</div><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">]</span></div></div>`;
+                result += `</div><div class="json-item" style="margin-left: ${depth * indentNum}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">]</span></div></div>`;
             }
             return result;
         }
@@ -617,7 +709,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             // 保留适当的缩进并添加左侧线和折叠图标
-            let result = `<div class="json-container" data-depth="${depth}" data-type="object"><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span>`;
+            let result = `<div class="json-container" data-depth="${depth}" data-type="object"><div class="json-item" style="margin-left: ${depth * indentNum}px; position: relative;"><div class="json-left-line" style="left: -20px;"><span class="collapse-icon expanded red-icon"></span></div><span class="bracket">{</span>`;
 
             for (let i = 0; i < keys.length; i++) {
                 const key = keys[i];
@@ -626,11 +718,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 // 对子值应用折叠逻辑
                 const highlightedValue = highlightJsonCollapsed(value, depth + 1, maxDepth);
 
-                result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * 16}px;">${highlightedKey}: ${highlightedValue}`;
-
+                result += `</div><div class="json-item" style="margin-left: ${(depth + 1) * indentNum}px;">${highlightedKey}: ${highlightedValue}`;
             }
 
-            result += `</div><div class="json-item" style="margin-left: ${depth * 16}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
+            result += `</div><div class="json-item" style="margin-left: ${depth * indentNum}px; position: relative;"><div class="json-left-line" style="left: -20px;"></div><span class="bracket">}</span></div></div>`;
             return result;
         }
 
@@ -638,7 +729,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // 复制按钮点击事件
-    copyButton.addEventListener('click', function () {
+    function handleCopy() {
         let textToCopy = '';
 
         // 优先使用格式化时保存的原始JSON数据（这是最准确的）
@@ -673,6 +764,141 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(err => {
                 console.error('复制失败:', err);
                 showNotification('复制失败，请手动复制');
+            });
+    }
+
+    // 上方复制按钮点击事件
+    copyButton.addEventListener('click', handleCopy);
+
+    // 下方复制按钮点击事件
+    copyButtonBottom.addEventListener('click', handleCopy);
+
+    // 底部粘贴按钮点击事件
+    pasteButtonBottom.addEventListener('click', function () {
+        pasteButton.click();
+    });
+
+    // 底部格式化按钮点击事件
+    formatButtonBottom.addEventListener('click', function () {
+        formatButton.click();
+    });
+
+    // 底部折叠按钮点击事件
+    toggleButtonBottom.addEventListener('click', function () {
+        toggleButton.click();
+    });
+
+    // 底部压缩按钮点击事件
+    minifyButtonBottom.addEventListener('click', function () {
+        minifyButton.click();
+    });
+
+    // 底部转义按钮点击事件
+    escapeButtonBottom.addEventListener('click', function () {
+        escapeButton.click();
+    });
+
+    // 底部清空按钮点击事件
+    clearButtonBottom.addEventListener('click', function () {
+        clearButton.click();
+    });
+
+    // 粘贴按钮点击事件
+    pasteButton.addEventListener('click', function () {
+        // 使用Clipboard API读取剪贴板内容
+        navigator.clipboard.readText()
+            .then(text => {
+                if (!text.trim()) {
+                    showNotification('剪贴板为空');
+                    return;
+                }
+
+                // 保存当前的滚动位置
+                const scrollTop = rawJsonInput.scrollTop;
+
+                // 确保输入框是可编辑的
+                rawJsonInput.contentEditable = 'true';
+
+                // 清空当前内容
+                rawJsonInput.textContent = '';
+
+                // 尝试解析剪贴板内容是否为JSON
+                try {
+                    // 预处理输入，移除可能导致问题的字符
+                    let preprocessedText = text
+                        // 移除行首和行尾的空白字符
+                        .trim()
+                        // 处理UTF-8 BOM
+                        .replace(/^\uFEFF/, '')
+                        // 规范化换行符
+                        .replace(/\r\n/g, '\n');
+
+                    // 尝试解析JSON
+                    const parsedJson = JSON.parse(preprocessedText);
+
+                    // 如果解析成功，使用格式化后的文本
+                    const formattedJson = JSON.stringify(parsedJson, null, 2);
+                    rawJsonInput.textContent = formattedJson;
+                    showNotification('已粘贴并格式化JSON内容');
+                } catch (e) {
+                    // 尝试使用增强的JSON解析方法
+                    try {
+                        const enhancedParsedJson = enhancedParseJson(text);
+                        const formattedJson = JSON.stringify(enhancedParsedJson, null, 2);
+                        rawJsonInput.textContent = formattedJson;
+                        showNotification('已使用增强方法粘贴并格式化JSON内容');
+                    } catch (enhancedError) {
+                        // 如果不是有效的JSON，直接粘贴原始内容
+                        rawJsonInput.textContent = text;
+                        showNotification('已从剪贴板粘贴内容（非JSON格式）');
+                    }
+                }
+
+                // 清空保存的原始JSON数据
+                delete rawJsonInput.dataset.originalJson;
+
+                // 恢复滚动位置
+                rawJsonInput.scrollTop = scrollTop;
+
+                // 清空错误提示
+                errorMessage.textContent = '';
+                errorMessage.classList.remove('show');
+
+                // 强制更新行号 - 确保DOM已经完全更新
+                setTimeout(() => {
+                    // 确保line-numbers元素存在
+                    const lineNumbers = document.getElementById('line-numbers');
+                    if (lineNumbers) {
+                        // 确保行号容器样式正确
+                        lineNumbers.style.display = 'block';
+                        lineNumbers.style.visibility = 'visible';
+                        lineNumbers.style.overflow = 'auto';
+
+                        console.log('尝试更新行号...');
+                        updateLineNumbers();
+                        console.log('行号已更新');
+
+                        // 同步滚动
+                        syncScroll();
+
+                        // 直接刷新显示，强制浏览器重排
+                        lineNumbers.offsetHeight; // 触发重排
+                    } else {
+                        console.error('行号容器不存在');
+                    }
+                }, 100);
+
+                // 立即尝试更新行号（不等待）
+                updateLineNumbers();
+
+                // 清空后禁用折叠按钮并改为'展开'
+                toggleButton.disabled = true;
+                toggleButton.classList.add('disabled');
+                toggleButton.textContent = '展开';
+            })
+            .catch(err => {
+                console.error('粘贴失败:', err);
+                showNotification('粘贴失败，请手动粘贴');
             });
     });
 
@@ -724,6 +950,11 @@ document.addEventListener('DOMContentLoaded', function () {
             toggleButton.disabled = true;
             toggleButton.classList.add('disabled');
             toggleButton.textContent = '展开';
+
+            // 同时禁用底部折叠按钮
+            toggleButtonBottom.disabled = true;
+            toggleButtonBottom.classList.add('disabled');
+            toggleButtonBottom.textContent = '展开';
         } catch (error) {
             console.warn('标准压缩方法失败，尝试保留转义字符方式压缩:', error);
             try {
@@ -791,10 +1022,8 @@ document.addEventListener('DOMContentLoaded', function () {
             // 直接设置转义后的字符串内容（不使用语法高亮）
             rawJsonInput.textContent = escapedJsonString;
 
-            // 保存转义前的原始JSON数据，供格式化按钮使用
-            if (!rawJsonInput.dataset.originalJson) {
-                rawJsonInput.dataset.originalJson = rawJson;
-            }
+            // 转义后不保存原始JSON数据，确保复制时获取的是转义后的字符串
+            delete rawJsonInput.dataset.originalJson;
 
             // 恢复滚动位置
             rawJsonInput.scrollTop = scrollTop;
@@ -1102,9 +1331,11 @@ document.addEventListener('DOMContentLoaded', function () {
         // 如果有折叠的图标或内容，按钮文本应为"展开"
         if (hasCollapsedIcons || hasCollapsedContent) {
             toggleButton.textContent = '展开';
+            toggleButtonBottom.textContent = '展开';
         } else {
             // 否则按钮文本应为"折叠"
             toggleButton.textContent = '折叠';
+            toggleButtonBottom.textContent = '折叠';
         }
     }
 
@@ -1187,6 +1418,136 @@ document.addEventListener('DOMContentLoaded', function () {
         }, 3000);
     }
 
+    // 更新行号的函数
+    function updateLineNumbers() {
+        console.log('执行updateLineNumbers函数');
+        const lineNumbers = document.getElementById('line-numbers');
+
+        // 确保行号容器存在且样式正确
+        if (!lineNumbers) {
+            console.error('行号容器不存在');
+            return;
+        }
+
+        // 强制设置行号容器的关键样式
+        lineNumbers.style.display = 'block';
+        lineNumbers.style.visibility = 'visible';
+        lineNumbers.style.overflow = 'auto';
+        lineNumbers.style.width = '60px';
+        lineNumbers.style.backgroundColor = '#f5f5f5';
+        lineNumbers.style.borderRight = '1px solid #ddd';
+        lineNumbers.style.padding = '15px 5px';
+        lineNumbers.style.textAlign = 'right';
+        lineNumbers.style.fontFamily = 'Consolas, Monaco, Courier New, monospace';
+        lineNumbers.style.fontSize = '14px';
+        lineNumbers.style.lineHeight = '1.5';
+        lineNumbers.style.color = '#999';
+        lineNumbers.style.userSelect = 'none';
+        lineNumbers.style.flexShrink = '0';
+
+        console.log('lineNumbers元素:', lineNumbers);
+        let lines = 1;
+
+        // 尝试从不同来源获取内容来计算行数
+        let textContent = rawJsonInput.textContent || '';
+        let htmlContent = rawJsonInput.innerHTML || '';
+
+        // 对于格式化后的内容，优先使用HTML内容计算行数
+        if (htmlContent.trim()) {
+            // 使用HTML内容计算行数
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.visibility = 'hidden';
+            tempDiv.style.width = rawJsonInput.clientWidth + 'px';
+            tempDiv.style.fontFamily = getComputedStyle(rawJsonInput).fontFamily;
+            tempDiv.style.fontSize = getComputedStyle(rawJsonInput).fontSize;
+            tempDiv.style.lineHeight = getComputedStyle(rawJsonInput).lineHeight;
+            tempDiv.style.whiteSpace = 'pre-wrap';
+            tempDiv.style.wordWrap = 'break-word';
+            tempDiv.innerHTML = htmlContent;
+
+            document.body.appendChild(tempDiv);
+
+            // 计算行数
+            const lineHeight = parseInt(getComputedStyle(tempDiv).lineHeight);
+            const contentHeight = tempDiv.scrollHeight;
+            lines = Math.max(1, Math.ceil(contentHeight / lineHeight));
+
+            document.body.removeChild(tempDiv);
+        } else if (textContent.trim()) {
+            // 没有HTML内容但有文本内容时，使用文本内容计算行数
+            lines = textContent.split('\n').length;
+        }
+
+        // 确保行号始终显示，至少显示10行，最多显示100行
+        lines = Math.max(100, Math.min(lines, 2000));
+
+        // 清空现有的行号
+        lineNumbers.innerHTML = '';
+
+        // 添加新的行号
+        for (let i = 1; i <= lines; i++) {
+            const lineNumber = document.createElement('div');
+            lineNumber.className = 'line-number';
+            lineNumber.textContent = i;
+            lineNumbers.appendChild(lineNumber);
+        }
+        console.log('行号已更新');
+    }
+
+    // 同步滚动
+    function syncScroll() {
+        const lineNumbers = document.getElementById('line-numbers');
+        lineNumbers.scrollTop = rawJsonInput.scrollTop;
+    }
+
+    // 初始化行号
+    updateLineNumbers();
+
+    // 添加事件监听器
+    rawJsonInput.addEventListener('input', updateLineNumbers);
+    rawJsonInput.addEventListener('scroll', syncScroll);
+
+    // 添加DOM变化监听器，检测内容更新以自动显示行号
+    // 特别是当格式化后的数据直接填充到输入框时
+    if ('MutationObserver' in window) {
+        const observer = new MutationObserver(function (mutations) {
+            // 检查是否有内容变化
+            for (let i = 0; i < mutations.length; i++) {
+                if (mutations[i].type === 'childList' || mutations[i].type === 'characterData') {
+                    // 延迟更新行号，确保DOM已经完全更新
+                    setTimeout(updateLineNumbers, 50);
+                    break;
+                }
+            }
+        });
+
+        // 配置观察选项
+        const config = {
+            childList: true,
+            subtree: true,
+            characterData: true
+        };
+
+        // 开始观察目标节点
+        observer.observe(rawJsonInput, config);
+    } else {
+        // 降级方案：使用较旧的DOMSubtreeModified事件
+        rawJsonInput.addEventListener('DOMSubtreeModified', function () {
+            setTimeout(updateLineNumbers, 50);
+        });
+    }
+
+    // 格式化按钮点击后更新行号
+    formatButton.addEventListener('click', function () {
+        setTimeout(updateLineNumbers, 100);
+    });
+
+    // 清空按钮点击后重置行号
+    clearButton.addEventListener('click', function () {
+        setTimeout(updateLineNumbers, 100);
+    });
+
     // 页面加载完成后，让输入框自动获得焦点
     setTimeout(() => {
         rawJsonInput.focus();
@@ -1195,6 +1556,89 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
 // 添加-符号到[和{前面的函数
+// 从HTML内容中提取JSON数据 - 增强版
+function extractJsonFromHtml(htmlContent) {
+    try {
+        // 创建临时元素来解析HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = htmlContent;
+
+        // 尝试多种方法提取JSON：
+
+        // 方法1: 尝试获取collapsed元素中的data-content属性
+        const collapsedElement = tempDiv.querySelector('.collapsed[data-content]');
+        if (collapsedElement && collapsedElement.dataset.content) {
+            try {
+                // 解码HTML实体
+                const decodedContent = unescapeHtml(collapsedElement.dataset.content);
+                // 验证是否为有效的JSON
+                JSON.parse(decodedContent);
+                return decodedContent;
+            } catch (e) {
+                console.log('从collapsed元素提取JSON失败，尝试其他方法');
+            }
+        }
+
+        // 方法2: 尝试获取原始文本内容
+        let textContent = tempDiv.textContent.trim();
+
+        // 预处理文本内容
+        textContent = textContent
+            .replace(/\s+/g, ' ') // 替换多余的空白字符
+            .replace(/\s*{\s*/g, '{') // 移除括号周围的空白
+            .replace(/\s*}\s*/g, '}')
+            .replace(/\s*\[\s*/g, '[')
+            .replace(/\s*\]\s*/g, ']')
+            .replace(/\s*:\s*/g, ':')
+            .replace(/\s*,\s*/g, ',');
+
+        // 如果内容看起来像JSON，直接返回
+        if ((textContent.startsWith('{') && textContent.endsWith('}')) ||
+            (textContent.startsWith('[') && textContent.endsWith(']'))) {
+            try {
+                // 验证是否为有效的JSON
+                JSON.parse(textContent);
+                return textContent;
+            } catch (e) {
+                console.log('文本内容看起来像JSON但解析失败，尝试修复');
+                // 尝试修复常见问题
+                textContent = textContent.replace(/([\w]+):/g, '"$1":'); // 修复没有引号的键
+                try {
+                    JSON.parse(textContent);
+                    return textContent;
+                } catch (e) {
+                    console.log('修复后仍解析失败');
+                }
+            }
+        }
+
+        // 方法3: 尝试解析内容中的JSON字符串
+        const jsonMatch = textContent.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+        if (jsonMatch) {
+            try {
+                JSON.parse(jsonMatch[0]);
+                return jsonMatch[0];
+            } catch (e) {
+                console.log('匹配到的内容不是有效的JSON');
+            }
+        }
+
+        // 方法4: 尝试使用增强的JSON解析方法
+        try {
+            const parsed = enhancedParseJson(textContent);
+            return JSON.stringify(parsed);
+        } catch (e) {
+            console.log('增强解析也失败');
+        }
+
+        // 如果都不行，返回原始文本
+        return textContent;
+    } catch (error) {
+        console.error('从HTML中提取JSON失败:', error);
+        return '';
+    }
+}
+
 function addMinusSigns() {
     const brackets = document.querySelectorAll('.bracket');
     brackets.forEach(bracket => {
@@ -1209,3 +1653,31 @@ function addMinusSigns() {
         }
     });
 }
+
+// 全屏功能实现 - 使用简单的最大化替代方案
+window.toggleFullScreen = function () {
+    try {
+        // 明确使用全局作用域中的变量
+        const editorContainer = window.editorContainer;
+        const fullscreenButton = window.fullscreenButton;
+
+        if (!editorContainer || !fullscreenButton) {
+            console.error('找不到必要的DOM元素');
+            return;
+        }
+
+        // 检查是否已经是最大化状态
+        if (editorContainer.classList.contains('maximized')) {
+            // 恢复普通大小
+            editorContainer.classList.remove('maximized');
+            fullscreenButton.textContent = '全屏';
+        } else {
+            // 最大化编辑器
+            editorContainer.classList.add('maximized');
+            fullscreenButton.textContent = '恢复';
+        }
+    } catch (err) {
+        console.error('全屏切换失败:', err);
+        alert('操作无法完成: ' + err.message);
+    }
+};
