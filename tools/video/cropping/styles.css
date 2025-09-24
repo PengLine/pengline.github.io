@@ -1,0 +1,570 @@
+@import url('/css/hexo-common.css');
+
+/*
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f5f5f5;
+    padding: 20px;
+}
+*/
+
+
+.container !import {
+    max-width: 1200px;
+    margin: 0 auto;
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+
+.description {
+    text-align: center;
+    color: #666;
+    margin-bottom: 30px;
+    font-size: 1.1rem;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #2c3e50;
+}
+
+h2 {
+    margin: 20px 0;
+    color: #34495e;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 10px;
+}
+
+h3 {
+    margin: 15px 0;
+    color: #7f8c8d;
+}
+
+.upload-section {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+#videoUpload {
+    display: none;
+}
+
+.upload-btn {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+.upload-btn:hover {
+    background-color: #2980b9;
+}
+
+.preview-section,
+.settings-section,
+.output-section {
+    margin-bottom: 30px;
+}
+
+.cropping-video-container {
+    position: relative;
+    max-width: 100%;
+    margin: 0 auto;
+    text-align: center;
+    overflow: hidden;
+}
+
+.cropping-video-container video {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    display: block;
+    margin: 0 auto;
+}
+
+.crop-selection {
+    position: absolute;
+    border: none;
+    background-color: transparent;
+    display: none;
+    cursor: move;
+}
+
+.crop-selection.active {
+    display: block;
+}
+
+/* 拖拽控制点 - 弯曲的粗线带颜色 */
+.crop-selection .handle {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    background-color: transparent;
+    border-style: solid;
+    border-width: 5px;
+    border-color: #e62679;
+    border-radius: 5px;
+}
+
+.crop-selection .handle:hover {
+    opacity: 1;
+    transform: scale(1.2);
+}
+
+.crop-selection .handle.top-left {
+    top: 2px;
+    left: 2px;
+    cursor: nwse-resize;
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+}
+
+.crop-selection .handle.top-right {
+    top: 2px;
+    right: 2px;
+    cursor: nesw-resize;
+    border-left-color: transparent;
+    border-bottom-color: transparent;
+}
+
+.crop-selection .handle.bottom-left {
+    bottom: 2px;
+    left: 2px;
+    cursor: nesw-resize;
+    border-right-color: transparent;
+    border-top-color: transparent;
+}
+
+.crop-selection .handle.bottom-right {
+    bottom: 2px;
+    right: 2px;
+    cursor: nwse-resize;
+    border-left-color: transparent;
+    border-top-color: transparent;
+}
+
+/* 右侧中间控制点
+.crop-selection .handle.right {
+    top: 50%;
+    right: 2px;
+    transform: translateY(-50%);
+    cursor: ew-resize;
+    border-top-color: transparent;
+    border-bottom-color: transparent;
+} */
+
+/* 底部中间控制点
+.crop-selection .handle.bottom {
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: ns-resize;
+    border-left-color: transparent;
+    border-right-color: transparent;
+}
+ */
+.crop-instructions {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #666;
+    text-align: center;
+}
+
+.crop-mode {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.hidden {
+    display: none;
+}
+
+.settings-section {
+    background-color: #f9f9f9;
+    padding: 20px;
+    border-radius: 4px;
+}
+
+.dimension-settings,
+.time-settings {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #eee;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+/* 宽度和高度在一行显示 */
+.dimension-row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.dimension-row .input-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+/* 坐标在一行显示 */
+.coordinate-row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.coordinate-row .input-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+/* 时间裁剪参数在一行显示 */
+.time-row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.time-row .input-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.time-display {
+    background-color: #e8f4f8;
+    padding: 10px;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.action-buttons,
+.download-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 25px;
+}
+
+.container button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.container button::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.container button:hover::after {
+    width: 300px;
+    height: 300px;
+}
+
+.container button:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+}
+
+.container button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.container button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+#applyCropBtn {
+    background-color: #2ecc71;
+    color: white;
+}
+
+#applyCropBtn:hover:not(:disabled) {
+    background-color: #27ae60;
+}
+
+#downloadBtn {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.upload-btn {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.upload-btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.upload-btn:hover::after {
+    width: 300px;
+    height: 300px;
+}
+
+#downloadBtn:hover:not(:disabled) {
+    background-color: #c0392b;
+}
+
+.result-container {
+    text-align: center;
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+
+/* 弹框样式 */
+.modal {
+    display: none;
+    /* 默认隐藏 */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 12px;
+    padding: 30px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.3s ease;
+    position: relative;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.modal-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.modal-body {
+    margin-bottom: 20px;
+    color: #333;
+    line-height: 1.6;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #7f8c8d;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+    background-color: #eee;
+    color: #333;
+}
+
+/* 动画 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 成功、警告、错误状态的按钮样式 */
+.btn-success {
+    background-color: #2ecc71;
+    color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+    background-color: #27ae60;
+}
+
+.btn-warning {
+    background-color: #f39c12;
+    color: white;
+}
+
+.btn-warning:hover:not(:disabled) {
+    background-color: #e67e22;
+}
+
+.btn-danger {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background-color: #c0392b;
+}
+
+.btn-primary {
+    background-color: #3498db;
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: #2980b9;
+}
+
+.btn-secondary {
+    background-color: #95a5a6;
+    color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background-color: #7f8c8d;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 20px;
+    }
+
+    .action-buttons,
+    .download-buttons {
+        flex-direction: column;
+    }
+
+    .container button {
+        width: 100%;
+    }
+
+    /* 在小屏幕上，宽高度和坐标也垂直排列 */
+    .dimension-row,
+    .coordinate-row,
+    .time-row {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .dimension-row .input-group,
+    .coordinate-row .input-group,
+    .time-row .input-group {
+        margin-bottom: 10px;
+    }
+}
