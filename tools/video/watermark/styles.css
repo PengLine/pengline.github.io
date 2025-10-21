@@ -1,0 +1,781 @@
+/* 视频马赛克工具样式 */
+
+/* 水平排列的输入行 */
+.mosaic-input-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.mosaic-input-row .mosaic-input-group {
+  flex: 1;
+  min-width: 200px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.mosaic-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  background-color: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 30px;
+  color: #2c3e50;
+  font-size: 2.5rem;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+h2 {
+  margin: 20px 0;
+  color: #34495e;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 10px;
+  font-size: 1.8rem;
+}
+
+h3 {
+  margin: 15px 0;
+  color: #7f8c8d;
+  font-size: 1.4rem;
+}
+
+.mosaic-upload-section {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.description {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+#mosaic-videoUpload {
+  display: none;
+}
+
+.mosaic-upload-btn {
+  display: inline-block;
+  padding: 12px 24px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+.mosaic-upload-btn:hover {
+  background-color: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.4);
+}
+
+/* 提示信息样式 */
+.mosaic-message-container {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 15px 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 999;
+  max-width: 80%;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.mosaic-message-container.active {
+  opacity: 1;
+}
+
+.mosaic-message-text {
+  margin: 0;
+  color: #495057;
+  font-size: 16px;
+}
+
+.mosaic-preview-section,
+.mosaic-settings-section,
+.mosaic-output-section {
+  margin-bottom: 30px;
+}
+
+.mosaic-video-container {
+  position: relative;
+  max-width: 800px;
+  max-height: 600px;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+  text-align: center;
+  overflow: hidden;
+  background-color: #000;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.mosaic-video-container video {
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+  width: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Canvas样式 - 确保与视频重叠 */
+.mosaic-video-container canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  z-index: 1;
+  pointer-events: none; /* 确保Canvas不捕获鼠标事件 */
+}
+
+/* 马赛克框样式 */
+.mosaic-box {
+  position: absolute;
+  border: 2px dashed #e74c3c;
+  background-color: transparent;
+  display: none;
+  cursor: move;
+  transition: all 0.2s ease;
+  pointer-events: auto !important;
+}
+
+/* 确保所有类型的水印框都有透明背景 */
+.mosaic-box.active {
+  background-color: transparent;
+}
+
+/* 确保缩放控制点在所有类型水印上都可见并可点击 */
+.mosaic-handle {
+  background-color: #ffffff;
+  border: 1px solid #e74c3c;
+  width: 10px;
+  height: 10px;
+  position: absolute;
+  opacity: 0.8;
+  pointer-events: auto;
+}
+
+/* 调整缩放控制点的鼠标指针样式 */
+.mosaic-handle.top-left { cursor: nwse-resize; }
+.mosaic-handle.top-right { cursor: nesw-resize; }
+.mosaic-handle.bottom-left { cursor: nesw-resize; }
+.mosaic-handle.bottom-right { cursor: nwse-resize; }
+
+.mosaic-box.active {
+  display: block;
+}
+
+.mosaic-box:hover {
+  background-color: rgba(231, 76, 60, 0.7);
+  border-color: #c0392b;
+}
+
+/* 文字类型水印的特殊样式 - 完全透明，不显示框 */
+.mosaic-box.text-type {
+  border: 0; /* 移除边框 */
+  background-color: transparent; /* 完全透明背景 */
+  z-index: 50; /* 确保马赛克框本身有足够的层级 */
+}
+
+/* 确保所有类型的马赛克框都可以被点击和拖动 */
+.mosaic-box {
+  pointer-events: auto !important;
+}
+
+.mosaic-box.text-type:hover {
+  border: 1px dashed rgba(100, 100, 100, 0.5); /* 仅在悬停时显示极细的虚线 */
+  background-color: transparent; /* 仍然保持透明背景 */
+}
+
+/* 文字水印内容容器的样式 - 确保文字可见性 */
+.mosaic-box.text-type > div {
+  position: absolute;
+  top: 0 !important;
+  left: 0 !important;
+  z-index: 100 !important; /* 确保文字层级最高，不会被其他元素遮挡 */
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* 拖拽控制点 */
+.mosaic-box .mosaic-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background-color: #e74c3c;
+  border: 2px solid white;
+  border-radius: 50%;
+  opacity: 0.8;
+  transition: all 0.2s ease;
+}
+
+.mosaic-box .mosaic-handle:hover {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+.mosaic-box .mosaic-handle.top-left {
+  top: -10px;
+  left: -10px;
+  cursor: nwse-resize;
+}
+
+.mosaic-box .mosaic-handle.top-right {
+  top: -10px;
+  right: -10px;
+  cursor: nesw-resize;
+}
+
+.mosaic-box .mosaic-handle.bottom-left {
+  bottom: -10px;
+  left: -10px;
+  cursor: nesw-resize;
+}
+
+.mosaic-box .mosaic-handle.bottom-right {
+  bottom: -10px;
+  right: -10px;
+  cursor: nwse-resize;
+}
+
+.mosaic-instructions {
+  margin-top: 15px;
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  font-style: italic;
+}
+
+.mosaic-hidden {
+  display: none !important;
+}
+
+.mosaic-settings-section {
+  background-color: #f9f9f9;
+  padding: 25px;
+  border-radius: 8px;
+}
+
+.mosaic-mosaic-settings,
+.mosaic-time-settings {
+  margin-bottom: 20px;
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.mosaic-input-group {
+  margin-bottom: 20px;
+}
+
+.mosaic-input-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #555;
+  font-size: 14px;
+}
+
+.mosaic-input-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #e1e5e9;
+  border-radius: 6px;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.mosaic-input-group input:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.mosaic-input-group select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #e1e5e9;
+  border-radius: 6px;
+  background-color: white;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.mosaic-input-group select:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+/* 时间裁剪参数在一行显示 */
+.mosaic-time-row {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.mosaic-time-row .mosaic-input-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* 图片上传样式 */
+.mosaic-image-upload-area {
+  border: 2px dashed #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  background-color: #f9f9f9;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: 15px;
+}
+
+.mosaic-image-upload-area:hover {
+  border-color: #3498db;
+  background-color: #f8fbff;
+}
+
+.mosaic-image-upload-area .mosaic-icon {
+  font-size: 48px;
+  color: #ccc;
+  margin-bottom: 10px;
+}
+
+.mosaic-image-upload-area input[type="file"] {
+  display: none;
+}
+
+.mosaic-image-preview {
+  max-width: 100%;
+  max-height: 200px;
+  margin: 10px auto;
+  display: block;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.mosaic-time-display {
+  background-color: #e8f4f8;
+  padding: 12px;
+  border-radius: 6px;
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.mosaic-action-buttons,
+.mosaic-download-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  margin-top: 25px;
+}
+
+.mosaic-container button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+  min-width: 140px;
+}
+
+.mosaic-container button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.mosaic-container button:hover::after {
+  width: 300px;
+  height: 300px;
+}
+
+.mosaic-container button:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.mosaic-container button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.mosaic-container button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+#mosaic-applyMosaicBtn {
+  background-color: #2ecc71;
+  color: white;
+}
+
+#mosaic-applyMosaicBtn:hover:not(:disabled) {
+  background-color: #27ae60;
+}
+
+#mosaic-removeAllBtn {
+  background-color: #e74c3c;
+  color: white;
+}
+
+#mosaic-removeAllBtn:hover:not(:disabled) {
+  background-color: #c0392b;
+}
+
+#mosaic-downloadBtn {
+  background-color: #3498db;
+  color: white;
+}
+
+#mosaic-downloadBtn:hover:not(:disabled) {
+  background-color: #2980b9;
+}
+
+/* 颜色选择器样式 */
+.mosaic-input-group input[type="color"] {
+  width: 60px;
+  height: 40px;
+  padding: 0;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.mosaic-input-group input[type="color"]:hover {
+  border-color: #3498db;
+  transform: scale(1.05);
+}
+
+/* 遮挡类型选择器容器 */
+.mosaic-occlusion-type-section {
+  margin-bottom: 20px;
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.mosaic-result-container {
+  text-align: center;
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  margin-top: 15px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.mosaic-result-container video {
+  max-width: 800px;
+  max-height: 600px;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  background-color: #000;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* 弹框样式 */
+.mosaic-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.mosaic-modal.active {
+  display: flex;
+}
+
+.mosaic-modal-content {
+  background-color: white;
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease;
+  position: relative;
+}
+
+.mosaic-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.mosaic-modal-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.mosaic-modal-body {
+  margin-bottom: 20px;
+  color: #333;
+  line-height: 1.6;
+}
+
+.mosaic-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+.mosaic-close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #7f8c8d;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.mosaic-close-btn:hover {
+  background-color: #eee;
+  color: #333;
+}
+
+/* 动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 成功、警告、错误状态的按钮样式 */
+.mosaic-btn-success {
+  background-color: #2ecc71;
+  color: white;
+}
+
+.mosaic-btn-success:hover:not(:disabled) {
+  background-color: #27ae60;
+}
+
+.mosaic-btn-warning {
+  background-color: #f39c12;
+  color: white;
+}
+
+.mosaic-btn-warning:hover:not(:disabled) {
+  background-color: #e67e22;
+}
+
+.mosaic-btn-danger {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.mosaic-btn-danger:hover:not(:disabled) {
+  background-color: #c0392b;
+}
+
+.mosaic-btn-primary {
+  background-color: #3498db;
+  color: white;
+}
+
+.mosaic-btn-primary:hover:not(:disabled) {
+  background-color: #2980b9;
+}
+
+.mosaic-btn-secondary {
+  background-color: #95a5a6;
+  color: white;
+}
+
+.mosaic-btn-secondary:hover:not(:disabled) {
+  background-color: #7f8c8d;
+}
+
+/* 实时预览遮罩样式 */
+.mosaic-preview-overlay {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.mosaic-preview-mosaic {
+  background-color: #000;
+}
+
+.mosaic-preview-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 20px;
+}
+
+.mosaic-preview-image {
+  background-size: cover;
+  background-position: center;
+}
+
+/* 加载状态 */
+.mosaic-loading {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  body {
+    padding: 10px;
+  }
+  
+  .mosaic-container {
+    padding: 20px;
+  }
+  
+  h1 {
+    font-size: 2rem;
+    margin-bottom: 20px;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+  }
+  
+  h3 {
+    font-size: 1.2rem;
+  }
+  
+  .mosaic-action-buttons,
+  .mosaic-download-buttons {
+    flex-direction: column;
+  }
+  
+  .mosaic-container button {
+    width: 100%;
+    min-width: auto;
+  }
+  
+  /* 在小屏幕上，时间设置也垂直排列 */
+  .mosaic-time-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .mosaic-time-row .mosaic-input-group {
+    margin-bottom: 10px;
+  }
+  
+  .mosaic-input-group input,
+  .mosaic-input-group select {
+    font-size: 14px;
+  }
+  
+  .mosaic-message-container {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    transform: none;
+  }
+}
