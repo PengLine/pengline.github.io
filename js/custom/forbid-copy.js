@@ -1,6 +1,11 @@
 document.oncontextmenu = function() {
 	return false; // 禁用右键菜单
 };
+document.onkeydown = function (e) {
+	if (e.keyCode === 123) { // F12键的keyCode是123
+		return false;
+	}
+};
 document.onselectstart = function() {
 	return false; // 禁用文本选择
 };
@@ -10,7 +15,7 @@ document.oncopy = function(event) {
 };
 
 // 禁用右键菜单
-document.addEventListener('contextmenu', e => e.preventDefault());
+// document.addEventListener('contextmenu', e => e.preventDefault());
 
 // 禁用 Ctrl+C / Ctrl+X / Ctrl+V
 document.addEventListener('keydown', e => {
@@ -22,6 +27,15 @@ document.addEventListener('keydown', e => {
     // alert('复制功能已禁用');
   }
 });
+
+// 检测开发者工具
+/*
+setInterval(function () {
+   if (typeof console.clear !== 'undefined') {
+       location.reload();
+   }
+}, 1000);
+*/
 
 // 禁用拖拽选择
 document.addEventListener('dragstart', e => e.preventDefault());
