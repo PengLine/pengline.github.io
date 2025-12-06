@@ -1,0 +1,743 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Redis 常见数据结构和数据类型 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="Redis 内部使用了多种高效的数据结构来实现其丰富的数据类型（String、List、Hash、Set、Sorted Set 等）。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis 常见数据结构和数据类型">
+<meta property="og:url" content="https://pengline.github.io/2025/12/3d818254139f4e0d821993f64b8aa30d/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="Redis 内部使用了多种高效的数据结构来实现其丰富的数据类型（String、List、Hash、Set、Sorted Set 等）。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://pengline.github.io/img/essay/small221427alvR01759155267.webp">
+<meta property="article:published_time" content="2025-12-06T16:00:00.000Z">
+<meta property="article:modified_time" content="2025-12-06T04:00:36.203Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Redis数据类型">
+<meta property="article:tag" content="Redis数据结构">
+<meta property="article:tag" content="Redis跳表">
+<meta property="article:tag" content="Redis快速列表">
+<meta property="article:tag" content="Redis字典">
+<meta property="article:tag" content="Redis压缩列表">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://pengline.github.io/img/essay/small221427alvR01759155267.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Redis 常见数据结构和数据类型",
+  "url": "https://pengline.github.io/2025/12/3d818254139f4e0d821993f64b8aa30d/",
+  "image": "https://pengline.github.io/img/essay/small221427alvR01759155267.webp",
+  "datePublished": "2025-12-06T16:00:00.000Z",
+  "dateModified": "2025-12-06T04:00:36.203Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="https://pengline.github.io/2025/12/3d818254139f4e0d821993f64b8aa30d/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'Redis 常见数据结构和数据类型',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background-image: url(/img/202511222121.webp);"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/butterfly-icon.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">49</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">213</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">40</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意平台</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/HengLine/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="https://github.com/HengLine/video-shot-agent"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 工具集</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-image"></i><span> 图像格式转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频水印打码</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-download"></i><span> 批量下载媒体</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(/img/essay/small221427alvR01759155267.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Redis 常见数据结构和数据类型</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意平台</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/HengLine/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="https://github.com/HengLine/video-shot-agent"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 工具集</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-image"></i><span> 图像格式转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频水印打码</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-download"></i><span> 批量下载媒体</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Redis 常见数据结构和数据类型</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-12-06T16:00:00.000Z" title="发表于 2025-12-07 00:00:00">2025-12-07</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2025-12-06T04:00:36.203Z" title="更新于 2025-12-06 12:00:36">2025-12-06</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/Redis/">Redis</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h2 id="数据结构">数据结构</h2>
+<p>数据类型和数据结构（ziplist、dict、quicklist）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">数据结构</th>
+<th style="text-align:left">时间复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">dict（字典）</td>
+<td style="text-align:left">O(1)</td>
+</tr>
+<tr>
+<td style="text-align:left">ziplist （压缩列表）</td>
+<td style="text-align:left">O(n)</td>
+</tr>
+<tr>
+<td style="text-align:left">zskiplist （跳表）</td>
+<td style="text-align:left">O(logN)</td>
+</tr>
+<tr>
+<td style="text-align:left">quicklist（快速列表）</td>
+<td style="text-align:left">O(n)</td>
+</tr>
+<tr>
+<td style="text-align:left">intset（整数集合）</td>
+<td style="text-align:left">O(n)</td>
+</tr>
+<tr>
+<td style="text-align:left">SDS（字符）</td>
+<td style="text-align:left"></td>
+</tr>
+</tbody>
+</table>
+<h3 id="动态字符串（SDS）">动态字符串（SDS）</h3>
+<p>Redis 的字符串类型（String）底层使用 SDS。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>兼容 C 字符串，但更高效。</p>
+</li>
+<li class="lvl-2">
+<p>记录长度（len）和可用空间（alloc），避免频繁重分配。</p>
+</li>
+<li class="lvl-2">
+<p>二进制安全（可存储任意字节数据）。</p>
+</li>
+<li class="lvl-2">
+<p>以 O(1) 时间复杂度获取字符串长度。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="双向链表（linkedlist）">双向链表（linkedlist）</h3>
+<p>早期用于 List 类型（现已在小数据量时优先使用 quicklist）。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>每个节点包含前驱和后继指针。</p>
+</li>
+<li class="lvl-2">
+<p>支持 O(1) 头尾插入/删除。</p>
+</li>
+<li class="lvl-2">
+<p>内存开销较大（每个节点有额外指针）。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="哈希表（hash-dict）">哈希表（hash / dict）</h3>
+<p>当元素较多时，Hash 类型，无序集合使用Set 类型。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>平均 O(1) 的查找、插入、删除。</p>
+</li>
+<li class="lvl-2">
+<p>使用拉链法解决冲突。</p>
+</li>
+<li class="lvl-2">
+<p>支持渐进式 rehash（避免阻塞）。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="压缩列表（ziplist）">压缩列表（ziplist）</h3>
+<p>用于小规模的 List、Hash 和 Sorted Set。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>连续内存存储，节省内存。</p>
+</li>
+<li class="lvl-2">
+<p>适合存储少量、小体积的元素。</p>
+</li>
+<li class="lvl-2">
+<p>插入/删除可能需要内存重分配（O(N)）。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>触发条件</strong>（默认配置）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>List 元素数量 ≤ 512 且每个元素大小 ≤ 64 字节。</p>
+</li>
+<li class="lvl-2">
+<p>Hash 元素数量 ≤ 512 且所有 field/value 长度 ≤ 64 字节。</p>
+</li>
+</ul>
+<h3 id="快速列表（quicklist）">快速列表（quicklist）</h3>
+<p>Redis 3.2+ 中 List 的底层实现。由 <strong>ziplist</strong>（或 Redis 7.0+ 的 <strong>listpack</strong>）组成的双向链表。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>结合了链表的灵活性和 ziplist 的内存效率。</p>
+</li>
+<li class="lvl-2">
+<p>避免单个 ziplist 过大导致的内存重分配开销。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="紧凑列表（listpack）">紧凑列表（listpack）</h3>
+<p>替代 ziplist，用于 List、Hash、ZSet 等的小数据编码。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>比 ziplist 更节省内存。</p>
+</li>
+<li class="lvl-2">
+<p>解决 ziplist 的连锁更新问题（修改一个 entry 可能导致后续所有 entry 偏移变化）。</p>
+</li>
+<li class="lvl-2">
+<p>设计更简单、安全。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="跳跃表（skiplist）">跳跃表（skiplist）</h3>
+<p>Sorted Set（ZSet）的底层实现之一（与 dict 配合）。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>有序结构，支持范围查询（如 ZRANGE）。</p>
+</li>
+<li class="lvl-2">
+<p>平均 O(log N) 的查找、插入、删除。</p>
+</li>
+<li class="lvl-2">
+<p>比平衡树实现简单，且支持并发优化。</p>
+</li>
+<li class="lvl-2">
+<p><strong>配合 dict</strong>：ZSet 同时维护一个 dict 用于 O(1) 查找 score。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="整数集合（intset）">整数集合（intset）</h3>
+<p>当 Set 中所有元素都是整数且数量较少时使用。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>连续内存存储，按升序排列。</p>
+</li>
+<li class="lvl-2">
+<p>节省内存，支持二分查找（O(log N)）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>升级机制</strong>：插入非整数或超出当前整数类型范围时，自动转为 hashtable。</p>
+</li>
+</ul>
+</blockquote>
+<h2 id="数据类型">数据类型</h2>
+<p>五种常用基本数据类型</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>String</strong>: 字符串（二进制安全，一个key最大存512M）</p>
+</li>
+<li class="lvl-2">
+<p><strong>Hash</strong>: 散列键值对，对象序列化后存储</p>
+</li>
+<li class="lvl-2">
+<p><strong>List</strong>: 列表（有序双向链表、可重复，增删快查询慢）【排行榜、消息队列、栈】</p>
+<ul class="lvl-3">
+<li class="lvl-4">
+<p><code>lpush list:1 0 1 2 3 4 5 6</code>    添加7个数到列表</p>
+</li>
+<li class="lvl-4">
+<p><code>rpop list:1</code>  从右边弹出一个（队列）</p>
+</li>
+<li class="lvl-4">
+<p><code>lpop list:1</code>  从左边弹出一个 （栈）</p>
+</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>Set</strong>: 集合（hash实现，无序、不可重复，支持<strong>交集、并集和差集</strong>操作）【共同好友、点赞签到打卡、统计访问IP、好友推荐（交集）】</p>
+<ul class="lvl-3">
+<li class="lvl-4">
+<p><code>sadd sign:2020-01-16 1 2 3 4 5 6 7 8</code>    添加某天签到用户的ID，8个</p>
+</li>
+<li class="lvl-4">
+<p><code>smembers sign:2020-01-16</code>   列出某天所有签到用户的ID</p>
+</li>
+<li class="lvl-4">
+<p><code>spop sign:2020-01-16</code>   随机列出一个某天签到用户的ID</p>
+</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>Sorted Set</strong>: 有序集合（有序的set，底层结构为跳跃表和hash）</p>
+</li>
+</ul>
+</blockquote>
+<p>其他数据类型</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>bitmap</strong>（位图）</p>
+<ul class="lvl-3">
+<li class="lvl-4"><code>bitop and continue:site site:2020-01-18 site:2020-01-17</code>    计算某段时间内，都签到的用户数量</li>
+<li class="lvl-4"><code>bitcount site:2020-01-17 0 100</code>       统计某一天网站的签到数量</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>hyperloglog（基数统计）</p>
+</li>
+<li class="lvl-2">
+<p><strong>Stream</strong>（消息队列）</p>
+</li>
+<li class="lvl-2">
+<p><strong>bitfield</strong>（位域，批量的bit位操作）</p>
+</li>
+<li class="lvl-2">
+<p><strong>geo</strong>（地理空间）</p>
+</li>
+</ul>
+</blockquote>
+<p>各种数据类型对应的数据结构：</p>
+<p><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="./imgs/dlav1aujdf.png" alt="img"></p>
+<p>Redis 数据类型与底层结构映射</p>
+<table>
+<thead>
+<tr>
+<th>Redis 类型</th>
+<th>编码（encoding）</th>
+<th>底层数据结构</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>String</td>
+<td>raw / int / embstr</td>
+<td>SDS / long / embstr（优化的 SDS）</td>
+</tr>
+<tr>
+<td>List</td>
+<td>quicklist</td>
+<td>quicklist（listpack + 双向链表）</td>
+</tr>
+<tr>
+<td>Hash</td>
+<td>ziplist / listpack / hashtable</td>
+<td>listpack（小数据）或 dict</td>
+</tr>
+<tr>
+<td>Set</td>
+<td>intset / hashtable</td>
+<td>intset（整数小集合）或 dict</td>
+</tr>
+<tr>
+<td>Sorted Set</td>
+<td>ziplist / listpack / skiplist+dict</td>
+<td>listpack（小数据）或 skiplist+dict</td>
+</tr>
+</tbody>
+</table>
+<h3 id="String（SDS）">String（SDS）</h3>
+<p>SDS是Redis中的一种字符串类型，它是一种二进制安全的字符串，由简单动态字符串（SDS）实现。SDS支持多种数据结构。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>SDS可以动态增加内存空间，避免了静态数组的大小限制。</p>
+</li>
+<li class="lvl-2">
+<p>SDS会检查内存是否足够，避免了缓冲区溢出的问题。</p>
+</li>
+<li class="lvl-2">
+<p>SDS可以避免C字符串常见的问题，比如缓冲区溢出和内存泄露等。</p>
+</li>
+<li class="lvl-2">
+<p>SDS的常数复杂度获取字符串长度和杜绝缓冲区溢出可以避免使用strlen和strcat函数时的一些问题。</p>
+</li>
+<li class="lvl-2">
+<p>SDS的空间预分配和惰性空间释放两种策略可以减少修改字符串的内存重新分配次数。</p>
+</li>
+<li class="lvl-2">
+<p>SDS是二进制安全的，因为它不是以空字符串来判断字符串是否结束，而是以len属性表示的长度来判断字符串是否结束。</p>
+</li>
+</ul>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sdshdr</span>&#123;</span></span><br><span class="line">    <span class="comment">//int 记录buf数组中未使用字节的数量 如上图free为0代表未使用字节的数量为0</span></span><br><span class="line">    <span class="type">int</span> <span class="built_in">free</span>;</span><br><span class="line">    <span class="comment">//int 记录buf数组中已使用字节的数量即sds的长度 如上图len为5代表未使用字节的数量为5</span></span><br><span class="line">    <span class="type">int</span> len;</span><br><span class="line">    <span class="comment">//字节数组用于保存字符串 sds遵循了c字符串以空字符结尾的惯例目的是为了重用c字符串函数库里的函数</span></span><br><span class="line">    <span class="type">char</span> buf[];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="List（快速列表）">List（快速列表）</h3>
+<p>quicklist 实际上是 zipList 和 linkedList 的混合体：将 linkedList 按段切分，每一段使用 zipList 来紧凑存储，多个 zipList 之间使用双向指针串接起来。</p>
+<p>相对于链表它压缩了内存</p>
+<img src= "/img/20241215205335173426721579192.webp" data-lazy-src="./imgs/QuickList.png" alt="img" style="zoom:77%;" />
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> *<span class="title">prev</span>;</span>     <span class="comment">//上一个node节点</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> *<span class="title">next</span>;</span>     <span class="comment">//下一个node</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">char</span> *zl;            <span class="comment">//保存的数据 压缩前ziplist 压缩后压缩的数据</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> sz;             <span class="comment">/* ziplist size in bytes */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> count : <span class="number">16</span>;     <span class="comment">/* count of items in ziplist */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> encoding : <span class="number">2</span>;   <span class="comment">/* RAW==1 or LZF==2 */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> container : <span class="number">2</span>;  <span class="comment">/* NONE==1 or ZIPLIST==2 */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> recompress : <span class="number">1</span>; <span class="comment">/* was this node previous compressed? */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> attempted_compress : <span class="number">1</span>; <span class="comment">/* node can&#x27;t compress; too small */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> extra : <span class="number">10</span>; <span class="comment">/* more bits to steal for future usage */</span></span><br><span class="line">&#125; quicklistNode;</span><br></pre></td></tr></table></figure>
+<h3 id="Hash（字典-压缩列表）"><a href="https://blog.csdn.net/mccand1234/article/details/93411326">Hash</a>（字典+压缩列表）</h3>
+<p>哈希对象的底层存储可以使用ziplist（压缩列表）和hashtable。</p>
+<blockquote>
+<p>当hash对象可以同时满足一下两个条件时，哈希对象使用ziplist编码。</p>
+<ul class="lvl-1">
+<li class="lvl-2">哈希对象保存的所有键值对的键和值的字符串长度都小于64字节</li>
+<li class="lvl-2">哈希对象保存的键值对数量小于512个</li>
+</ul>
+</blockquote>
+<p>通过挂链解决冲突</p>
+<img src= "/img/20241215205335173426721579192.webp" data-lazy-src="./imgs/20190623214252310.png" alt="img" style="zoom: 80%;" />
+<h3 id="Set（字典）">Set（字典）</h3>
+<h3 id="zSet（跳跃表）">zSet（跳跃表）</h3>
+<p>跳跃表是一种有序的数据结构，通过<strong>在每个节点中维持多个指向其他节点的指针</strong>，从而达到快速访问节点的目的。</p>
+<blockquote>
+<p><strong>链表加多级索引的结构，就是跳跃表</strong>，每个拉链节点都有指针指向别的槽</p>
+<p>下面为原始单链表，上面为多个级别的索引</p>
+</blockquote>
+<img src= "/img/20241215205335173426721579192.webp" data-lazy-src="./imgs/%E8%B7%B3%E8%B7%83%E8%A1%A8.png" alt="img" style="zoom: 27%;" />
+<p>Redis使用跳跃表作为有序集合键的底层实现之一,如果一个有序集合包含的<strong>元素数量比较多</strong>,又或者有序集合中元素的<strong>成员是比较长的字符串</strong>时, Redis就会使用跳跃表来作为有序集合健的底层实现。</p>
+<img src= "/img/20241215205335173426721579192.webp" data-lazy-src="./imgs/Redis%E8%B7%B3%E8%B7%83%E8%A1%A8.png" alt="img" style="zoom: 30%;" />
+<h3 id="bitmap（sds）"><a href="https://xiaolincoding.com/redis/data_struct/command.html#%E4%BB%8B%E7%BB%8D-8">bitmap</a>（sds）</h3>
+<p>即位图，是一串连续的二进制数组（0和1），可以通过偏移量（offset）定位元素。BitMap通过最小的单位bit来进行<code>0|1</code>的设置，表示某个元素的值或者状态，时间复杂度为O(1)。</p>
+<blockquote>
+<p>由于 bit 是计算机中最小的单位，使用它进行储存将非常节省空间，特别适合一些数据量大且使用<strong>二值统计的场景</strong>。</p>
+<p><code>Bitmap</code> 本身是用 <code>String</code> 类型作为底层数据结构实现的一种统计二值状态的数据类型。保存为二进制的字节数组，可以把 <code>Bitmap</code> 看作是一个 bit 数组。<code>BitMap</code> 占用的空间，就是底层字符串占用的空间</p>
+</blockquote>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 设置值，其中 value 只能是 0 和 1     SETBIT key offset value</span></span><br><span class="line">127.0.0.1:6379&gt; SETBIT sid10t 0 1</span><br><span class="line">(<span class="built_in">integer</span>) 0</span><br><span class="line"></span><br><span class="line"><span class="comment"># 获取值     GETBIT key offset</span></span><br><span class="line">127.0.0.1:6379&gt; GETBIT sid10t 1</span><br><span class="line">(<span class="built_in">integer</span>) 1</span><br><span class="line"></span><br><span class="line"><span class="comment"># 获取指定范围内值为 1 的个数     start 和 end 以字节为单位     BITCOUNT key [start end [BYTE|BIT]]</span></span><br><span class="line">127.0.0.1:6379&gt; BITCOUNT sid10t 0 8</span><br><span class="line">(<span class="built_in">integer</span>) 3</span><br></pre></td></tr></table></figure>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">BitMapsExample</span> &#123;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">run</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="type">UnifiedJedis</span> <span class="variable">jedis</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">UnifiedJedis</span>(<span class="string">&quot;redis://localhost:6379&quot;</span>);</span><br><span class="line"></span><br><span class="line">        <span class="type">boolean</span> <span class="variable">res1</span> <span class="operator">=</span> jedis.setbit(<span class="string">&quot;pings:2024-01-01-00:00&quot;</span>, <span class="number">123</span>, <span class="literal">true</span>);</span><br><span class="line">        System.out.println(res1); <span class="comment">// &gt;&gt;&gt; false</span></span><br><span class="line"></span><br><span class="line">        <span class="type">boolean</span> <span class="variable">res2</span> <span class="operator">=</span> jedis.getbit(<span class="string">&quot;pings:2024-01-01-00:00&quot;</span>, <span class="number">123</span>);</span><br><span class="line">        System.out.println(res2); <span class="comment">// &gt;&gt;&gt; true</span></span><br><span class="line"></span><br><span class="line">        <span class="type">boolean</span> <span class="variable">res3</span> <span class="operator">=</span> jedis.getbit(<span class="string">&quot;pings:2024-01-01-00:00&quot;</span>, <span class="number">456</span>);</span><br><span class="line">        System.out.println(res3); <span class="comment">// &gt;&gt;&gt; false</span></span><br><span class="line"></span><br><span class="line">        <span class="type">long</span> <span class="variable">res4</span> <span class="operator">=</span> jedis.bitcount(<span class="string">&quot;pings:2024-01-01-00:00&quot;</span>);</span><br><span class="line">        System.out.println(res4); <span class="comment">// &gt;&gt;&gt; 1</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<h4 id="基础命令">基础命令</h4>
+<ol>
+<li class="lvl-3"><strong>SETBIT</strong>：</li>
+</ol>
+<ul class="lvl-1">
+<li class="lvl-2">
+<ul class="lvl-3">
+<li class="lvl-4"><strong>用途</strong>：<code>SETBIT</code>用于设置Bitmap中指定位置的位值（0或1）。</li>
+<li class="lvl-4"><strong>语法</strong>：<code>SETBIT key offset value</code></li>
+<li class="lvl-4"><strong>示例</strong>：假设我们要在位置5设置位为1，命令将是：<code>SETBIT mybitmap 5 1</code>。</li>
+<li class="lvl-4"><strong>工作方式</strong>：<code>SETBIT</code>会将键<code>mybitmap</code>在偏移<code>offset</code>处的位设置为<code>value</code>。如果该键不存在，Redis会自动创建一个新的Bitmap。该命令返回位被设置之前的旧值。</li>
+</ul>
+</li>
+</ul>
+<ol>
+<li class="lvl-3">
+<p><strong>GETBIT</strong>：</p>
+</li>
+</ol>
+<ul class="lvl-1">
+<li class="lvl-2">
+<ul class="lvl-3">
+<li class="lvl-4"><strong>用途</strong>：<code>GETBIT</code>用于获取Bitmap中指定位置的位值。</li>
+<li class="lvl-4"><strong>语法</strong>：<code>GETBIT key offset</code></li>
+<li class="lvl-4"><strong>示例</strong>：要获取位置5的位值，命令是：<code>GETBIT mybitmap 5</code>。</li>
+<li class="lvl-4"><strong>工作方式</strong>：<code>GETBIT</code>返回键<code>mybitmap</code>在偏移<code>offset</code>处的位值。如果偏移量超出了字符串的长度，它会假定超出范围的位都是0。</li>
+</ul>
+</li>
+</ul>
+<ol>
+<li class="lvl-3">
+<p><strong>BITCOUNT</strong>：</p>
+</li>
+</ol>
+<ul class="lvl-1">
+<li class="lvl-2">
+<ul class="lvl-3">
+<li class="lvl-4"><strong>用途</strong>：<code>BITCOUNT</code>用于计算Bitmap中设置为1的位的数量。</li>
+<li class="lvl-4"><strong>语法</strong>：<code>BITCOUNT key [start end]</code></li>
+<li class="lvl-4"><strong>示例</strong>：计算整个Bitmap的位数：<code>BITCOUNT mybitmap</code>。</li>
+<li class="lvl-4"><strong>工作方式</strong>：<code>BITCOUNT</code>会返回指定范围内值为1的位的数量。如果不指定范围，它将默认计算整个Bitmap。</li>
+</ul>
+</li>
+</ul>
+<ol>
+<li class="lvl-3">
+<p><strong>BITPOS</strong>：</p>
+</li>
+</ol>
+<ul class="lvl-1">
+<li class="lvl-2">
+<ul class="lvl-3">
+<li class="lvl-4"><strong>用途</strong>：<code>BITPOS</code>用于找到Bitmap中第一个设置为0或1的位的位置。</li>
+<li class="lvl-4"><strong>语法</strong>：<code>BITPOS key bit [start] [end]</code></li>
+<li class="lvl-4"><strong>示例</strong>：找到第一个设置为1的位：<code>BITPOS mybitmap 1</code>。</li>
+<li class="lvl-4"><strong>工作方式</strong>：<code>BITPOS</code>返回位值为<code>bit</code>的第一个位的位置。你可以指定一个可选的范围来限制搜索。如果没有找到，会返回特定的值。</li>
+</ul>
+</li>
+</ul>
+<h4 id="高级命令">高级命令</h4>
+<ol>
+<li class="lvl-3">
+<p><strong>BITOP</strong>：</p>
+</li>
+</ol>
+<ul class="lvl-1">
+<li class="lvl-2">
+<ul class="lvl-3">
+<li class="lvl-4"><strong>用途</strong>：<code>BITOP</code>用于对一个或多个Bitmap进行AND、OR、XOR和NOT操作。</li>
+<li class="lvl-4"><strong>语法</strong>：<code>BITOP operation destkey key [key ...]</code></li>
+<li class="lvl-4"><strong>示例</strong>：对两个Bitmap进行AND操作：<code>BITOP AND destkey bitmap1 bitmap2</code>。</li>
+<li class="lvl-4"><strong>工作方式</strong>：<code>BITOP</code>会将指定的操作应用于提供的所有Bitmap，并将结果存储在<code>destkey</code>中。这对于组合多个Bitmap或对Bitmap进行逻辑操作非常有用。</li>
+</ul>
+</li>
+</ul>
+<ol>
+<li class="lvl-3">
+<p><strong>BITFIELD</strong>：</p>
+</li>
+</ol>
+<ul class="lvl-1">
+<li class="lvl-2">
+<ul class="lvl-3">
+<li class="lvl-4"><strong>用途</strong>：<code>BITFIELD</code>用于对Bitmap进行复杂的操作，如设置或获取指定范围内的位值。</li>
+<li class="lvl-4"><strong>语法</strong>：<code>BITFIELD key [GET type offset] [SET type offset value] [INCRBY type offset increment]</code></li>
+<li class="lvl-4"><strong>示例</strong>：在位置5设置3位长的无符号整数：<code>BITFIELD mybitmap SET u3 5 6</code>。</li>
+<li class="lvl-4"><strong>工作方式</strong>：<code>BITFIELD</code>可以在Bitmap上执行多个操作，包括获取、设置和自增特定范围的位。它支持不同的数据类型和位操作，使得它成为最灵活的Bitmap操作命令。</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<p><strong><a href="https://developer.aliyun.com/article/1436264">应用场景</a></strong>：签到统计、登录状态、用户数、黑名单、去重、</p>
+<h3 id="布隆过滤器（bloom）">布隆过滤器（bloom）</h3>
+<p>RoaringBitmap是高效压缩位图，简称RBM。可以用来告诉你 <strong>“某样东西一定不存在或者可能存在”</strong>。</p>
+<blockquote>
+<p>布隆过滤器是一种数据结构，比较巧妙的概率型数据结构（probabilistic data structure），特点是高效地插入和查询</p>
+<p>bloom算法类似一个hash set，用来判断某个元素（key）是否在某个集合中，结果是概率性的，而不是确切的。</p>
+</blockquote>
+<p><strong>特点：</strong> 相比于传统的 List、Set、Map 等数据结构，它更高效、占用空间更少，但是缺点是其返回的结果是概率性的，而不是确切的。</p>
+<p><strong>原理</strong>：布隆过滤器是一个 bit 向量或者说 bit 数组。如果我们要映射一个值到布隆过滤器中，我们需要使用<strong>多个不同的哈希函数</strong>生成**多个哈希值，**并对每个生成的哈希值指向的 bit 位置 1，例如针对值 “baidu” 和三个不同的哈希函数分别生成了哈希值 1、4、7，再存一个值 “tencent”，如果哈希函数返回 3、4、8 的话，则图为：</p>
+<img src= "/img/20241215205335173426721579192.webp" data-lazy-src="./imgs/v2-c0c20d8e06308aae1578c16afdea3b6a_720w.jpg" alt="img" style="zoom: 50%;" />
+<blockquote>
+<p>4 这个 bit 位由于两个值的哈希函数都返回了这个 bit 位，因此它被覆盖了。现在我们如果想查询 “dianping” 这个值是否存在，哈希函数返回了 1、5、8三个值，结果我们发现 5 这个 bit 位上的值为 0，<strong>说明没有任何一个值映射到这个 bit 位上</strong>，因此我们可以很确定地说 “dianping” 这个值不存在。而当我们需要查询 “baidu” 这个值是否存在的话，那么哈希函数必然会返回 1、4、7，然后我们检查发现这三个 bit 位上的值均为 1，那么我们可以说 “baidu” 存在了么？答案是不可以，只能是 “baidu” 这个值可能存在。</p>
+</blockquote>
+<p><strong>结论</strong>：随着增加的值越来越多，被置为 1 的 bit 位也会越来越多，这样某个值即使没有被存储过，但是万一哈希函数返回的三个 bit 位都被其他值置位了 1 ，那么程序还是会判断 这个值存在。为了较少这种碰撞的误判，可以<strong>增加哈希函数计算</strong>（比如以前是三个，现在增加五个，只有五个都为1才算存在，但是效率低）</p>
+<p><strong>使用场景</strong>：利用布隆过滤器减少磁盘 IO 或网络请求，当一个值必定不存在，可以不用进行后续昂贵的查询请求。</p>
+<p><strong>存在问题:</strong> 布隆过滤器的不当使用极易产生大 Value，增加 Redis 阻塞风险，因此生成环境中建议对体积庞大的布隆过滤器进行拆分。应该拆分成多个小 bitmap 之后，对一个 Key 的所有哈希函数都落在这一个小 bitmap 上。</p>
+<!-- flag of hidden posts --></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.github.io">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.github.io/2025/12/3d818254139f4e0d821993f64b8aa30d/">https://pengline.github.io/2025/12/3d818254139f4e0d821993f64b8aa30d/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.github.io" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B/">Redis数据类型</a><a class="post-meta__tags" href="/tags/Redis%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/">Redis数据结构</a><a class="post-meta__tags" href="/tags/Redis%E8%B7%B3%E8%A1%A8/">Redis跳表</a><a class="post-meta__tags" href="/tags/Redis%E5%BF%AB%E9%80%9F%E5%88%97%E8%A1%A8/">Redis快速列表</a><a class="post-meta__tags" href="/tags/Redis%E5%AD%97%E5%85%B8/">Redis字典</a><a class="post-meta__tags" href="/tags/Redis%E5%8E%8B%E7%BC%A9%E5%88%97%E8%A1%A8/">Redis压缩列表</a></div><div class="post-share"><div class="social-share" data-image="/img/essay/small221427alvR01759155267.webp" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"></nav><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="toc-number">1.</span> <span class="toc-text">数据结构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8A%A8%E6%80%81%E5%AD%97%E7%AC%A6%E4%B8%B2%EF%BC%88SDS%EF%BC%89"><span class="toc-number">1.1.</span> <span class="toc-text">动态字符串（SDS）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%8C%E5%90%91%E9%93%BE%E8%A1%A8%EF%BC%88linkedlist%EF%BC%89"><span class="toc-number">1.2.</span> <span class="toc-text">双向链表（linkedlist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%93%88%E5%B8%8C%E8%A1%A8%EF%BC%88hash-dict%EF%BC%89"><span class="toc-number">1.3.</span> <span class="toc-text">哈希表（hash &#x2F; dict）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8E%8B%E7%BC%A9%E5%88%97%E8%A1%A8%EF%BC%88ziplist%EF%BC%89"><span class="toc-number">1.4.</span> <span class="toc-text">压缩列表（ziplist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BF%AB%E9%80%9F%E5%88%97%E8%A1%A8%EF%BC%88quicklist%EF%BC%89"><span class="toc-number">1.5.</span> <span class="toc-text">快速列表（quicklist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B4%A7%E5%87%91%E5%88%97%E8%A1%A8%EF%BC%88listpack%EF%BC%89"><span class="toc-number">1.6.</span> <span class="toc-text">紧凑列表（listpack）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B7%B3%E8%B7%83%E8%A1%A8%EF%BC%88skiplist%EF%BC%89"><span class="toc-number">1.7.</span> <span class="toc-text">跳跃表（skiplist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E6%95%B0%E9%9B%86%E5%90%88%EF%BC%88intset%EF%BC%89"><span class="toc-number">1.8.</span> <span class="toc-text">整数集合（intset）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B"><span class="toc-number">2.</span> <span class="toc-text">数据类型</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#String%EF%BC%88SDS%EF%BC%89"><span class="toc-number">2.1.</span> <span class="toc-text">String（SDS）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#List%EF%BC%88%E5%BF%AB%E9%80%9F%E5%88%97%E8%A1%A8%EF%BC%89"><span class="toc-number">2.2.</span> <span class="toc-text">List（快速列表）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Hash%EF%BC%88%E5%AD%97%E5%85%B8-%E5%8E%8B%E7%BC%A9%E5%88%97%E8%A1%A8%EF%BC%89"><span class="toc-number">2.3.</span> <span class="toc-text">Hash（字典+压缩列表）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Set%EF%BC%88%E5%AD%97%E5%85%B8%EF%BC%89"><span class="toc-number">2.4.</span> <span class="toc-text">Set（字典）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#zSet%EF%BC%88%E8%B7%B3%E8%B7%83%E8%A1%A8%EF%BC%89"><span class="toc-number">2.5.</span> <span class="toc-text">zSet（跳跃表）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#bitmap%EF%BC%88sds%EF%BC%89"><span class="toc-number">2.6.</span> <span class="toc-text">bitmap（sds）</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%9F%BA%E7%A1%80%E5%91%BD%E4%BB%A4"><span class="toc-number">2.6.1.</span> <span class="toc-text">基础命令</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%AB%98%E7%BA%A7%E5%91%BD%E4%BB%A4"><span class="toc-number">2.6.2.</span> <span class="toc-text">高级命令</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%83%E9%9A%86%E8%BF%87%E6%BB%A4%E5%99%A8%EF%BC%88bloom%EF%BC%89"><span class="toc-number">2.7.</span> <span class="toc-text">布隆过滤器（bloom）</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
