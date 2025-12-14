@@ -1,0 +1,418 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f4f4f4;
+} */
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    /* padding: 20px; */
+}
+
+.container h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px 0;
+    background-color: #4CAF50;
+    color: white;
+    border-radius: 8px;
+}
+
+main {
+    /* display: grid; */
+    grid-template-columns: 1fr;
+    gap: 30px;
+}
+
+.description {
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 0.88em;
+    color: #555;
+    line-height: 1.6;
+}
+
+/* 确保上传区域始终在最上方 */
+.upload-section {
+    grid-column: 1 / -1;
+}
+
+section {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+h2 {
+    color: #4CAF50;
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+}
+
+/* 文件上传区域 */
+.upload-section {
+    text-align: center;
+}
+
+#document-upload {
+    display: none;
+}
+
+.upload-btn {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #4CAF50;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.upload-btn:hover {
+    background-color: #45a049;
+}
+
+/* 签名区域 */
+.signature-section,
+.document-section {
+    display: none;
+}
+
+.signature-options {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.signature-options button {
+    padding: 10px 20px;
+    background-color: #f1f1f1;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.signature-options button.active {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.signature-options button:hover:not(.active) {
+    background-color: #ddd;
+}
+
+.signature-canvas-container {
+    position: relative;
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+}
+
+#signature-canvas {
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    background-color: #f9f9f9;
+    cursor: crosshair;
+    width: 100%;
+    height: 300px;
+}
+
+/* 清除签名按钮特殊样式 */
+.signature-options #clear-signature-btn {
+    background-color: #f44336;
+    color: white;
+}
+
+.signature-options #clear-signature-btn:hover {
+    background-color: #da190b;
+}
+
+/* 确认签名按钮样式 */
+.signature-section #confirm-signature-btn {
+    display: block;
+    margin: 20px auto 0;
+    padding: 15px 30px;
+    background-color: #4CAF50;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    max-width: 200px;
+    width: 100%;
+}
+
+.signature-section #confirm-signature-btn:hover {
+    background-color: #45a049;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.signature-upload-container {
+    text-align: center;
+    width: 100%;
+}
+
+#signature-upload {
+    display: none;
+}
+
+#uploaded-signature-preview {
+    margin-top: 20px;
+    width: 100%;
+    max-height: 200px;
+    border: 2px dashed #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    text-align: center;
+}
+
+#uploaded-signature-preview img {
+    max-width: 100%;
+    max-height: 180px;
+    border-radius: 4px;
+}
+
+/* 文档预览区域 */
+#document-preview {
+    width: 100%;
+     /* width: 50rem; */
+    /* height: 94rem; */
+    height: 72rem;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    background-color: #f9f9f9;
+    overflow: hidden;
+    position: relative;
+}
+
+#signature-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Word文档表格样式 */
+.word-table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    font-size: 14px;
+}
+
+.word-table-row {
+    border-bottom: 1px solid #ddd;
+}
+
+.word-table-cell,
+.word-table-header {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.word-table-header {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+/* 确保表格在容器内正确显示 */
+.word-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+#signature-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.signature-item {
+    position: absolute;
+    cursor: move;
+    pointer-events: auto;
+    border: 2px solid transparent;
+    transition: border-color 0.3s;
+}
+
+.signature-item:hover {
+    border-color: #4CAF50;
+}
+
+.signature-item img {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.page-info {
+    text-align: center;
+    margin: 10px 0;
+    font-size: 16px;
+    color: #555;
+    font-weight: bold;
+}
+
+.signature-tools {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center; /* 使按钮居中显示 */
+}
+
+.zoom-targets {
+    display: flex;
+    gap: 5px;
+    margin-right: 10px;
+}
+
+.zoom-targets button {
+    padding: 8px 16px;
+    background-color: #f1f1f1;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 0.9rem;
+}
+
+.zoom-targets button.active {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.zoom-targets button:hover:not(.active) {
+    background-color: #ddd;
+}
+
+.signature-tools button {
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.signature-tools button:hover {
+    background-color: #45a049;
+}
+
+.signature-tools button:nth-child(2) {
+    background-color: #2196F3;
+}
+
+.signature-tools button:nth-child(2):hover {
+    background-color: #0b7dda;
+}
+
+.signature-tools button:nth-child(3) {
+    background-color: #ff9800;
+}
+
+.signature-tools button:nth-child(3):hover {
+    background-color: #e68a00;
+}
+
+.signature-tools button:nth-child(4) {
+    background-color: #f44336;
+}
+
+.signature-tools button:nth-child(4):hover {
+    background-color: #da190b;
+}
+
+/* 响应式设计 */
+@media (min-width: 768px) {
+    main {
+        grid-template-columns: 1fr;
+    }
+    
+    .document-section {
+        grid-column: 1;
+        grid-row: 3;
+    }
+}
+
+@media (min-width: 1024px) {
+    main {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+    }
+    
+    .signature-section {
+        grid-column: 1;
+        grid-row: 2;
+    }
+    
+    .document-section {
+        grid-column: 1;
+        grid-row: 3;
+    }
+}
+
+/* 移动设备签名适配 */
+@media (max-width: 767px) {
+    #signature-canvas {
+        width: 100%;
+        height: 250px;
+    }
+    
+    #document-preview {
+        height: 700px;
+    }
+}
+
+/* 横屏模式适配 */
+@media (orientation: landscape) and (max-width: 1023px) {
+    #signature-canvas {
+        height: 200px;
+    }
+    
+    .signature-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
+/* 右下角通知弹框样式 */
+.notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    background-color: rgba(51, 51, 51, 0.9);
+    color: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    font-size: 14px;
+    max-width: 300px;
+    word-wrap: break-word;
+}
