@@ -1,0 +1,2248 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>剧本分镜智能体架构设计与实现（V2.0版） | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="该工具将自然语言剧本自动拆分为多个N秒长度的短视频片段脚本，以适用于 AI 视频生成模型，可直接用于“文生视频”。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="剧本分镜智能体架构设计与实现（V2.0版）">
+<meta property="og:url" content="https://pengline.github.io/2026/01/3fc3294840ac4c0d90363c9d811c359d/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="该工具将自然语言剧本自动拆分为多个N秒长度的短视频片段脚本，以适用于 AI 视频生成模型，可直接用于“文生视频”。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://pengline.github.io/img/essay/small193155ePROc1759577515.webp">
+<meta property="article:published_time" content="2026-01-18T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-01-21T11:38:23.948Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="LlamaIndex向量检索">
+<meta property="article:tag" content="LangGraph流程编排">
+<meta property="article:tag" content="长剧本拆分">
+<meta property="article:tag" content="长剧本分镜">
+<meta property="article:tag" content="长剧本视频生成">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://pengline.github.io/img/essay/small193155ePROc1759577515.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "剧本分镜智能体架构设计与实现（V2.0版）",
+  "url": "https://pengline.github.io/2026/01/3fc3294840ac4c0d90363c9d811c359d/",
+  "image": "https://pengline.github.io/img/essay/small193155ePROc1759577515.webp",
+  "datePublished": "2026-01-18T16:00:00.000Z",
+  "dateModified": "2026-01-21T11:38:23.948Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="https://pengline.github.io/2026/01/3fc3294840ac4c0d90363c9d811c359d/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '剧本分镜智能体架构设计与实现（V2.0版）',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/butterfly-icon.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">52</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">236</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">41</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意平台</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/HengLine/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="https://github.com/HengLine/video-shot-agent"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> 在线绘制 UML 图</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 文档添加水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(/img/essay/small193155ePROc1759577515.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体架构设计与实现（V2.0版）</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意平台</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/HengLine/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="https://github.com/HengLine/video-shot-agent"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> 在线绘制 UML 图</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 文档添加水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体架构设计与实现（V2.0版）</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-01-18T16:00:00.000Z" title="发表于 2026-01-19 00:00:00">2026-01-19</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-01-21T11:38:23.948Z" title="更新于 2026-01-21 19:38:23">2026-01-21</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>该工具能将用户提供的原始自然语言剧本，自动拆分为多个<strong>n秒长度的短视频片段脚本</strong>，并确保<strong>画面连贯性、角色一致性、动作延续性</strong>，适用于主流 AI 视频生成模型（如 Runway、Pika、Sora、Wan、Stable Video等）</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>需求描述</strong>：假如我有一段预估两分钟左右的剧本，想通过AI模型生成对应的短视频。</p>
+</li>
+<li class="lvl-2">
+<p><strong>技术受限</strong>：目前的各种模型仅支持一次生成5-10秒长度的视频，想要生成两分钟长度的视频，只能通过“拼接”的方式，将多个5秒的片段合成为一个视频。</p>
+</li>
+<li class="lvl-2">
+<p><strong>任务&amp;挑战点</strong>：要实现视频拼接，第一步就需要拆分原剧本，拆分后的剧本尽量接近5-10秒时长（取决于模型），且每个视频片段还必须要保持连贯性，不然生成的视频片段合成后会导致场景、动作、人物等衔接不上。</p>
+<p>且剧情中的动作、语速等会影响时长，所以需要考虑多种情景，比如：老人动作慢、生气怒吼时语速会较快、跑比走要快等等。</p>
+<p>这便是本智能体需要完成的任务，用户只需要给出剧本，而后根据各种技术拆解，最后将拆解完成的剧本片段返回，用户只需要将其交给模型（Runway、Pika、Sora、Wan、Stable Video等）生成即可，最后再利用相关技术将片段合成为完整视频。</p>
+</li>
+</ul>
+</blockquote>
+<p>详细使用方式，请参照 <a href="https://github.com/HengLine/tool-shot-agent">GitHub 项目</a> （功能开发完善中），如果有更好的思路或想法，可参与开发或提出需求。</p>
+<h2 id="剧本分镜智能体"><a href="https://github.com/HengLine/tool-shot-agent">剧本分镜智能体</a></h2>
+<h3 id="核心目标">核心目标</h3>
+<p>将任意长度的剧本，拆分为N个5秒的、视觉连贯的Sora视频片段脚本单元（Shot）</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>每段包含：画面描述 + 角色动作 + 对话（如有）+ 镜头语言</p>
+</li>
+<li class="lvl-2">
+<p>保证跨片段连续性（角色外观、位置、情绪、动作状态一致）</p>
+</li>
+<li class="lvl-2">
+<p>输出格式兼容主流 AI 视频生成平台（文本提示词格式）</p>
+</li>
+</ul>
+<blockquote>
+<p>核心挑战：</p>
+<ol>
+<li class="lvl-3">处理多种输入格式（自然语言、AI分镜、结构化场景、标准剧本）</li>
+<li class="lvl-3">精确估算每个视觉/对话元素的合理时长</li>
+<li class="lvl-3">确保5秒片段间的视觉和叙事连贯性</li>
+<li class="lvl-3">生成Sora优化的提示词</li>
+</ol>
+</blockquote>
+<h3 id="使用场景">使用场景</h3>
+<p><strong>短视频内容创作</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>将小说章节转换为短视频分镜脚本</p>
+</li>
+<li class="lvl-2">
+<p>为广告创意生成详细的镜头规划</p>
+</li>
+<li class="lvl-2">
+<p>自动将剧本拆分为社交媒体短视频格式</p>
+</li>
+</ul>
+<p><strong>影视前期制作辅助</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>快速生成剧本的视觉化预览</p>
+</li>
+<li class="lvl-2">
+<p>辅助导演进行镜头规划和调度</p>
+</li>
+<li class="lvl-2">
+<p>为分镜头绘制提供详细参考</p>
+</li>
+</ul>
+<p><strong>教育培训应用</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>为教学内容创建情景化视频脚本</p>
+</li>
+<li class="lvl-2">
+<p>将复杂概念通过分镜形式直观呈现</p>
+</li>
+<li class="lvl-2">
+<p>辅助培训视频的标准化制作</p>
+</li>
+</ul>
+<h3 id="输入输出">输入输出</h3>
+<p>输入剧本（自然语言、）</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">[场景：城市咖啡馆，下午3点]</span><br><span class="line">李明坐在靠窗的位置，低头看着手机。突然，他抬头看见前女友小雨走进来。他愣住，手机差点掉到地上。小雨也看见了他，犹豫了一下，还是走了过来。</span><br><span class="line">小雨：（轻声）好久不见。</span><br><span class="line">李明：（紧张）你……你怎么在这？</span><br></pre></td></tr></table></figure>
+<p>分镜输出示例（基于上文剧本）：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">Shot 1（0–5秒）</span><br><span class="line">AI Prompt:</span><br><span class="line">&quot;A young man (Li Ming) sits alone at a window table in a cozy cafe, afternoon sunlight streaming in. He stares intently at his smartphone. Medium shot, calm atmosphere, realistic style.&quot;</span><br><span class="line"></span><br><span class="line">Shot 2（5–10秒）</span><br><span class="line">AI Prompt:</span><br><span class="line">&quot;Li Ming suddenly looks up toward the cafe entrance, eyes wide in shock. His phone begins to slip from his left hand, halfway to the table. Medium close-up, shallow depth of field, natural lighting. Background slightly blurred.&quot;</span><br><span class="line"></span><br><span class="line">Shot 3（10–15秒）</span><br><span class="line">AI Prompt:</span><br><span class="line">&quot;A woman (Xiao Yu) enters the cafe, sees Li Ming, and pauses. She hesitates, then walks slowly toward his table. Over-the-shoulder shot from Li Ming&#x27;s perspective, soft focus on her face showing uncertainty.&quot;</span><br><span class="line"></span><br><span class="line">Shot 4（15–20秒）</span><br><span class="line">AI Prompt:</span><br><span class="line">&quot;Xiao Yu stands beside Li Ming&#x27;s table. She says softly: &#x27;Long time no see.&#x27; Li Ming looks up nervously, hands gripping the edge of the table. Two-shot, eye-level, warm cafe lighting.&quot;</span><br></pre></td></tr></table></figure>
+<p>智能体返回结果：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"></span><br></pre></td></tr></table></figure>
+<h3 id="集成方式">集成方式</h3>
+<p>集成到Web应用（API）</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Flask示例</span></span><br><span class="line"><span class="keyword">from</span> flask <span class="keyword">import</span> Flask, request, jsonify</span><br><span class="line"><span class="keyword">from</span> hengline.generate_agent <span class="keyword">import</span> generate_storyboard</span><br><span class="line"></span><br><span class="line">app = Flask(__name__)</span><br><span class="line"></span><br><span class="line"><span class="meta">@app.route(<span class="params"><span class="string">&#x27;/generate&#x27;</span>, methods=[<span class="string">&#x27;POST&#x27;</span>]</span>)</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">generate</span>():</span><br><span class="line">    data = request.json</span><br><span class="line">    result = generate_storyboard(</span><br><span class="line">        script_text=data[<span class="string">&#x27;script_text&#x27;</span>],</span><br><span class="line">        style=data.get(<span class="string">&#x27;style&#x27;</span>, <span class="string">&#x27;realistic&#x27;</span>)</span><br><span class="line">    )</span><br><span class="line">    <span class="keyword">return</span> jsonify(result)</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> __name__ == <span class="string">&#x27;__main__&#x27;</span>:</span><br><span class="line">    app.run(debug=<span class="literal">True</span>)</span><br></pre></td></tr></table></figure>
+<p>集成到 LangGraph 工作流节点</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> langgraph.graph <span class="keyword">import</span> StateGraph, END</span><br><span class="line"></span><br><span class="line"><span class="comment"># 定义全局状态</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">StoryboardState</span>(<span class="title class_ inherited__">TypedDict</span>):</span><br><span class="line">    raw_script: <span class="built_in">str</span></span><br><span class="line">    style: <span class="built_in">str</span></span><br><span class="line">    storyboard: <span class="built_in">list</span></span><br><span class="line">    continuity_state: <span class="built_in">dict</span></span><br><span class="line">    error: <span class="type">Optional</span>[<span class="built_in">str</span>]</span><br><span class="line"></span><br><span class="line"><span class="comment"># 分镜生成节点</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">storyboard_agent_node</span>(<span class="params">state: StoryboardState</span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">    <span class="keyword">try</span>:</span><br><span class="line">        result = generate_storyboard(</span><br><span class="line">            script_text=state[<span class="string">&quot;raw_script&quot;</span>],</span><br><span class="line">            style=state[<span class="string">&quot;style&quot;</span>],</span><br><span class="line">            prev_continuity_state=state.get(<span class="string">&quot;continuity_state&quot;</span>)</span><br><span class="line">        )</span><br><span class="line">        <span class="keyword">return</span> &#123;</span><br><span class="line">            <span class="string">&quot;storyboard&quot;</span>: result[<span class="string">&quot;shots&quot;</span>],</span><br><span class="line">            <span class="string">&quot;continuity_state&quot;</span>: result[<span class="string">&quot;final_continuity_state&quot;</span>]</span><br><span class="line">        &#125;</span><br><span class="line">    <span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">        <span class="keyword">return</span> &#123;<span class="string">&quot;error&quot;</span>: <span class="built_in">str</span>(e)&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment"># 构建图</span></span><br><span class="line">workflow = StateGraph(StoryboardState)</span><br><span class="line">workflow.add_node(<span class="string">&quot;generate_storyboard&quot;</span>, storyboard_agent_node)</span><br><span class="line">workflow.set_entry_point(<span class="string">&quot;generate_storyboard&quot;</span>)</span><br><span class="line">workflow.add_edge(<span class="string">&quot;generate_storyboard&quot;</span>, END)</span><br><span class="line"></span><br><span class="line">app = workflow.<span class="built_in">compile</span>()</span><br></pre></td></tr></table></figure>
+<p>集成到A2A系统</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># A2A Agent示例</span></span><br><span class="line"><span class="keyword">from</span> a2a <span class="keyword">import</span> Agent, Message</span><br><span class="line"><span class="keyword">from</span> hengline.generate_agent <span class="keyword">import</span> generate_storyboard</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">StoryboardAgent</span>(<span class="title class_ inherited__">Agent</span>):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">process_message</span>(<span class="params">self, message: Message</span>) -&gt; Message:</span><br><span class="line">        <span class="comment"># 处理传入的剧本消息</span></span><br><span class="line">        script = message.content</span><br><span class="line">        storyboard = generate_storyboard(script)</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 返回分镜结果</span></span><br><span class="line">        <span class="keyword">return</span> Message(</span><br><span class="line">            content=storyboard,</span><br><span class="line">            <span class="built_in">type</span>=<span class="string">&quot;storyboard_result&quot;</span></span><br><span class="line">        )</span><br><span class="line"></span><br><span class="line"><span class="comment"># 注册和使用Agent</span></span><br><span class="line">agent = StoryboardAgent(name=<span class="string">&quot;storyboard_agent&quot;</span>)</span><br></pre></td></tr></table></figure>
+<h2 id="技术架构（多智能体）">技术架构（多智能体）</h2>
+<p><strong>智能体框架</strong>: LangGraph（专为多智能体状态机设计）</p>
+<pre class="mermaid">graph TB
+    %% 输入输出层
+    Input[原始剧本] --> System
+    Output[AI视频生成指令] --> End
+    
+    %% 核心处理层
+    subgraph System[AI-规则混合处理系统]
+        Parser[剧本解析智能体<br/>AI主导+规则辅助]
+        Splitter[镜头拆分智能体<br/>混合决策]
+        Fragmenter[视频分段智能体<br/>规则主导+AI优化]
+        Converter[指令转换智能体<br/>AI主导+规则约束]
+        Auditor[质量审查智能体<br/>规则硬检+AI软评]
+    end
+    
+    %% 服务支撑层
+    subgraph Services[支撑服务层]
+        LLM[LLM服务网关<br/>GPT-4/Claude/本地模型]
+        Rules[规则引擎<br/>时长/切分/合并/验证]
+        CM[连续性管理器<br/>状态跟踪与验证]
+        DB[(状态数据库<br/>时序快照/道具流转)]
+    end
+    
+    %% 数据流
+    System --> Output
+    
+    %% 服务调用关系
+    Parser -.->|语义解析| LLM
+    Splitter -.->|创意规划| LLM
+    Converter -.->|视觉描述| LLM
+    Auditor -.->|连贯性评估| LLM
+    
+    Parser -.->|格式标准化| Rules
+    Splitter -.->|时长优化| Rules
+    Fragmenter -.->|切分合并| Rules
+    Converter -.->|技术参数| Rules
+    Auditor -.->|硬规则检查| Rules
+    
+    Parser -->|初始状态| CM
+    Splitter -->|镜头状态| CM
+    Fragmenter -->|片段锚点| CM
+    Converter -->|约束嵌入| CM
+    Auditor -->|完整性检查| CM
+    
+    CM --> DB
+    
+    %% 智能体间流程
+    Parser --> Splitter
+    Splitter --> Fragmenter
+    Fragmenter --> Converter
+    Converter --> Auditor
+    
+    %% 样式定义
+    classDef aiAgent fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    classDef ruleAgent fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef hybridAgent fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef service fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef data fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    
+    class Parser,Converter aiAgent
+    class Fragmenter ruleAgent
+    class Splitter,Auditor hybridAgent
+    class LLM,Rules,CM service
+    class DB data</pre>
+<table>
+<thead>
+<tr>
+<th>智能体</th>
+<th>职责</th>
+<th>关键技术栈</th>
+<th>输入 → 输出</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1. 剧本解析智能体</strong></td>
+<td>将任意格式剧本（自然语言、电影脚本等）统一解析为结构化叙事单元，提取场景、角色、动作、对话、道具、情绪等</td>
+<td>LlamaIndex + 规则引擎 + 轻量 NER/依存分析</td>
+<td>原始文本 → <strong>结构化对象</strong> （含：scene, character, action, dialogue, props, emotion, estimated_duration）</td>
+<td>• 自动估算对话时长（TTS模型或规则：中文≈3字/秒）<br /> • 动作复杂度评分（0–5级）用于后续节奏判断 <br />• 标记非视觉元素（音效、OS）供节奏参考</td>
+</tr>
+<tr>
+<td><strong>2. 镜头拆分智能体</strong></td>
+<td>基于情感强度、节奏变化与语义完整性，将剧本划分为最小可独立表达的镜头单元，并分配合理时长</td>
+<td>微调LLM（动作-时长映射）+ 节奏规则库（如“高潮加速、静默延长”）</td>
+<td>结构化对象 → <strong>带时间戳的镜头序列</strong> （镜头ID, start, end, 主体, 关键动作, 情绪曲线）</td>
+<td>• 以“语义动作单元”为最小单位（如“拔枪→瞄准→开火”不拆）<br /> • 支持动态调整：若总时长超限，触发压缩策略（如合并低信息量镜头）</td>
+</tr>
+<tr>
+<td><strong>3. 视频分段智能体</strong></td>
+<td>将镜头按5秒粒度切分或合并，优先在动作静止点切割，输出符合AI视频模型输入要求的片段序列</td>
+<td>动作边界检测算法 + 合并策略引擎</td>
+<td>镜头序列 + 连续性锚点 → <strong>AI视频片段序列</strong> （片段ID, 所属镜头, start, end, 主体, 关键帧摘要, 引用锚点）</td>
+<td>• &gt;5秒镜头：在动作静止点/语义断点切分（如“举杯停顿”）<br /> • 连续&lt;2秒的两个序列，且同主体/场景/无冲突动作 → 合并<br /> • 每个片段强制包含起始/结束锚点引用</td>
+</tr>
+<tr>
+<td><strong>4. 指令转换智能体</strong></td>
+<td>为每个AI片段生成高精度、模型适配的文生视频提示词（Prompt），包含构图、光线、运动、连续性约束</td>
+<td>LangChain + 多模态LLM（GPT-4o/Claude 3.5）+ Prompt模板库</td>
+<td>片段内容 + 连续性锚点 → <strong>AI视频Prompt + 技术参数</strong> （prompt_text, camera_type, motion, fps, style_ref, seed_hint）</td>
+<td>• Prompt强制嵌入锚点（如“左手戴褪色银戒，站在窗前背光”）<br /> • 支持模型适配：Sora/Pika/Runway 使用不同模板 <br />• 包含技术参数：帧率一致、镜头运动指令</td>
+</tr>
+<tr>
+<td><strong>5. 质量审查智能体</strong></td>
+<td>对全序列进行连贯性、时长合规性、角色漂移等检查，输出修正建议或通过信号</td>
+<td>规则引擎（硬约束） + LLM自反思（软逻辑）</td>
+<td>AI片段序列 → <strong>审查报告</strong> （通过 / 修正建议列表）</td>
+<td>• 硬规则：单片段≤5.2s、道具状态跳变检测<br /> • 软逻辑：LLM判断“角色是否突兀消失/出现” <br />• 支持自动回滚至镜头拆分或分段阶段</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>状态传递机制</strong>：每个片段输出包含 <code>prev_anchor_ref</code> 和 <code>next_anchor_ref</code>，形成链式连续性。</p>
+</li>
+<li class="lvl-3">
+<p><strong>动态时长校准</strong>：若最终总时长偏差 &gt;10%，触发“镜头压缩/扩展”策略（如删减过渡动作、延长静默）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>非视觉元素标记</strong>：音效/画外音虽不生成画面，但影响节奏判断，保留为元数据。</p>
+</li>
+<li class="lvl-3">
+<p><strong>错误恢复路径</strong>：审查失败时，可选择：① 重做分段 ② 调整锚点容差 ③ 插入过渡镜头。</p>
+</li>
+</ol>
+</blockquote>
+<p><strong>全流程协作序列图</strong>：</p>
+<pre class="mermaid">sequenceDiagram
+    participant User as 用户
+    participant Orchestrator as 流程编排器
+    participant Parser as 剧本解析智能体
+    participant Splitter as 镜头拆分智能体
+    participant Fragmenter as AI分段智能体
+    participant Converter as AI转换智能体
+    participant Auditor as 质量审查智能体
+    participant LLM as LLM服务
+    participant Rules as 规则引擎
+    participant CM as 连续性管理器
+    participant StateDB as 状态数据库
+
+    %% ==================== 初始化和配置阶段 ====================
+    Note over User,StateDB: 1. 流程启动与配置
+    
+    User->>Orchestrator: POST /api/process-script {raw_text, config}
+    Orchestrator->>Orchestrator: 创建任务ID，初始化流程上下文
+    Orchestrator-->>User: 返回任务ID: {task_id, status: "processing"}
+    
+    %% ==================== 阶段1：剧本解析 ====================
+    Note over User,StateDB: 2. 剧本解析阶段 (AI主导 + 规则辅助)
+    
+    Orchestrator->>Parser: 开始剧本解析任务 {task_id, raw_text}
+    
+    Parser->>LLM: 调用语义解析
+    Note over Parser,LLM: 请求: 角色/场景/情感提取
+    LLM-->>Parser: 返回: 初步结构化数据
+    
+    Parser->>Rules: 请求格式标准化和增强
+    Note over Parser,Rules: 请求: 时长估算/复杂度评分
+    Rules-->>Parser: 返回: 增强后结构化数据
+    
+    Parser->>CM: 请求初始化连续性状态
+    CM->>CM: 提取初始角色/场景状态
+    CM->>StateDB: 存储初始状态快照
+    StateDB-->>CM: 确认存储成功
+    CM-->>Parser: 返回: 状态初始化完成
+    
+    Parser->>Orchestrator: 返回: 结构化剧本对象 + 状态引用
+    
+    %% ==================== 阶段2：镜头拆分 ====================
+    Note over User,StateDB: 3. 镜头拆分阶段 (混合决策)
+    
+    Orchestrator->>Splitter: 开始镜头拆分任务 {task_id, structured_script}
+    
+    par AI创意规划
+        Splitter->>LLM: 请求情感节奏分析和镜头规划
+        LLM-->>Splitter: 返回: 创意镜头建议
+    and 规则技术规划
+        Splitter->>Rules: 请求时长分配和技术可行性分析
+        Rules-->>Splitter: 返回: 技术优化方案
+    end
+    
+    Splitter->>Splitter: 执行混合决策融合
+    Note over Splitter: 权重: AI 70% + 规则 30%
+    
+    Splitter->>CM: 请求连续性验证和状态更新
+    CM->>StateDB: 查询当前状态
+    StateDB-->>CM: 返回状态数据
+    CM->>CM: 验证镜头边界一致性
+    CM->>StateDB: 存储镜头状态快照
+    CM-->>Splitter: 返回: 验证结果 + 状态更新
+    
+    Splitter->>Orchestrator: 返回: 带时间戳镜头序列
+    
+    %% ==================== 阶段3：AI分段 ====================
+    Note over User,StateDB: 4. AI分段阶段 (规则主导 + AI优化)
+    
+    Orchestrator->>Fragmenter: 开始5秒分段任务 {task_id, shots_sequence}
+    
+    Fragmenter->>Rules: 请求动态规划切分计算
+    Rules->>Rules: 执行5秒切分算法
+    Rules->>Rules: 执行合并策略优化
+    Rules-->>Fragmenter: 返回: 精确切分方案
+    
+    Fragmenter->>LLM: 请求切分点自然度评估
+    LLM-->>Fragmenter: 返回: 流畅性优化建议
+    
+    Fragmenter->>Rules: 请求方案调整
+    Rules->>Rules: 根据AI建议调整方案
+    Rules-->>Fragmenter: 返回: 优化后分段方案
+    
+    Fragmenter->>CM: 请求生成片段锚点
+    CM->>StateDB: 查询片段边界状态
+    StateDB-->>CM: 返回状态数据
+    CM->>CM: 提取关键状态为锚点
+    CM->>StateDB: 存储片段锚点数据
+    CM-->>Fragmenter: 返回: 锚点数据包
+    
+    Fragmenter->>Orchestrator: 返回: AI视频片段序列
+    
+    %% ==================== 阶段4：AI转换 ====================
+    Note over User,StateDB: 5. AI转换阶段 (AI主导 + 规则约束)
+    
+    Orchestrator->>Converter: 开始Prompt生成任务 {task_id, fragments}
+    
+    Converter->>Rules: 请求模板框架和技术参数
+    Rules->>Rules: 选择模型适配模板
+    Rules->>Rules: 生成技术参数配置
+    Rules-->>Converter: 返回: 基础框架 + 技术参数
+    
+    Converter->>LLM: 请求视觉描述生成
+    LLM-->>Converter: 返回: 创意视觉描述
+    
+    Converter->>Rules: 请求约束嵌入
+    Rules->>CM: 获取连续性约束数据
+    CM->>StateDB: 查询锚点约束信息
+    StateDB-->>CM: 返回约束数据
+    CM-->>Rules: 返回约束文本
+    Rules->>Rules: 将约束嵌入模板
+    Rules-->>Converter: 返回: 带约束Prompt
+    
+    Converter->>LLM: 请求语言润色优化
+    LLM-->>Converter: 返回: 优化后最终Prompt
+    
+    Converter->>Orchestrator: 返回: AI视频生成指令集
+    
+    %% ==================== 阶段5：质量审查 ====================
+    Note over User,StateDB: 6. 质量审查阶段 (规则硬检 + AI软评)
+    
+    Orchestrator->>Auditor: 开始质量审查任务 {task_id, ai_instructions}
+    
+    Auditor->>Rules: 执行硬规则检查
+    Rules->>Rules: 检查时长合规性
+    Rules->>Rules: 检查技术参数一致性
+    Rules->>CM: 请求连续性验证
+    CM->>StateDB: 查询完整状态时间线
+    StateDB-->>CM: 返回状态演化数据
+    CM-->>Rules: 返回连续性分析结果
+    Rules-->>Auditor: 返回: 硬规则检查报告
+    
+    alt 硬规则通过
+        Auditor->>LLM: 请求软性质量评估
+        LLM->>LLM: 评估视觉连贯性
+        LLM->>LLM: 评估叙事流畅性
+        LLM-->>Auditor: 返回: 软性质量评分
+        
+        Auditor->>Auditor: 生成综合审查报告
+        Auditor->>Orchestrator: 返回: 审查通过报告
+        
+        Orchestrator->>Orchestrator: 组装最终输出
+        Orchestrator-->>User: 返回最终结果: {status: "completed", results}
+        
+    else 硬规则不通过
+        Auditor->>Rules: 请求自动修正建议
+        Rules->>Rules: 分析问题根源
+        Rules->>Rules: 生成修正方案
+        Rules-->>Auditor: 返回: 修正建议
+        
+        Auditor->>Orchestrator: 返回: 审查失败报告 + 修正建议
+        
+        Orchestrator->>Orchestrator: 分析问题阶段
+        alt 镜头拆分问题
+            Orchestrator->>Splitter: 触发重新处理 {修正参数}
+            Splitter-->>Fragmenter: 重新分段
+            Fragmenter-->>Converter: 重新生成
+            Converter-->>Auditor: 重新审查
+        else AI分段问题
+            Orchestrator->>Fragmenter: 触发重新处理 {修正参数}
+            Fragmenter-->>Converter: 重新生成
+            Converter-->>Auditor: 重新审查
+        else AI转换问题
+            Orchestrator->>Converter: 触发重新处理 {修正参数}
+            Converter-->>Auditor: 重新审查
+        end
+        
+        Auditor-->>Orchestrator: 返回重新审查结果
+        Orchestrator-->>User: 返回修正后结果
+    end
+    
+    %% ==================== 清理和资源释放 ====================
+    Note over User,StateDB: 7. 流程结束与清理
+    
+    Orchestrator->>CM: 请求清理临时状态
+    CM->>StateDB: 清理临时状态数据
+    StateDB-->>CM: 确认清理完成
+    CM-->>Orchestrator: 返回清理完成
+    
+    Orchestrator->>Orchestrator: 更新任务状态为完成
+    Orchestrator->>Orchestrator: 释放任务相关资源</pre>
+<p><strong>各节点智能体任务和数据流图：</strong></p>
+<pre class="mermaid">flowchart TD
+    %% 初始化阶段
+    Start([开始处理]) --> RawText{原始剧本}
+    RawText --> ParserProcess
+    
+    subgraph ParserProcess[剧本解析阶段]
+        P1[LLM解析剧本结构] --> P2[提取场景/角色/动作]
+        P2 --> P3[本地规则增强处理]
+        P3 --> P4[时长估算与标记]
+    end
+    
+    ParserProcess --> StructData[结构化剧本对象]
+    StructData --> InitContinuity[初始化连续性状态]
+    
+    %% 连续性管理器启动
+    InitContinuity --> CM_Init[注册初始状态]
+    CM_Init --> StateTimeline[建立状态时间线]
+    
+    %% 镜头拆分阶段
+    StructData --> ShotProcess
+    
+    subgraph ShotProcess[镜头拆分阶段]
+        S1[LLM镜头规划] --> S2[情感节奏分析]
+        S2 --> S3[本地时长优化规则]
+        S3 --> S4[生成镜头序列]
+    end
+    
+    ShotProcess --> ShotSeq[镜头序列]
+    ShotSeq --> CM_Validate[验证镜头连续性]
+    CM_Validate --> ShotStates[镜头状态快照]
+    
+    %% AI分段阶段
+    ShotSeq --> FragmentProcess
+    
+    subgraph FragmentProcess[AI分段阶段]
+        F1[5秒切分算法] --> F2[动作边界检测]
+        F2 --> F3[合并策略引擎]
+        F3 --> F4[生成片段锚点]
+    end
+    
+    FragmentProcess --> FragSeq[AI片段序列]
+    FragSeq --> CM_Anchors[生成片段级锚点]
+    CM_Anchors --> FragAnchors[片段连续性锚点]
+    
+    %% AI转换阶段
+    FragSeq --> PromptProcess
+    
+    subgraph PromptProcess[AI转换阶段]
+        PR1[Prompt模板选择] --> PR2[LLM优化描述]
+        PR2 --> PR3[嵌入连续性约束]
+        PR3 --> PR4[生成技术参数]
+    end
+    
+    PromptProcess --> AIInstructions[AI生成指令]
+    AIInstructions --> CM_Inject[注入连续性信息]
+    CM_Inject --> FinalPrompt[最终Prompt指令]
+    
+    %% 质量审查阶段
+    FinalPrompt --> AuditProcess
+    
+    subgraph AuditProcess[质量审查阶段]
+        A1[规则引擎硬检查] --> A2[LLM自反思检查]
+        A2 --> A3[连续性专项审查]
+        A3 --> A4[生成修正建议]
+    end
+    
+    AuditProcess --> AuditReport[审查报告]
+    AuditReport --> Decision{是否通过?}
+    
+    Decision -->|通过| FinalOutput[输出最终结果]
+    Decision -->|需修正| FeedbackLoop[反馈修正循环]
+    
+    FeedbackLoop --> CM_Adjust[调整连续性状态]
+    CM_Adjust --> ShotProcess
+    
+    %% 输出
+    FinalOutput --> EndProcess([处理完成])
+    
+    %% 数据存储
+    StateTimeline --> DB1[(状态时间线库)]
+    ShotStates --> DB2[(镜头状态库)]
+    FragAnchors --> DB3[(片段锚点库)]
+    FinalPrompt --> DB4[(指令输出库)]
+    
+    %% 样式
+    classDef process fill:#e3f2fd,stroke:#1565c0
+    classDef data fill:#f3e5f5,stroke:#7b1fa2
+    classDef decision fill:#fff3e0,stroke:#ef6c00
+    classDef db fill:#e8f5e8,stroke:#2e7d32
+    
+    class ParserProcess,ShotProcess,FragmentProcess,PromptProcess,AuditProcess process
+    class StructData,ShotSeq,FragSeq,AIInstructions,AuditReport data
+    class Decision decision
+    class DB1,DB2,DB3,DB4 db</pre>
+<h3 id="1-剧本解析智能体">1.剧本解析智能体</h3>
+<p><strong>核心目标</strong>：将任意格式剧本转换为<strong>统一的结构化中间表示</strong>，执行剧本的格式转换和语义提取。</p>
+<blockquote>
+<p>支持四种类型的剧本：</p>
+<ul class="lvl-1">
+<li class="lvl-2">自然语言剧本</li>
+<li class="lvl-2">标准电影剧本</li>
+<li class="lvl-2">AI生成的分镜剧本</li>
+<li class="lvl-2">结构化场景</li>
+</ul>
+</blockquote>
+<p><strong>关键技术</strong>：格式检测 + 语义提取 + 结构标准化</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>LLM</strong>: GPT-4 (gpt-4-turbo-preview) - 语义理解</p>
+</li>
+<li class="lvl-2">
+<p><strong>本地规则</strong>: spaCy + 正则表达式 + 自定义解析器</p>
+</li>
+<li class="lvl-2">
+<p><strong>存储</strong>: JSON Schema验证 + 向量化存储</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>AI主导，规则辅助</strong>（AI → 规则 → 混合验证）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">任务</th>
+<th style="text-align:left">由谁处理</th>
+<th style="text-align:left">理由</th>
+<th style="text-align:left">技术实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>格式识别</strong></td>
+<td style="text-align:left">LLM为主</td>
+<td style="text-align:left">处理多种剧本格式</td>
+<td style="text-align:left">GPT-4的多模态理解</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>角色关系提取</strong></td>
+<td style="text-align:left">LLM</td>
+<td style="text-align:left">理解复杂人际关系</td>
+<td style="text-align:left">语义关系抽取</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>情感分析</strong></td>
+<td style="text-align:left">LLM</td>
+<td style="text-align:left">深度理解文本情感</td>
+<td style="text-align:left">情感分类模型</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>对话时长估算</strong></td>
+<td style="text-align:left">规则为主</td>
+<td style="text-align:left">基于语言统计规律</td>
+<td style="text-align:left">TTS模型+统计规则</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>动作复杂度评分</strong></td>
+<td style="text-align:left">混合</td>
+<td style="text-align:left">AI理解，规则量化</td>
+<td style="text-align:left">BERT + 规则库</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>结构化输出</strong></td>
+<td style="text-align:left">规则强制</td>
+<td style="text-align:left">确保数据格式一致</td>
+<td style="text-align:left">JSON Schema验证</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实现顺序</strong>：</p>
+<pre class="mermaid">flowchart TD
+    Start[📄 原始剧本输入] --> FormatDetect
+    
+    subgraph FormatDetect[格式识别]
+        FD1[多种剧本格式<br/>电影/舞台剧/小说] --> FD2[AI语义理解]
+    end
+    
+    FormatDetect --> AIParse
+    
+    subgraph AIParse[AI语义解析]
+        AP1[角色关系提取] --> AP2[情感分析]
+        AP2 --> AP3[场景理解]
+        AP3 --> AP4[动作语义识别]
+    end
+    
+    AIParse --> RuleEnhance
+    
+    subgraph RuleEnhance[规则增强处理]
+        RE1[时长估算规则<br/>对话:3字/秒 动作:数据库] --> RE2[结构化输出<br/>JSON Schema验证]
+        RE2 --> RE3[复杂度评分<br/>动作难度分级]
+        RE3 --> RE4[非视觉元素标记]
+    end
+    
+    RuleEnhance --> ContinuityInit
+    
+    subgraph ContinuityInit[连续性初始化]
+        CI1[初始状态提取] --> CI2[角色外貌/服装]
+        CI2 --> CI3[场景关键道具]
+        CI3 --> CI4[时间线起点注册]
+    end
+    
+    ContinuityInit --> Output1[结构化剧本对象<br/>含初始连续性状态]
+    
+    %% 样式
+    classDef aiProcess fill:#bbdefb,stroke:#1976d2
+    classDef ruleProcess fill:#f3e5f5,stroke:#7b1fa2
+    classDef data fill:#e8f5e8,stroke:#2e7d32
+    
+    class AIParse aiProcess
+    class RuleEnhance,ContinuityInit ruleProcess
+    class Output1 data</pre>
+<h4 id="核心功能">核心功能</h4>
+<ol>
+<li class="lvl-3">
+<p>自动识别输入格式，根据不同的剧本做不同处理</p>
+</li>
+<li class="lvl-3">
+<p>通过剧本复杂度、类型、解析置信度，本地解析+AI 解析</p>
+</li>
+<li class="lvl-3">
+<p>提取语义元素（角色、动作、对话、场景）</p>
+</li>
+<li class="lvl-3">
+<p>转换为统一数据结构</p>
+</li>
+<li class="lvl-3">
+<p>保持原始语义，不添加时间信息</p>
+</li>
+</ol>
+<pre class="mermaid">sequenceDiagram
+    participant User as 用户
+    participant Parser as 剧本解析智能体
+    participant LLM as GPT-4
+    participant Rules as 规则引擎
+    participant CM as 连续性管理器
+    participant DB as 状态数据库
+    
+    User->>Parser: 提交原始剧本
+    Parser->>LLM: 调用LLM语义解析
+    LLM-->>Parser: 返回初步结构化数据
+    Parser->>Rules: 应用时长估算规则
+    Rules-->>Parser: 返回增强后数据
+    Parser->>Rules: 计算动作复杂度
+    Rules-->>Parser: 返回复杂度评分
+    Parser->>CM: 初始化连续性状态
+    CM->>DB: 存储初始状态快照
+    DB-->>CM: 确认存储
+    CM-->>Parser: 返回状态ID
+    Parser->>User: 返回结构化剧本+状态</pre>
+<p><strong>解析规则应包含</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>动作切分规则：</p>
+<ul class="lvl-2">
+<li class="lvl-5">遇到句号/分号/连接词（“突然”“随后”） → 拆分动作</li>
+<li class="lvl-5">对话独立为 <code>dialogue</code> 字段</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p>角色行为去重：</p>
+<ul class="lvl-2">
+<li class="lvl-5">未出镜角色（如电话声音）不生成独立 action</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p>情绪标准化：</p>
+<ul class="lvl-2">
+<li class="lvl-5">
+<p>将文学描述映射到预定义情绪库：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">EMOTION_MAP = &#123;</span><br><span class="line">    <span class="string">&quot;恐惧中夹杂震惊&quot;</span>: [<span class="string">&quot;震惊&quot;</span>, <span class="string">&quot;恐惧&quot;</span>],</span><br><span class="line">    <span class="string">&quot;低沉压抑&quot;</span>: [<span class="string">&quot;压抑&quot;</span>, <span class="string">&quot;愧疚&quot;</span>]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ol>
+<h4 id="关键技术">关键技术</h4>
+<p>格式检测 + 语义提取 + 结构标准化</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>LlamaIndex + 规则增强的 LLM</p>
+</li>
+<li class="lvl-2">
+<p>中文分词（jieba）+ 正则匹配</p>
+</li>
+<li class="lvl-2">
+<p>自动识别场景、角色、动作、对话、情绪</p>
+</li>
+<li class="lvl-2">
+<p>推断角色外观</p>
+</li>
+</ul>
+<h4 id="输入输出-2">输入输出</h4>
+<p>输入，自然语言剧本：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="string">&quot;script_text&quot;</span>: <span class="string">&quot;深夜11点，城市公寓客厅，窗外大雨滂沱。林然裹着旧羊毛毯蜷在沙发里，电视静音播放着黑白老电影。茶几上半杯凉茶已凝出水雾，旁边摊开一本旧相册。手机突然震动，屏幕亮起“未知号码”。她盯着看了三秒，指尖悬停在接听键上方，喉头轻轻滚动。终于，她按下接听，将手机贴到耳边。电话那头沉默两秒，传来一个沙哑的男声：“是我。”  林然的手指瞬间收紧，指节泛白，呼吸停滞了一瞬。  她声音微颤：“……陈默？你还好吗？”  对方停顿片刻，低声说：“我回来了。” 林然猛地坐直，瞳孔收缩，泪水在眼眶中打转。她张了张嘴，却发不出声音，只有毛毯从肩头滑落。”&quot;</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>输出：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;format_type&quot;</span><span class="punctuation">:</span> str<span class="punctuation">,</span>          # 原始格式类型</span><br><span class="line">    <span class="attr">&quot;scenes&quot;</span><span class="punctuation">:</span> List<span class="punctuation">[</span>Scene<span class="punctuation">]</span><span class="punctuation">,</span>       # 场景列表（无时间信息）</span><br><span class="line">    <span class="attr">&quot;characters&quot;</span><span class="punctuation">:</span> List<span class="punctuation">[</span>Character<span class="punctuation">]</span><span class="punctuation">,</span> # 角色列表</span><br><span class="line">    <span class="attr">&quot;dialogues&quot;</span><span class="punctuation">:</span> List<span class="punctuation">[</span>Dialogue<span class="punctuation">]</span><span class="punctuation">,</span> # 对话列表</span><br><span class="line">    <span class="attr">&quot;actions&quot;</span><span class="punctuation">:</span> List<span class="punctuation">[</span>Action<span class="punctuation">]</span><span class="punctuation">,</span>     # 动作列表</span><br><span class="line">    <span class="attr">&quot;parsing_confidence&quot;</span><span class="punctuation">:</span> Dict   # 解析置信度</span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="2-镜头拆分智能体">2.镜头拆分智能体</h3>
+<p><strong>核心目标</strong>：将结构化剧本拆分为视觉上独立的镜头单元，考虑情感节奏和时长合理性</p>
+<p><strong>技术栈</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>LLM</strong>: GPT-4 + 微调的动作-时长模型</p>
+</li>
+<li class="lvl-2">
+<p><strong>规则引擎</strong>: 节奏规则库 + 时长优化算法</p>
+</li>
+<li class="lvl-2">
+<p><strong>状态管理</strong>: 连续性管理器集成</p>
+</li>
+</ul>
+<p><strong>混合模式，协同工作</strong>（并行分析 → AI创意 → 规则技术 → 混合决策）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">任务</th>
+<th style="text-align:left">由谁处理</th>
+<th style="text-align:left">理由</th>
+<th style="text-align:left">技术实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>情感节奏分析</strong></td>
+<td style="text-align:left">LLM主导</td>
+<td style="text-align:left">创意性节奏判断</td>
+<td style="text-align:left">GPT-4 + 情感模型</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>镜头构图建议</strong></td>
+<td style="text-align:left">LLM</td>
+<td style="text-align:left">艺术性视觉设计</td>
+<td style="text-align:left">视觉概念理解</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>语义单元识别</strong></td>
+<td style="text-align:left">混合</td>
+<td style="text-align:left">AI建议，规则验证</td>
+<td style="text-align:left">NLP分句+规则校验</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>时长分配</strong></td>
+<td style="text-align:left">规则主导</td>
+<td style="text-align:left">需精确控制</td>
+<td style="text-align:left">动作时长数据库</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>技术可行性验证</strong></td>
+<td style="text-align:left">规则</td>
+<td style="text-align:left">硬性技术限制</td>
+<td style="text-align:left">规则引擎检查</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>连续性初步检查</strong></td>
+<td style="text-align:left">规则</td>
+<td style="text-align:left">状态一致性要求</td>
+<td style="text-align:left">状态机验证</td>
+</tr>
+</tbody>
+</table>
+<pre class="mermaid">flowchart TD
+    Start2[结构化剧本] --> ParallelAnalysis
+    
+    subgraph ParallelAnalysis[并行分析]
+        AIAnalysis[AI创意分析]
+        RuleAnalysis[技术分析]
+    end
+    
+    AIAnalysis -->|情感节奏/镜头构图| AIPlanning[AI镜头规划]
+    RuleAnalysis -->|时长约束/技术限制| RulePlanning[规则技术规划]
+    
+    AIPlanning --> HybridDecision[混合决策引擎]
+    RulePlanning --> HybridDecision
+    
+    subgraph HybridDecision[混合决策引擎]
+        HD1[AI建议权重:70%] --> HD2[规则建议权重:30%]
+        HD2 --> HD3[加权融合决策]
+        HD3 --> HD4[冲突解决机制]
+    end
+    
+    HybridDecision --> ContinuityValidation
+    
+    subgraph ContinuityValidation[连续性验证]
+        CV1[获取当前状态] --> CV2[验证镜头边界]
+        CV2 --> CV3[计算状态变化]
+        CV3 --> CV4[生成状态快照]
+    end
+    
+    ContinuityValidation --> TimingAllocation
+    
+    subgraph TimingAllocation[时间分配]
+        TA1[累计时长计算] --> TA2[开始/结束时间分配]
+        TA2 --> TA3[节奏优化调整]
+    end
+    
+    TimingAllocation --> Output2[带时间戳镜头序列<br/>含状态快照和情绪曲线]
+    
+    %% 协作模式说明
+    subgraph CollaborationNote[协作模式说明]
+        CN1[AI负责创意判断<br/>• 情感强度分析<br/>• 镜头构图建议<br/>• 语义单元识别]
+        CN2[规则负责技术控制<br/>• 精确时长分配<br/>• 技术可行性验证<br/>• 状态一致性检查]
+    end
+    
+    %% 样式
+    classDef parallel fill:#fff8e1,stroke:#ff8f00
+    classDef ai fill:#e3f2fd,stroke:#1565c0
+    classDef rule fill:#f3e5f5,stroke:#7b1fa2
+    classDef hybrid fill:#e8f5e9,stroke:#2e7d32
+    
+    class AIAnalysis,AIPlanning ai
+    class RuleAnalysis,RulePlanning rule
+    class HybridDecision hybrid
+    class ParallelAnalysis parallel</pre>
+<p>输出示例</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;shots&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;shot_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;shot_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;scene_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;scene_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;start_time&quot;</span><span class="punctuation">:</span> <span class="number">0</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;end_time&quot;</span><span class="punctuation">:</span> <span class="number">3.5</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;duration&quot;</span><span class="punctuation">:</span> <span class="number">3.5</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;shot_type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;medium_shot&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;main_character&quot;</span><span class="punctuation">:</span> <span class="string">&quot;张三&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;key_action&quot;</span><span class="punctuation">:</span> <span class="string">&quot;紧张地环顾四周&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;description&quot;</span><span class="punctuation">:</span> <span class="string">&quot;张三站在客厅中央，紧张地环顾四周&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;emotion_intensity&quot;</span><span class="punctuation">:</span> <span class="number">4</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;camera_movement&quot;</span><span class="punctuation">:</span> <span class="string">&quot;static&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;continuity_anchors&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;start&quot;</span><span class="punctuation">:</span> <span class="string">&quot;ref:state_snapshot_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;end&quot;</span><span class="punctuation">:</span> <span class="string">&quot;ref:state_snapshot_002&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;summary&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;total_shots&quot;</span><span class="punctuation">:</span> <span class="number">15</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;total_duration&quot;</span><span class="punctuation">:</span> <span class="number">68.5</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;avg_shot_duration&quot;</span><span class="punctuation">:</span> <span class="number">4.57</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;emotion_curve&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="number">3</span><span class="punctuation">,</span> <span class="number">4</span><span class="punctuation">,</span> <span class="number">2</span><span class="punctuation">,</span> <span class="number">5</span><span class="punctuation">,</span> <span class="number">3</span><span class="punctuation">,</span> ...<span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="3-视频分段智能体">3.视频分段智能体</h3>
+<p><strong>核心目标</strong>:：将镜头序列按5秒粒度切分，确保每个片段符合AI视频模型限制</p>
+<p><strong>技术栈</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>算法</strong>: 动作边界检测 + 动态规划切分</p>
+</li>
+<li class="lvl-2">
+<p><strong>规则</strong>: 合并策略引擎 + 质量评估</p>
+</li>
+<li class="lvl-2">
+<p><strong>状态</strong>: 片段级锚点生成</p>
+</li>
+</ul>
+<p><strong>规则主导，AI辅助</strong>（规则计算 → AI优化 → 规则验证）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">任务</th>
+<th style="text-align:left">由谁处理</th>
+<th style="text-align:left">理由</th>
+<th style="text-align:left">技术实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>5秒边界计算</strong></td>
+<td style="text-align:left">规则</td>
+<td style="text-align:left">精确数学计算</td>
+<td style="text-align:left">动态规划算法</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>动作边界检测</strong></td>
+<td style="text-align:left">混合</td>
+<td style="text-align:left">AI理解语义边界</td>
+<td style="text-align:left">动作识别模型</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>合并策略决策</strong></td>
+<td style="text-align:left">规则</td>
+<td style="text-align:left">技术参数优化</td>
+<td style="text-align:left">合并算法引擎</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>语义完整性判断</strong></td>
+<td style="text-align:left">AI辅助</td>
+<td style="text-align:left">理解动作单元</td>
+<td style="text-align:left">LLM语义分析</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>锚点生成</strong></td>
+<td style="text-align:left">规则</td>
+<td style="text-align:left">技术性状态提取</td>
+<td style="text-align:left">状态机快照</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>质量评估</strong></td>
+<td style="text-align:left">混合</td>
+<td style="text-align:left">AI评估流畅性</td>
+<td style="text-align:left">LLM + 规则检查</td>
+</tr>
+</tbody>
+</table>
+<pre class="mermaid">flowchart LR
+    Start3[镜头序列] --> RuleCore
+    
+    subgraph RuleCore[规则核心计算]
+        RC1[动态规划切分算法] --> RC2[5秒边界精确计算]
+        RC2 --> RC3[合并策略引擎]
+        RC3 --> RC4[技术参数验证]
+    end
+    
+    RuleCore --> AIOptimize
+    
+    subgraph AIOptimize[AI自然度优化]
+        AO1[动作边界语义理解] --> AO2[切分点自然度评分]
+        AO2 --> AO3[流畅性建议]
+        AO3 --> AO4[AI质量反馈]
+    end
+    
+    RuleCore --> ContinuityAnchor
+    
+    subgraph ContinuityAnchor[连续性锚点生成]
+        CA1[获取状态快照] --> CA2[提取关键状态]
+        CA2 --> CA3[生成片段锚点]
+        CA3 --> CA4[建立引用关系]
+    end
+    
+    AIOptimize -->|优化建议| RuleAdjust[规则调整]
+    RuleAdjust --> RuleCore
+    
+    ContinuityAnchor --> Output3[AI视频片段序列<br/>• 精确5秒分段<br/>• 连续性锚点包<br/>• 技术需求规格]
+    
+    %% 分工说明
+    subgraph Division[明确分工]
+        D1[规则主导任务<br/>• 5秒精确切分<br/>• 合并策略决策<br/>• 技术参数计算]
+        D2[AI辅助任务<br/>• 语义边界理解<br/>• 切分点自然度<br/>• 流畅性优化]
+    end
+    
+    %% 样式
+    classDef ruleCore fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef aiOpt fill:#e3f2fd,stroke:#1565c0
+    classDef continuity fill:#e8f5e9,stroke:#2e7d32
+    
+    class RuleCore,RuleAdjust ruleCore
+    class AIOptimize aiOpt
+    class ContinuityAnchor continuity</pre>
+<pre class="mermaid">sequenceDiagram
+    participant Splitter as AI分段智能体
+    participant Algo as 切分算法
+    participant Rules as 合并策略
+    participant CM as 连续性管理器
+    participant Anchor as 锚点生成器
+    
+    Splitter->>Algo: 传入镜头序列
+    Algo->>Algo: 寻找自然切分点
+    Algo->>Algo: 动态规划优化切分
+    Algo-->>Splitter: 返回初步片段
+    
+    Splitter->>Rules: 请求合并优化
+    Rules->>CM: 检查连续性兼容性
+    CM-->>Rules: 返回状态兼容性
+    Rules->>Rules: 应用合并规则
+    Rules-->>Splitter: 返回优化后片段
+    
+    Splitter->>Anchor: 为每个片段生成锚点
+    Anchor->>CM: 获取开始/结束状态
+    CM-->>Anchor: 返回状态快照
+    Anchor->>Anchor: 提取关键锚点信息
+    Anchor-->>Splitter: 返回锚点包
+    
+    Splitter->>Splitter: 组装最终输出</pre>
+<p>输出示例</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;fragments&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;fragment_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;frag_001_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;shot_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;shot_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;start_time&quot;</span><span class="punctuation">:</span> <span class="number">0</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;end_time&quot;</span><span class="punctuation">:</span> <span class="number">4.5</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;duration&quot;</span><span class="punctuation">:</span> <span class="number">4.5</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;content&quot;</span><span class="punctuation">:</span> <span class="string">&quot;张三紧张地环顾四周，听到奇怪的声音&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;split_type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;natural&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;continuity_anchors&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;start&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;character_states&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;张三&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">              <span class="attr">&quot;appearance&quot;</span><span class="punctuation">:</span> <span class="string">&quot;灰色夹克&quot;</span><span class="punctuation">,</span></span><br><span class="line">              <span class="attr">&quot;position&quot;</span><span class="punctuation">:</span> <span class="string">&quot;客厅中央&quot;</span><span class="punctuation">,</span></span><br><span class="line">              <span class="attr">&quot;emotion&quot;</span><span class="punctuation">:</span> <span class="string">&quot;紧张&quot;</span><span class="punctuation">,</span></span><br><span class="line">              <span class="attr">&quot;props_in_hand&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">]</span></span><br><span class="line">            <span class="punctuation">&#125;</span></span><br><span class="line">          <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;end&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;character_states&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;张三&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">              <span class="attr">&quot;appearance&quot;</span><span class="punctuation">:</span> <span class="string">&quot;灰色夹克&quot;</span><span class="punctuation">,</span></span><br><span class="line">              <span class="attr">&quot;position&quot;</span><span class="punctuation">:</span> <span class="string">&quot;客厅中央&quot;</span><span class="punctuation">,</span></span><br><span class="line">              <span class="attr">&quot;emotion&quot;</span><span class="punctuation">:</span> <span class="string">&quot;警觉&quot;</span><span class="punctuation">,</span></span><br><span class="line">              <span class="attr">&quot;props_in_hand&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">]</span></span><br><span class="line">            <span class="punctuation">&#125;</span></span><br><span class="line">          <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;technical_requirements&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;min_duration&quot;</span><span class="punctuation">:</span> <span class="number">4.5</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;max_duration&quot;</span><span class="punctuation">:</span> <span class="number">5.0</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;preferred_style&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cinematic&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;camera_type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;medium_shot&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="4-指令转换智能体">4.指令转换智能体</h3>
+<p><strong>核心目标</strong>：将片段序列转换为高质量、模型特定的AI视频生成提示词</p>
+<p><strong>技术栈</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>LLM</strong>: GPT-4 + Claude 3.5 (多模型融合)</p>
+</li>
+<li class="lvl-2">
+<p><strong>模板引擎</strong>: Jinja2 + 自定义模板库</p>
+</li>
+<li class="lvl-2">
+<p><strong>模型适配器</strong>: 多AI视频模型支持</p>
+</li>
+</ul>
+<p><strong>AI主导，规则框架约束</strong>（规则框架 → AI内容 → 规则格式化 → AI润色）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">任务</th>
+<th style="text-align:left">由谁处理</th>
+<th style="text-align:left">理由</th>
+<th style="text-align:left">技术实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>视觉描述生成</strong></td>
+<td style="text-align:left">LLM主导</td>
+<td style="text-align:left">创意性语言表达</td>
+<td style="text-align:left">GPT-4/Claude 3.5</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>情绪氛围渲染</strong></td>
+<td style="text-align:left">LLM</td>
+<td style="text-align:left">艺术性氛围营造</td>
+<td style="text-align:left">多模态LLM</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>镜头运动描述</strong></td>
+<td style="text-align:left">混合</td>
+<td style="text-align:left">AI创意，规则技术化</td>
+<td style="text-align:left">LLM + 运动词汇库</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>连续性约束嵌入</strong></td>
+<td style="text-align:left">规则强制</td>
+<td style="text-align:left">必须的技术要求</td>
+<td style="text-align:left">模板填充引擎</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>模型特定格式</strong></td>
+<td style="text-align:left">规则</td>
+<td style="text-align:left">技术适配要求</td>
+<td style="text-align:left">模型适配器模板</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>负面提示词生成</strong></td>
+<td style="text-align:left">混合</td>
+<td style="text-align:left">AI理解，规则积累</td>
+<td style="text-align:left">LLM分析 + 负面词库</td>
+</tr>
+</tbody>
+</table>
+<pre class="mermaid">graph TB
+    Start4[AI片段序列] --> RuleFramework
+    
+    subgraph RuleFramework[规则构建框架]
+        RF1[模板选择引擎] --> RF2[模型适配器选择]
+        RF2 --> RF3[技术参数生成器]
+        RF3 --> RF4[约束提取模块]
+    end
+    
+    RuleFramework --> AIContent
+    
+    subgraph AIContent[AI创意内容生成]
+        AC1[视觉描述生成<br/>GPT-4/Claude] --> AC2[情绪氛围渲染]
+        AC2 --> AC3[镜头运动描述]
+        AC3 --> AC4[光影色彩设计]
+    end
+    
+    RuleFramework --> Constraints[约束数据<br/>角色/场景/道具状态]
+    
+    Constraints --> HybridAssembly
+    
+    subgraph HybridAssembly[混合组装引擎]
+        HA1[规则：框架填充] --> HA2[AI：内容注入]
+        HA2 --> HA3[规则：格式标准化]
+        HA3 --> HA4[AI：语言润色优化]
+    end
+    
+    HybridAssembly --> ModelAdaptation
+    
+    subgraph ModelAdaptation[模型适配]
+        MA1[Sora适配器<br/>注重时序连贯性] --> MA2[Runway适配器<br/>注重视觉风格]
+        MA2 --> MA3[Pika适配器<br/>注重创意表现]
+        MA3 --> MA4[技术参数转换]
+    end
+    
+    ModelAdaptation --> Output4[AI视频生成指令<br/>• 模型特定Prompt<br/>• 完整技术参数<br/>• 连续性约束嵌入]
+    
+    %% 协作流程说明
+    subgraph ProcessFlow[协作流程]
+        PF1[1. 规则建立框架] --> PF2[2. AI填充内容]
+        PF2 --> PF3[3. 规则技术约束]
+        PF3 --> PF4[4. AI语言优化]
+        PF4 --> PF5[5. 模型适配输出]
+    end
+    
+    %% 样式
+    classDef ruleFrame fill:#f3e5f5,stroke:#7b1fa2
+    classDef aiContent fill:#e3f2fd,stroke:#1565c0
+    classDef hybrid fill:#e8f5e9,stroke:#2e7d32
+    classDef model fill:#fff3e0,stroke:#f57c00
+    
+    class RuleFramework ruleFrame
+    class AIContent aiContent
+    class HybridAssembly hybrid
+    class ModelAdaptation model</pre>
+<p>输出示例</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;fragments&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;fragment_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;frag_001_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;model&quot;</span><span class="punctuation">:</span> <span class="string">&quot;runway_gen2&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;prompt_text&quot;</span><span class="punctuation">:</span> <span class="string">&quot;电影感画面，中景镜头。张三站在昏暗的客厅中央，紧张地环顾四周，听到奇怪的声音后表情变得警觉。暖色调灯光从右侧窗户射入，营造紧张氛围。\n\n连续性约束：\n- 张三：穿着灰色夹克，位置客厅中央\n- 场景：客厅，光线昏暗，关键道具：沙发、茶几\n\n镜头运动：缓慢推近&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;technical_parameters&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;duration&quot;</span><span class="punctuation">:</span> <span class="number">4.5</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;fps&quot;</span><span class="punctuation">:</span> <span class="number">24</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;resolution&quot;</span><span class="punctuation">:</span> <span class="string">&quot;1024x576&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;style&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cinematic&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;camera_movement&quot;</span><span class="punctuation">:</span> <span class="string">&quot;slow_push_in&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;seed&quot;</span><span class="punctuation">:</span> <span class="number">123456</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;negative_prompt&quot;</span><span class="punctuation">:</span> <span class="string">&quot;blurry, distorted, low quality, cartoonish&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;generation_instructions&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;model_specific&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;runway_gen2&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;interpolate_frames&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;motion_brush_strength&quot;</span><span class="punctuation">:</span> <span class="number">0.7</span></span><br><span class="line">          <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="5-质量审查智能体">5.质量审查智能体</h3>
+<p><strong>核心目标</strong>：确保整个流程的输出质量，检查连贯性、合规性和技术可行性</p>
+<p><strong>技术栈</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>规则引擎</strong>: 硬约束检查系统</p>
+</li>
+<li class="lvl-2">
+<p><strong>LLM</strong>: 自反思和语义连贯性评估</p>
+</li>
+<li class="lvl-2">
+<p><strong>统计分析</strong>: 质量指标计算</p>
+</li>
+</ul>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p>检查时间连续性</p>
+</li>
+<li class="lvl-3">
+<p>验证视觉连贯性</p>
+</li>
+<li class="lvl-3">
+<p>检测角色漂移</p>
+</li>
+<li class="lvl-3">
+<p>评估整体节奏</p>
+</li>
+</ol>
+<p><strong>客观评审 + 自动修复建议</strong> - 不修改内容，只发现问题并提供修复建议</p>
+</blockquote>
+<p><strong>规则主导，AI深度评估</strong>（规则硬检查 → AI软评估 → 混合修正）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">任务</th>
+<th style="text-align:left">由谁处理</th>
+<th style="text-align:left">理由</th>
+<th style="text-align:left">技术实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>硬规则检查</strong></td>
+<td style="text-align:left">规则强制</td>
+<td style="text-align:left">客观可量化标准</td>
+<td style="text-align:left">规则引擎</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>时长合规性</strong></td>
+<td style="text-align:left">规则</td>
+<td style="text-align:left">精确数值检查</td>
+<td style="text-align:left">数值验证规则</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>道具连续性</strong></td>
+<td style="text-align:left">规则</td>
+<td style="text-align:left">状态机逻辑检查</td>
+<td style="text-align:left">状态转移验证</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>视觉连贯性</strong></td>
+<td style="text-align:left">AI主导</td>
+<td style="text-align:left">主观美学判断</td>
+<td style="text-align:left">LLM自反思</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>叙事流畅性</strong></td>
+<td style="text-align:left">AI</td>
+<td style="text-align:left">语义逻辑理解</td>
+<td style="text-align:left">GPT-4深度分析</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>修正建议生成</strong></td>
+<td style="text-align:left">混合</td>
+<td style="text-align:left">AI诊断，规则方案</td>
+<td style="text-align:left">LLM + 修正规则库</td>
+</tr>
+</tbody>
+</table>
+<pre class="mermaid">flowchart TD
+    Start5[AI生成指令序列] --> RuleHardCheck
+    
+    subgraph RuleHardCheck[规则硬性检查]
+        RH1[时长合规性检查<br/>≤5.2秒] --> RH2[道具连续性验证<br/>状态跳变检测]
+        RH2 --> RH3[技术参数一致性<br/>风格/帧率/分辨率]
+        RH3 --> RH4[格式规范验证<br/>模型要求适配]
+    end
+    
+    RuleHardCheck --> PassHard{硬规则通过?}
+    
+    PassHard -->|通过| AISoftCheck
+    PassHard -->|不通过| AutoFix[自动修正引擎]
+    
+    subgraph AISoftCheck[AI软性评估]
+        AS1[视觉连贯性评估<br/>LLM自反思] --> AS2[叙事流畅性分析]
+        AS2 --> AS3[情感过渡自然度]
+        AS3 --> AS4[美学质量评分]
+    end
+    
+    AutoFix --> RuleHardCheck
+    
+    AISoftCheck --> HybridDecision2
+    
+    subgraph HybridDecision2[混合修正决策]
+        HD2_1[AI诊断问题根源] --> HD2_2[规则生成修正方案]
+        HD2_2 --> HD2_3[成本-效益分析]
+        HD2_3 --> HD2_4[优先级排序]
+    end
+    
+    HybridDecision2 --> FinalCheck{最终质量评估}
+    
+    FinalCheck -->|通过| Output5[最终输出<br/>审查报告+通过标志]
+    FinalCheck -->|需修正| FeedbackLoop[反馈修正循环]
+    
+    FeedbackLoop -->|定位问题阶段| StageRouting
+   
+    subgraph StageRouting[阶段路由]
+        SR1[剧本解析问题 → 阶段1] --> SR2[镜头拆分问题 → 阶段2]
+        SR2 --> SR3[AI分段问题 → 阶段3]
+        SR3 --> SR4[AI转换问题 → 阶段4]
+    end
+    
+    %% 样式
+    classDef ruleCheck fill:#f3e5f5,stroke:#7b1fa2
+    classDef aiCheck fill:#e3f2fd,stroke:#1565c0
+    classDef decision fill:#e8f5e9,stroke:#2e7d32
+    classDef routing fill:#fff3e0,stroke:#f57c00
+    
+    class RuleHardCheck ruleCheck
+    class AISoftCheck aiCheck
+    class HybridDecision2 decision
+    class StageRouting routing</pre>
+<pre class="mermaid">sequenceDiagram
+    participant Auditor as 质量审查智能体
+    participant HardRules as 硬规则检查器
+    participant LLMCheck as LLM自反思
+    participant Metrics as 质量指标计算
+    participant CM as 连续性管理器
+    participant Corrector as 自动修正器
+    
+    Auditor->>HardRules: 传入片段序列
+    HardRules->>HardRules: 检查时长限制
+    HardRules->>HardRules: 检查技术参数
+    HardRules->>CM: 验证连续性
+    CM-->>HardRules: 返回状态一致性
+    HardRules-->>Auditor: 返回规则检查结果
+    
+    Auditor->>LLMCheck: 请求连贯性评估
+    LLMCheck->>LLMCheck: 构建评估Prompt
+    LLMCheck->>LLM: 调用LLM评估
+    LLM-->>LLMCheck: 返回评估结果
+    LLMCheck-->>Auditor: 返回连贯性分析
+    
+    Auditor->>Metrics: 请求质量指标
+    Metrics->>Metrics: 计算各项指标
+    Metrics->>Metrics: 计算总体得分
+    Metrics-->>Auditor: 返回质量报告
+    
+    Auditor->>Auditor: 综合所有检查结果
+    
+    alt 需要自动修正
+        Auditor->>Corrector: 请求自动修正
+        Corrector->>Corrector: 应用修正规则
+        Corrector-->>Auditor: 返回修正后片段
+        Auditor->>Auditor: 重新评估修正结果
+    end
+    
+    Auditor->>Auditor: 生成最终审查报告</pre>
+<h4 id="检查维度">检查维度</h4>
+<ol>
+<li class="lvl-3">
+<p><strong>连续性检查</strong>：验证镜头间的视觉和逻辑连续性</p>
+</li>
+<li class="lvl-3">
+<p><strong>约束验证</strong>：确保智能体4的输出满足智能体3的所有约束</p>
+</li>
+<li class="lvl-3">
+<p><strong>视觉质量评估</strong>：评估构图、灯光、色彩、风格质量</p>
+</li>
+<li class="lvl-3">
+<p><strong>技术验证</strong>：验证提示词质量、相机参数合理性、生成可行性</p>
+</li>
+</ol>
+<h4 id="输出示例">输出示例</h4>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;audit_report&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;overall_status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;needs_revision&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;summary&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;total_fragments&quot;</span><span class="punctuation">:</span> <span class="number">24</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;passed_rules&quot;</span><span class="punctuation">:</span> <span class="number">18</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;violations&quot;</span><span class="punctuation">:</span> <span class="number">3</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;warnings&quot;</span><span class="punctuation">:</span> <span class="number">8</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;detailed_findings&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;violation&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;severity&quot;</span><span class="punctuation">:</span> <span class="string">&quot;high&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;fragment_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;frag_003_002&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;issue&quot;</span><span class="punctuation">:</span> <span class="string">&quot;duration_exceeded&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;details&quot;</span><span class="punctuation">:</span> <span class="string">&quot;片段时长5.5秒，超过5.2秒限制&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;suggestion&quot;</span><span class="punctuation">:</span> <span class="string">&quot;重新切分该片段或在动作停顿点插入过渡&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;warning&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;severity&quot;</span><span class="punctuation">:</span> <span class="string">&quot;medium&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;fragment_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;frag_005_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;issue&quot;</span><span class="punctuation">:</span> <span class="string">&quot;continuity_concern&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;details&quot;</span><span class="punctuation">:</span> <span class="string">&quot;角色服装在30秒内无理由变化&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;suggestion&quot;</span><span class="punctuation">:</span> <span class="string">&quot;添加服装变化说明或保持服装一致&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;quality_metrics&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;overall_score&quot;</span><span class="punctuation">:</span> <span class="number">78.5</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;temporal_score&quot;</span><span class="punctuation">:</span> <span class="number">85.2</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;continuity_score&quot;</span><span class="punctuation">:</span> <span class="number">72.3</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;technical_score&quot;</span><span class="punctuation">:</span> <span class="number">90.1</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;aesthetic_score&quot;</span><span class="punctuation">:</span> <span class="number">66.7</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;recommendations&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="string">&quot;重新处理片段3、5、7&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="string">&quot;调整片段12的Prompt以增强连贯性&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="string">&quot;为片段8-10添加过渡效果&quot;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;automatic_corrections_applied&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="string">&quot;调整了片段15的时长&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="string">&quot;修正了片段20的种子值&quot;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p>道具连续性验证协作示例：</p>
+<pre class="mermaid">graph TB
+%% 协作示例
+    subgraph Example[道具连续性验证]
+        E1[Splitter: 角色拿起道具] --> E2[CM: 检测状态变化]
+        E2 --> E3[Rules: 验证是否合理]
+        E3 -->|规则数据| E4[SM: 查询历史状态]
+        E4 -->|返回历史| E3
+        E3 -->|验证结果| E2
+        E2 -->|更新状态| E5[SM: 存储新状态]
+    end
+    
+    %% 样式
+    classDef core fill:#e3f2fd,stroke:#1565c0
+    classDef external fill:#f3e5f5,stroke:#7b1fa2
+    classDef example fill:#e8f5e8,stroke:#2e7d32</pre>
+<h3 id="规则引擎库">规则引擎库</h3>
+<p>规则引擎库是系统的&quot;技术大脑&quot;，负责所有可量化、可规则化的技术决策和控制。</p>
+<blockquote>
+<p>规则引擎库是系统中所有<strong>可量化、可标准化决策</strong>的执行中枢。它负责将人类的专业知识、行业标准和AI视频模型的技术限制转化为可执行的规则。</p>
+</blockquote>
+<p>规则引擎采用<strong>前向链推理</strong>：当新事实进入系统时，引擎会自动匹配所有相关规则，触发符合条件的动作。</p>
+<blockquote>
+<p>示例：时长调整规则输入事实：{动作: “拔枪”, 情感: “紧张”, 复杂度: 4}<br>
+匹配规则：IF 动作包含&quot;拔枪&quot; AND 情感=“紧张” THEN 基础时长=2.0秒<br>
+IF 复杂度&gt;3 THEN 时长增加30%<br>
+执行结果：2.0秒 × 1.3 = 2.6秒</p>
+</blockquote>
+<p>规则引擎支持<strong>规则进化</strong>：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>基于用户反馈调整规则权重</p>
+</li>
+<li class="lvl-2">
+<p>A/B测试不同规则版本</p>
+</li>
+<li class="lvl-2">
+<p>自动发现异常模式并建议新规则</p>
+</li>
+</ul>
+</blockquote>
+<pre class="mermaid">graph TB
+    subgraph RuleEngine[规则引擎库]
+        subgraph Core[核心引擎]
+            RE[规则执行引擎]
+            MV[多版本规则管理]
+            CC[冲突检测与解决]
+        end
+        
+        subgraph RuleSets[规则集合]
+            DurationRules[时长规则集]
+            SplitRules[切分规则集]
+            MergeRules[合并规则集]
+            QualityRules[质量规则集]
+            ConstraintRules[约束规则集]
+        end
+        
+        subgraph Data[数据层]
+            RuleDB[(规则数据库)]
+            ActionDB[(动作时长数据库)]
+            TemplateDB[(模板数据库)]
+        end
+        
+        subgraph Interface[接口层]
+            API[规则执行API]
+            CLI[命令行接口]
+            Monitor[规则监控面板]
+        end
+    end
+    
+    %% 外部调用
+    Parser -.->|格式标准化| API
+    Splitter -.->|时长优化| API
+    Fragmenter -.->|切分合并| API
+    Auditor -.->|硬规则检查| API
+    
+    %% 内部连接
+    RuleSets --> RE
+    RE --> Data
+    Interface --> Core
+    
+    %% 样式
+    classDef core fill:#f3e5f5,stroke:#7b1fa2
+    classDef rules fill:#e3f2fd,stroke:#1565c0
+    classDef data fill:#e8f5e8,stroke:#2e7d32
+    classDef interface fill:#fff3e0,stroke:#f57c00
+    
+    class Core core
+    class RuleSets rules
+    class Data data
+    class Interface interface</pre>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>核心框架</strong>：Drools（企业级）或自定义规则引擎（轻量级）</p>
+</li>
+<li class="lvl-2">
+<p><strong>规则存储</strong>：PostgreSQL（关系型规则）或 MongoDB（文档型规则）</p>
+</li>
+</ul>
+</blockquote>
+<h4 id="时长规则集"><strong>时长规则集</strong></h4>
+<p>每个动作都关联一个<strong>时长分布模型</strong>，考虑以下因素：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>情感强度（激动时动作更快）</p>
+</li>
+<li class="lvl-2">
+<p>角色年龄（年长者动作更慢）</p>
+</li>
+<li class="lvl-2">
+<p>场景紧急程度（紧急情况加速）</p>
+</li>
+</ul>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">DurationRuleSet</span>:</span><br><span class="line">    <span class="comment"># 对话时长规则</span></span><br><span class="line">    DIALOGUE_DURATION = &#123;</span><br><span class="line">        <span class="string">&quot;zh&quot;</span>: &#123;<span class="string">&quot;base_rate&quot;</span>: <span class="number">3.0</span>, <span class="string">&quot;emotion_adjust&quot;</span>: &#123;<span class="string">&quot;angry&quot;</span>: <span class="number">0.8</span>, <span class="string">&quot;sad&quot;</span>: <span class="number">1.3</span>&#125;&#125;,</span><br><span class="line">        <span class="string">&quot;en&quot;</span>: &#123;<span class="string">&quot;base_rate&quot;</span>: <span class="number">2.0</span>, <span class="string">&quot;emotion_adjust&quot;</span>: &#123;<span class="string">&quot;angry&quot;</span>: <span class="number">0.7</span>, <span class="string">&quot;sad&quot;</span>: <span class="number">1.4</span>&#125;&#125;</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 动作时长数据库</span></span><br><span class="line">    ACTION_DURATION_DB = &#123;</span><br><span class="line">        <span class="string">&quot;握手&quot;</span>: &#123;<span class="string">&quot;base&quot;</span>: <span class="number">2.5</span>, <span class="string">&quot;variants&quot;</span>: &#123;<span class="string">&quot;热情&quot;</span>: <span class="number">3.0</span>, <span class="string">&quot;匆忙&quot;</span>: <span class="number">1.5</span>&#125;&#125;,</span><br><span class="line">        <span class="string">&quot;坐下&quot;</span>: &#123;<span class="string">&quot;base&quot;</span>: <span class="number">3.0</span>, <span class="string">&quot;variants&quot;</span>: &#123;<span class="string">&quot;缓慢&quot;</span>: <span class="number">4.0</span>, <span class="string">&quot;快速&quot;</span>: <span class="number">2.0</span>&#125;&#125;,</span><br><span class="line">        <span class="string">&quot;拔枪&quot;</span>: &#123;<span class="string">&quot;base&quot;</span>: <span class="number">2.0</span>, <span class="string">&quot;variants&quot;</span>: &#123;<span class="string">&quot;突然&quot;</span>: <span class="number">1.2</span>, <span class="string">&quot;缓慢&quot;</span>: <span class="number">3.0</span>&#125;&#125;,</span><br><span class="line">        <span class="string">&quot;拥抱&quot;</span>: &#123;<span class="string">&quot;base&quot;</span>: <span class="number">4.0</span>, <span class="string">&quot;variants&quot;</span>: &#123;<span class="string">&quot;深情&quot;</span>: <span class="number">5.0</span>, <span class="string">&quot;短暂&quot;</span>: <span class="number">2.0</span>&#125;&#125;,</span><br><span class="line">        <span class="comment"># ... 200+ 常见动作</span></span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 节奏调整规则</span></span><br><span class="line">    RHYTHM_RULES = [</span><br><span class="line">        &#123;<span class="string">&quot;condition&quot;</span>: <span class="string">&quot;emotion_intensity &gt;= 4&quot;</span>, <span class="string">&quot;adjustment&quot;</span>: <span class="string">&quot;duration *= 0.8&quot;</span>&#125;,</span><br><span class="line">        &#123;<span class="string">&quot;condition&quot;</span>: <span class="string">&quot;emotion_intensity &lt;= 2&quot;</span>, <span class="string">&quot;adjustment&quot;</span>: <span class="string">&quot;duration *= 1.5&quot;</span>&#125;,</span><br><span class="line">        &#123;<span class="string">&quot;condition&quot;</span>: <span class="string">&quot;is_silence == True&quot;</span>, <span class="string">&quot;adjustment&quot;</span>: <span class="string">&quot;duration += 1.0&quot;</span>&#125;</span><br><span class="line">    ]</span><br></pre></td></tr></table></figure>
+<h4 id="切分规则集"><strong>切分规则集</strong></h4>
+<p>负责决定在何处将长镜头切分为5秒以内的片段：</p>
+<blockquote>
+<p>切分点优先级：</p>
+<ul class="lvl-1">
+<li class="lvl-2">动作完成点（最高优先级）
+<ul class="lvl-3">
+<li class="lvl-7">动作动词的完成时态</li>
+<li class="lvl-7">物理动作的结束位置</li>
+</ul>
+</li>
+<li class="lvl-2">语义停顿点
+<ul class="lvl-3">
+<li class="lvl-7">对话间的沉默间隙</li>
+<li class="lvl-7">视线转移的瞬间</li>
+</ul>
+</li>
+<li class="lvl-2">节奏变化点
+<ul class="lvl-3">
+<li class="lvl-7">情绪强度变化</li>
+<li class="lvl-7">音乐节奏变化（如有）</li>
+</ul>
+</li>
+<li class="lvl-2">时间强制点（最后手段）
+<ul class="lvl-3">
+<li class="lvl-4">达到4.8秒无自然切分点时强制切分</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">SplitRuleSet</span>:</span><br><span class="line">    <span class="comment"># 5秒切分策略</span></span><br><span class="line">    SPLIT_STRATEGY = &#123;</span><br><span class="line">        <span class="string">&quot;max_duration&quot;</span>: <span class="number">5.2</span>,</span><br><span class="line">        <span class="string">&quot;min_duration&quot;</span>: <span class="number">2.0</span>,</span><br><span class="line">        <span class="string">&quot;preferred_duration&quot;</span>: <span class="number">4.5</span>,</span><br><span class="line">        <span class="string">&quot;priority_order&quot;</span>: [</span><br><span class="line">            <span class="string">&quot;action_completion&quot;</span>,    <span class="comment"># 动作完成点优先</span></span><br><span class="line">            <span class="string">&quot;dialogue_pause&quot;</span>,       <span class="comment"># 对话停顿点</span></span><br><span class="line">            <span class="string">&quot;gaze_transition&quot;</span>,      <span class="comment"># 视线转移点</span></span><br><span class="line">            <span class="string">&quot;semantic_boundary&quot;</span>,    <span class="comment"># 语义边界</span></span><br><span class="line">            <span class="string">&quot;midpoint&quot;</span>              <span class="comment"># 时间中点（最后手段）</span></span><br><span class="line">        ]</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 动作边界检测规则</span></span><br><span class="line">    ACTION_BOUNDARY_KEYWORDS = &#123;</span><br><span class="line">        <span class="string">&quot;completion&quot;</span>: [<span class="string">&quot;后&quot;</span>, <span class="string">&quot;完&quot;</span>, <span class="string">&quot;结束&quot;</span>, <span class="string">&quot;停止&quot;</span>, <span class="string">&quot;放下&quot;</span>],</span><br><span class="line">        <span class="string">&quot;transition&quot;</span>: [<span class="string">&quot;然后&quot;</span>, <span class="string">&quot;接着&quot;</span>, <span class="string">&quot;转身&quot;</span>, <span class="string">&quot;看向&quot;</span>],</span><br><span class="line">        <span class="string">&quot;pause&quot;</span>: [<span class="string">&quot;停顿&quot;</span>, <span class="string">&quot;沉默&quot;</span>, <span class="string">&quot;犹豫&quot;</span>, <span class="string">&quot;思考&quot;</span>]</span><br><span class="line">    &#125;</span><br></pre></td></tr></table></figure>
+<h4 id="合并规则集"><strong>合并规则集</strong></h4>
+<p>处理过短片段的智能合并：</p>
+<blockquote>
+<p>合并决策树，符合以下所有条件后合并，否则不合并：</p>
+<ol>
+<li class="lvl-3">检查时长：两个片段总时长≤5.2秒</li>
+<li class="lvl-3">检查主体：同一角色+同一场景？</li>
+<li class="lvl-3">检查动作连续性：动作序列是否连贯？</li>
+</ol>
+</blockquote>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">MergeRuleSet</span>:</span><br><span class="line">    <span class="comment"># 合并条件规则</span></span><br><span class="line">    MERGE_CONDITIONS = [</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="string">&quot;condition&quot;</span>: <span class="string">&quot;duration &lt; 2.0 and same_shot and continuity_score &gt; 0.8&quot;</span>,</span><br><span class="line">            <span class="string">&quot;action&quot;</span>: <span class="string">&quot;merge_fragments&quot;</span></span><br><span class="line">        &#125;,</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="string">&quot;condition&quot;</span>: <span class="string">&quot;total_duration &lt;= 5.2 and semantic_coherence &gt; 0.7&quot;</span>,</span><br><span class="line">            <span class="string">&quot;action&quot;</span>: <span class="string">&quot;merge_if_possible&quot;</span></span><br><span class="line">        &#125;</span><br><span class="line">    ]</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 禁止合并的场景</span></span><br><span class="line">    MERGE_EXCLUSIONS = [</span><br><span class="line">        <span class="string">&quot;emotion_transition&quot;</span>,    <span class="comment"># 情绪转折点</span></span><br><span class="line">        <span class="string">&quot;scene_change&quot;</span>,          <span class="comment"># 场景切换</span></span><br><span class="line">        <span class="string">&quot;prop_transfer&quot;</span>,         <span class="comment"># 道具传递</span></span><br><span class="line">        <span class="string">&quot;character_entrance&quot;</span>,    <span class="comment"># 角色登场</span></span><br><span class="line">        <span class="string">&quot;climax_moment&quot;</span>         <span class="comment"># 高潮时刻</span></span><br><span class="line">    ]</span><br></pre></td></tr></table></figure>
+<h4 id="质量规则集"><strong>质量规则集</strong></h4>
+<p>定义硬性的技术标准：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>单个片段最大时长：5.2秒（留出0.2秒缓冲）</p>
+</li>
+<li class="lvl-2">
+<p>最小清晰时长：1.0秒（避免闪烁）</p>
+</li>
+<li class="lvl-2">
+<p>分辨率标准集：{1024×576, 1920×1080}</p>
+</li>
+<li class="lvl-2">
+<p>帧率一致性：±2fps容差</p>
+</li>
+</ul>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">QualityRuleSet</span>:</span><br><span class="line">    <span class="comment"># 硬性技术规则</span></span><br><span class="line">    HARD_RULES = &#123;</span><br><span class="line">        <span class="string">&quot;duration_limit&quot;</span>: &#123;<span class="string">&quot;max&quot;</span>: <span class="number">5.2</span>, <span class="string">&quot;min&quot;</span>: <span class="number">1.0</span>&#125;,</span><br><span class="line">        <span class="string">&quot;fps_consistency&quot;</span>: &#123;<span class="string">&quot;tolerance&quot;</span>: <span class="number">2</span>&#125;,</span><br><span class="line">        <span class="string">&quot;resolution_standard&quot;</span>: [<span class="string">&quot;1024x576&quot;</span>, <span class="string">&quot;1920x1080&quot;</span>],</span><br><span class="line">        <span class="string">&quot;format_requirements&quot;</span>: &#123;</span><br><span class="line">            <span class="string">&quot;runway&quot;</span>: &#123;<span class="string">&quot;max_length&quot;</span>: <span class="number">320</span>&#125;,</span><br><span class="line">            <span class="string">&quot;sora&quot;</span>: &#123;<span class="string">&quot;max_length&quot;</span>: <span class="number">400</span>&#125;,</span><br><span class="line">            <span class="string">&quot;pika&quot;</span>: &#123;<span class="string">&quot;max_length&quot;</span>: <span class="number">280</span>&#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 连续性验证规则</span></span><br><span class="line">    CONTINUITY_RULES = [</span><br><span class="line">        &#123;<span class="string">&quot;check&quot;</span>: <span class="string">&quot;prop_state_change&quot;</span>, <span class="string">&quot;action&quot;</span>: <span class="string">&quot;validate_with_time_gap&quot;</span>&#125;,</span><br><span class="line">        &#123;<span class="string">&quot;check&quot;</span>: <span class="string">&quot;costume_change&quot;</span>, <span class="string">&quot;action&quot;</span>: <span class="string">&quot;require_explanation&quot;</span>&#125;,</span><br><span class="line">        &#123;<span class="string">&quot;check&quot;</span>: <span class="string">&quot;position_jump&quot;</span>, <span class="string">&quot;action&quot;</span>: <span class="string">&quot;validate_movement_speed&quot;</span>&#125;</span><br><span class="line">    ]</span><br></pre></td></tr></table></figure>
+<h3 id="状态管理器">状态管理器</h3>
+<p>状态管理器是连续性管理器的底层支撑，负责状态数据的存储、检索和版本控制。</p>
+<p>状态本质上是一系列<strong>时间戳-状态</strong>对，状态管理器采用专门的时序数据库架构：</p>
+<blockquote>
+<p>存储层次：</p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>内存层（毫秒级访问）</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>最近5分钟的状态变化</p>
+</li>
+<li class="lvl-7">
+<p>热点状态的缓存</p>
+</li>
+<li class="lvl-7">
+<p>查询结果的缓存</p>
+</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>高速存储层（秒级访问）</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>当前处理会话的所有状态</p>
+</li>
+<li class="lvl-7">
+<p>频繁查询的历史状态</p>
+</li>
+<li class="lvl-7">
+<p>索引和元数据</p>
+</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>归档存储层（分钟级访问）</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>历史会话的完整状态</p>
+</li>
+<li class="lvl-7">
+<p>备份和快照</p>
+</li>
+<li class="lvl-7">
+<p>审计日志</p>
+</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<pre class="mermaid">graph TB
+    subgraph SM[状态管理器]
+        subgraph Storage[存储引擎]
+            TimelineStore[时间线存储]
+            VersionStore[版本存储]
+            CacheStore[缓存存储]
+            ArchiveStore[归档存储]
+        end
+        
+        subgraph Index[索引系统]
+            TimeIndex[时间索引]
+            EntityIndex[实体索引]
+            PropIndex[道具索引]
+            SceneIndex[场景索引]
+            FulltextIndex[全文索引]
+        end
+        
+        subgraph Query[查询引擎]
+            TemporalQuery[时序查询]
+            SpatialQuery[空间查询]
+            StateQuery[状态查询]
+            HistoryQuery[历史查询]
+        end
+        
+        subgraph Sync[同步服务]
+            Replication[数据复制]
+            Consistency[一致性保证]
+            Backup[备份恢复]
+            Audit[审计日志]
+        end
+    end
+    
+    subgraph External[外部系统]
+        CM[连续性管理器]
+        Parser[剧本解析]
+        Auditor[质量审查]
+    end
+    
+    %% 连接关系
+    CM --> Query
+    Query --> Storage
+    Storage --> Index
+    Storage --> Sync
+    
+    External --> Query
+    
+    %% 样式
+    classDef storage fill:#e8f5e8,stroke:#2e7d32
+    classDef index fill:#e3f2fd,stroke:#1565c0
+    classDef query fill:#fff3e0,stroke:#f57c00
+    classDef sync fill:#f3e5f5,stroke:#7b1fa2
+    
+    class Storage storage
+    class Index index
+    class Query query
+    class Sync sync</pre>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>时序数据库</strong>：InfluxDB（专业时序）或 TimescaleDB（PostgreSQL扩展）</p>
+</li>
+<li class="lvl-2">
+<p><strong>缓存系统</strong>：Redis（内存缓存） + RocksDB（本地存储）</p>
+</li>
+</ul>
+</blockquote>
+<h4 id="时间线存储引擎"><strong>时间线存储引擎</strong></h4>
+<p>专门为时序状态数据设计的存储引擎：</p>
+<h4 id="差异存储系统"><strong>差异存储系统</strong></h4>
+<h4 id="缓存管理系统"><strong>缓存管理系统</strong></h4>
+<h4 id="备份与恢复系统"><strong>备份与恢复系统</strong></h4>
+<h3 id="连续性管理器">连续性管理器</h3>
+<p>连续性管理器是系统的&quot;记忆中枢&quot;，负责跟踪和维护所有状态变化，确保视频生成的连贯性。</p>
+<blockquote>
+<p>连续性管理器负责跟踪和维护<strong>故事世界的完整状态</strong>，确保AI生成的每个5秒片段都能完美衔接，就像是一个专业剪辑师在脑海中记住所有镜头细节。</p>
+</blockquote>
+<p>连续性管理器维护一个<strong>多维状态空间</strong>：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>时间维度（最重要的维度）</p>
+<ul class="lvl-3">
+<li class="lvl-4">绝对时间线：从剧本开始到结束</li>
+<li class="lvl-4">相对时间线：镜头内的相对时间</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>空间维度</p>
+<ul class="lvl-3">
+<li class="lvl-4">绝对位置：场景内的3D坐标</li>
+<li class="lvl-4">相对位置：角色间的距离和朝向</li>
+<li class="lvl-4">视线方向：角色看向哪里</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>属性维度</p>
+<ul class="lvl-3">
+<li class="lvl-5">角色属性：服装、道具、情绪</li>
+<li class="lvl-5">场景属性：光线、天气、布置</li>
+<li class="lvl-4">关系属性：角色间的情感关系</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<p>采用**事件溯源(Event Sourcing)**模式：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>不存储最终状态，而是存储<strong>所有状态变更事件</strong></p>
+</li>
+<li class="lvl-2">
+<p>通过重放事件可以重建任意时间点的状态</p>
+</li>
+<li class="lvl-2">
+<p>支持时间旅行调试和状态回滚</p>
+</li>
+</ul>
+<blockquote>
+<p>事件序列示例：</p>
+<ol>
+<li class="lvl-3">00:00 - 角色A进入客厅，穿蓝色衬衫</li>
+<li class="lvl-3">00:15 - 角色A拿起桌上的手机</li>
+<li class="lvl-3">00:30 - 角色B进入客厅，穿红色裙子</li>
+<li class="lvl-3">00:45 - 角色A把手机递给角色B</li>
+</ol>
+</blockquote>
+<p>现实世界不是完全精确的，连续性管理器设计了三层容差：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>严格容差（必须精确匹配）</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>角色外貌：发型、伤疤、纹身</p>
+</li>
+<li class="lvl-7">
+<p>关键道具：手机型号、戒指样式</p>
+</li>
+<li class="lvl-7">
+<p>服装主色：蓝色不能变成红色</p>
+</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>中等容差（允许微小变化）</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>背景细节：书架上的书可以稍微移动</p>
+</li>
+<li class="lvl-7">
+<p>光线角度：可以有合理的时间变化</p>
+</li>
+<li class="lvl-7">
+<p>群众演员：位置可以合理调整</p>
+</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>宽松容差（允许较大变化）</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>环境天气：可以从阴天到晴天（如果时间跨度大）</p>
+</li>
+<li class="lvl-7">
+<p>次要道具：桌上的杯子可以更换</p>
+</li>
+<li class="lvl-7">
+<p>服装细节：纽扣、口袋等微小差异</p>
+</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<pre class="mermaid">graph TB
+    subgraph CM[连续性管理器]
+        subgraph Core[核心引擎]
+            TS[时间线状态机]
+            PS[道具流转系统]
+            CS[角色状态系统]
+            SS[场景状态系统]
+        end
+        
+        subgraph Storage[存储层]
+            TimelineDB[(时间线数据库<br/>timestamp -> state)]
+            PropChainDB[(道具流转链<br/>prop_id -> history)]
+            CharacterDB[(角色状态演变<br/>char_id -> timeline)]
+            SnapshotDB[(状态快照库<br/>snapshot_id -> data)]
+        end
+        
+        subgraph Service[服务层]
+            Validator[状态验证器]
+            AnchorGen[锚点生成器]
+            ConflictDetect[冲突检测器]
+            RollbackMgr[回滚管理器]
+        end
+        
+        subgraph Interface[接口层]
+            RegisterAPI[状态注册API]
+            QueryAPI[状态查询API]
+            ValidateAPI[验证API]
+            EventAPI[事件订阅API]
+        end
+    end
+    
+    %% 外部调用
+    Parser -.->|初始状态| RegisterAPI
+    Splitter -.->|镜头状态| RegisterAPI
+    Fragmenter -.->|片段锚点| AnchorGen
+    Converter -.->|约束查询| QueryAPI
+    Auditor -.->|完整性验证| ValidateAPI
+    
+    %% 内部连接
+    Core --> Storage
+    Service --> Core
+    Interface --> Service
+    
+    %% 样式
+    classDef core fill:#f3e5f5,stroke:#7b1fa2
+    classDef storage fill:#e8f5e8,stroke:#2e7d32
+    classDef service fill:#e3f2fd,stroke:#1565c0
+    classDef interface fill:#fff3e0,stroke:#f57c00
+    
+    class Core core
+    class Storage storage
+    class Service service
+    class Interface interface</pre>
+<p>与外部智能体的关系和交互图：</p>
+<blockquote>
+<p>支持多种查询模式：</p>
+<ul class="lvl-1">
+<li class="lvl-2"><strong>时间点查询</strong>：获取特定时刻的完整状态</li>
+<li class="lvl-2"><strong>时间范围查询</strong>：获取时间段内的状态变化</li>
+<li class="lvl-2"><strong>实体跟踪查询</strong>：跟踪特定角色或道具的完整历史</li>
+<li class="lvl-2"><strong>关系查询</strong>：查询角色间的空间和情感关系</li>
+</ul>
+</blockquote>
+<pre class="mermaid">graph TB
+    subgraph System[完整系统]
+        Rules[规则引擎库<br/>技术决策与控制]
+        CM[连续性管理器<br/>状态跟踪与验证]
+        SM[状态管理器<br/>数据存储与检索]
+    end
+    
+    subgraph External[外部智能体]
+        Parser[剧本解析]
+        Splitter[镜头拆分]
+        Fragmenter[视频分段]
+        Converter[指令转换]
+        Auditor[质量审查]
+    end
+    
+    %% 主要调用关系
+    Parser -->|注册初始状态| CM
+    Splitter -->|验证状态转移| CM
+    Fragmenter -->|生成锚点| CM
+    Converter -->|查询约束| CM
+    Auditor -->|验证完整性| CM
+    
+    CM -->|存储状态| SM
+    CM -->|查询历史| SM
+    SM -->|返回数据| CM
+    
+    Rules -->|提供技术规则| CM
+    CM -->|应用规则| Rules
+    External -->|技术决策| Rules
+    
+    class Rules,CM,SM core
+    class Parser,Splitter,Fragmenter,Converter,Auditor external
+    class Example example</pre>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>状态机引擎</strong>：自定义状态机（针对视频连续性优化）</p>
+</li>
+<li class="lvl-2">
+<p><strong>向量计算</strong>：NumPy + 自定义空间计算库</p>
+</li>
+</ul>
+</blockquote>
+<h4 id="状态验证器"><strong>状态验证器</strong></h4>
+<p><strong>检查每次状态变更的合理性</strong>，验证状态转移的合理性</p>
+<blockquote>
+<p>验证流程：</p>
+<ol>
+<li class="lvl-3">获取前一个状态快照</li>
+<li class="lvl-3">计算时间差 Δt</li>
+<li class="lvl-3">分析状态变化 ΔS</li>
+<li class="lvl-3">验证变化合理性：ΔS 是否在 Δt 内可能发生？</li>
+</ol>
+<p>验证规则示例：</p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>服装变化：如果Δt&lt;30秒，角色不能换整套衣服</p>
+</li>
+<li class="lvl-2">
+<p>位置移动：移动距离必须符合Δt内可能的步行速度</p>
+</li>
+<li class="lvl-2">
+<p>道具流转：道具必须通过合理的传递路径</p>
+</li>
+</ul>
+</blockquote>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@dataclass</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">StateSnapshot</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;状态快照：时间点上的完整状态&quot;&quot;&quot;</span></span><br><span class="line">    timestamp: <span class="built_in">float</span>  <span class="comment"># 绝对时间戳</span></span><br><span class="line">    snapshot_id: <span class="built_in">str</span></span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 角色状态</span></span><br><span class="line">    character_states: <span class="type">Dict</span>[<span class="built_in">str</span>, CharacterState]</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 场景状态</span></span><br><span class="line">    scene_state: SceneState</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 道具状态</span></span><br><span class="line">    prop_states: <span class="type">Dict</span>[<span class="built_in">str</span>, PropState]</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 关系状态</span></span><br><span class="line">    relationship_states: <span class="type">Dict</span>[<span class="type">Tuple</span>[<span class="built_in">str</span>, <span class="built_in">str</span>], Relationship]</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 元数据</span></span><br><span class="line">    metadata: &#123;</span><br><span class="line">        <span class="string">&quot;source&quot;</span>: <span class="built_in">str</span>,  <span class="comment"># 生成来源</span></span><br><span class="line">        <span class="string">&quot;confidence&quot;</span>: <span class="built_in">float</span>,  <span class="comment"># 置信度</span></span><br><span class="line">        <span class="string">&quot;tags&quot;</span>: <span class="type">List</span>[<span class="built_in">str</span>]  <span class="comment"># 状态标签</span></span><br><span class="line">    &#125;</span><br></pre></td></tr></table></figure>
+<h4 id="锚点生成器"><strong>锚点生成器</strong></h4>
+<p>为每个5秒片段生成<strong>视觉锚点</strong>，指导AI生成：</p>
+<blockquote>
+<p>锚点包含的信息：</p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>角色锚点：</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>服装描述：材质、颜色、款式</p>
+</li>
+<li class="lvl-7">
+<p>外貌特征：发型、眼镜、配饰</p>
+</li>
+<li class="lvl-7">
+<p>手持道具：拿在手里的物品</p>
+</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>场景锚点：</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>光线方向：主光源角度</p>
+</li>
+<li class="lvl-7">
+<p>阴影特征：关键物体的阴影</p>
+</li>
+<li class="lvl-7">
+<p>色彩基调：整体色调和对比度</p>
+</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p>关系锚点：</p>
+<ul class="lvl-3">
+<li class="lvl-7">
+<p>相对位置：A在B的左侧1.2米</p>
+</li>
+<li class="lvl-7">
+<p>视线方向：A看着B的眼睛</p>
+</li>
+<li class="lvl-7">
+<p>情感连接：亲密距离或社交距离</p>
+</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<h4 id="冲突检测器"><strong>冲突检测</strong>器</h4>
+<p>智能检测<strong>隐含的连续性冲突</strong>：</p>
+<blockquote>
+<p>冲突检测场景：</p>
+<ol>
+<li class="lvl-3">道具消失又出现：手机前一镜头在口袋，下一镜头在手中，中间没有拿出动作</li>
+<li class="lvl-3">服装瞬间变化：同一场景内服装无理由更换</li>
+<li class="lvl-3">位置跳跃：角色瞬间移动到不可能到达的位置</li>
+<li class="lvl-3">时间倒流：动作序列违反时间顺序</li>
+</ol>
+<p>冲突解决策略：</p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>自动修正：如果是明显错误且修正方案明确</p>
+</li>
+<li class="lvl-2">
+<p>建议调整：提供多个修正方案供选择</p>
+</li>
+<li class="lvl-2">
+<p>标记警告：暂时无法解决，标记为警告</p>
+</li>
+</ul>
+</blockquote>
+<h4 id="状态预测器"><strong>状态预测器</strong></h4>
+<p>基于当前状态和已知动作，<strong>预测未来状态</strong>：</p>
+<blockquote>
+<p>预测机制：</p>
+<ul class="lvl-1">
+<li class="lvl-2">已知：角色A在位置P1，开始向门口走去</li>
+<li class="lvl-2">动作：行走动作，预计耗时3秒</li>
+<li class="lvl-2">预测：3秒后角色A将在位置P2（门口）</li>
+</ul>
+<p>预测用途：</p>
+<ol>
+<li class="lvl-3">
+<p>提前发现潜在的连续性冲突</p>
+</li>
+<li class="lvl-3">
+<p>为下一个镜头提供状态参考</p>
+</li>
+<li class="lvl-3">
+<p>优化镜头切换时机</p>
+</li>
+</ol>
+</blockquote>
+<h2 id="智能体实现细节">智能体实现细节</h2>
+<h3 id="场景及动作时长">场景及动作时长</h3>
+<p>待完成</p>
+<h3 id="提示工程管理">提示工程管理</h3>
+<p><strong>剧本分析提示词</strong></p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">version:</span> <span class="string">&quot;1.1&quot;</span></span><br><span class="line"><span class="attr">description:</span> <span class="string">&quot;优化剧本解析结果，确保场景、角色和动作的正确解析&quot;</span></span><br><span class="line"><span class="attr">template:</span> <span class="string">|</span></span><br><span class="line"><span class="string">  你是一位专业的剧本分析专家，请根据以下原始解析结果，优化和完善剧本结构：</span></span><br><span class="line"><span class="string"></span></span><br><span class="line">  <span class="string">原始解析结果：&#123;raw_script&#125;</span></span><br><span class="line"></span><br><span class="line">  <span class="string">要求：</span></span><br><span class="line">  <span class="number">1</span><span class="string">.</span> <span class="string">检查场景、角色对话和动作描述的完整性和准确性</span></span><br><span class="line">  <span class="number">2</span><span class="string">.</span> <span class="string">修正任何明显的解析错误</span></span><br><span class="line">  <span class="number">3</span><span class="string">.</span> <span class="string">确保每个场景都有明确的场景名、时间和地点</span></span><br><span class="line">  <span class="number">4</span><span class="string">.</span> <span class="string">确保每个对话都有明确的角色标识</span></span><br><span class="line">  <span class="number">5</span><span class="string">.</span> <span class="string">补充缺失的动作描述和情感信息</span></span><br><span class="line"></span><br><span class="line">  <span class="string">请直接返回优化后的完整JSON结构，确保格式完全正确。</span></span><br></pre></td></tr></table></figure>
+<p><strong>剧本分镜提示词</strong></p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">version:</span> <span class="string">&quot;1.4&quot;</span></span><br><span class="line"><span class="attr">description:</span> <span class="string">&quot;生成5秒分镜，含中文画面描述和英文AI视频提示词，优化提示词结构和输出格式&quot;</span></span><br><span class="line"><span class="attr">template:</span> <span class="string">|</span></span><br><span class="line"><span class="string">  你是一位顶尖的电影分镜师和AI视频提示词工程师，精通分镜头设计和视觉叙事。请为一段5秒的短视频生成专业分镜：</span></span><br><span class="line"><span class="string"></span></span><br><span class="line">  <span class="comment">## 场景信息</span></span><br><span class="line">  <span class="string">场景位置:</span> &#123;<span class="string">location</span>&#125;</span><br><span class="line">  <span class="string">时间:</span> &#123;<span class="string">time</span>&#125;</span><br><span class="line">  <span class="string">氛围:</span> &#123;<span class="string">atmosphere</span>&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">## 动作序列</span></span><br><span class="line">  &#123;<span class="string">actions_text</span>&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">## 连续性约束</span></span><br><span class="line">  &#123;<span class="string">continuity_constraints_text</span>&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">## 视频风格</span></span><br><span class="line">  &#123;<span class="string">style</span>&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">## 分镜ID</span></span><br><span class="line">  &#123;<span class="string">shot_id</span>&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">## 创作要求</span></span><br><span class="line">  <span class="number">1</span><span class="string">.</span> <span class="string">精确计时:</span> <span class="string">确保所有描述的动作能够在5秒内自然流畅地完成</span></span><br><span class="line">  <span class="number">2</span><span class="string">.</span> <span class="string">生动描述:</span> <span class="string">中文画面描述要具体、生动，包含场景细节、角色状态和情感变化</span></span><br><span class="line">  <span class="number">3</span><span class="string">.</span> <span class="string">专业提示词:</span> <span class="string">英文AI提示词必须详细精确，使用电影术语和视觉描述，适合主流AI视频生成模型</span></span><br><span class="line">  <span class="number">4</span><span class="string">.</span> <span class="string">镜头设计:</span> <span class="string">选择最适合呈现当前场景的镜头类型、角度和运动方式</span></span><br><span class="line">  <span class="number">5</span><span class="string">.</span> <span class="string">连续性保证:</span> <span class="string">严格遵循连续性约束，确保角色外观、位置和状态的一致性</span></span><br><span class="line">  <span class="number">6</span><span class="string">.</span> <span class="string">细节丰富:</span> <span class="string">添加适当的环境细节、光线效果和视觉元素，增强画面表现力</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">## 输出格式要求</span></span><br><span class="line">  <span class="string">请严格按照以下JSON格式输出，不要添加任何额外的解释、说明或前缀后缀：</span></span><br><span class="line">  &#123;&#123;</span><br><span class="line">    <span class="attr">&quot;chinese_description&quot;:</span> <span class="string">&quot;详细的中文画面描述，至少200字&quot;</span>,</span><br><span class="line">    <span class="attr">&quot;ai_prompt&quot;:</span> <span class="string">&quot;详细的英文AI视频提示词，包含镜头、构图、灯光、角色和动作描述&quot;</span>,</span><br><span class="line">    <span class="attr">&quot;camera&quot;:</span> &#123;&#123;</span><br><span class="line">      <span class="attr">&quot;shot_type&quot;:</span> <span class="string">&quot;镜头类型，如medium_shot、close_up、wide_shot等&quot;</span>,</span><br><span class="line">      <span class="attr">&quot;angle&quot;:</span> <span class="string">&quot;拍摄角度，如eye-level、high-angle、low-angle等&quot;</span>,</span><br><span class="line">      <span class="attr">&quot;movement&quot;:</span> <span class="string">&quot;镜头运动，如static、pan、tilt、track等&quot;</span></span><br><span class="line">    &#125;&#125;,</span><br><span class="line">    <span class="attr">&quot;initial_state&quot;:</span> [</span><br><span class="line">      &#123;&#123;</span><br><span class="line">        <span class="attr">&quot;character_name&quot;:</span> <span class="string">&quot;角色名&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;pose&quot;:</span> <span class="string">&quot;初始姿势，如standing、sitting、walking等&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;position&quot;:</span> <span class="string">&quot;初始位置，如left、center、right等&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;holding&quot;:</span> <span class="string">&quot;手持物品描述&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;emotion&quot;:</span> <span class="string">&quot;初始情绪描述&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;appearance&quot;:</span> <span class="string">&quot;角色外观详细描述&quot;</span></span><br><span class="line">      &#125;&#125;</span><br><span class="line">    ],</span><br><span class="line">    <span class="attr">&quot;final_state&quot;:</span> [</span><br><span class="line">      &#123;&#123;</span><br><span class="line">        <span class="attr">&quot;character_name&quot;:</span> <span class="string">&quot;角色名&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;pose&quot;:</span> <span class="string">&quot;结束姿势&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;position&quot;:</span> <span class="string">&quot;结束位置&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;gaze_direction&quot;:</span> <span class="string">&quot;视线方向描述&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;emotion&quot;:</span> <span class="string">&quot;结束情绪描述&quot;</span>,</span><br><span class="line">        <span class="attr">&quot;holding&quot;:</span> <span class="string">&quot;手持物品描述&quot;</span></span><br><span class="line">      &#125;&#125;</span><br><span class="line">    ]</span><br><span class="line">  &#125;&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="工作流节点定义">工作流节点定义</h3>
+<p>包含所有工作流执行功能</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">WorkflowNodes</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;工作流节点集合，封装所有工作流执行功能&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, script_parser, temporal_planner, continuity_guardian, shot_generator, qa_agent, llm=<span class="literal">None</span></span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">        初始化工作流节点集合</span></span><br><span class="line"><span class="string">        </span></span><br><span class="line"><span class="string">        Args:</span></span><br><span class="line"><span class="string">            script_parser: 剧本解析器实例</span></span><br><span class="line"><span class="string">            temporal_planner: 时序规划器实例</span></span><br><span class="line"><span class="string">            continuity_guardian: 连续性守卫实例</span></span><br><span class="line"><span class="string">            shot_generator: 分镜生成器实例</span></span><br><span class="line"><span class="string">            qa_agent: 质量审查实例</span></span><br><span class="line"><span class="string">            llm: 语言模型实例（可选）</span></span><br><span class="line"><span class="string">        &quot;&quot;&quot;</span></span><br><span class="line">        <span class="variable language_">self</span>.script_parser = script_parser</span><br><span class="line">        <span class="variable language_">self</span>.temporal_planner = temporal_planner</span><br><span class="line">        <span class="variable language_">self</span>.continuity_guardian = continuity_guardian</span><br><span class="line">        <span class="variable language_">self</span>.shot_generator = shot_generator</span><br><span class="line">        <span class="variable language_">self</span>.qa_agent = qa_agent</span><br><span class="line">        <span class="variable language_">self</span>.llm = llm</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">parse_script_node</span>(<span class="params">self, state: StoryboardWorkflowState</span>) -&gt; <span class="type">Dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;解析剧本文本节点&quot;&quot;&quot;</span></span><br><span class="line">        debug(<span class="string">&quot;解析剧本文本节点执行中&quot;</span>)</span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">			<span class="comment"># 使用LLM增强解析</span></span><br><span class="line">        <span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">            error(<span class="string">f&quot;剧本解析失败: <span class="subst">&#123;<span class="built_in">str</span>(e)&#125;</span>&quot;</span>)</span><br><span class="line">            <span class="keyword">return</span> &#123;</span><br><span class="line">                <span class="string">&quot;error&quot;</span>: <span class="built_in">str</span>(e)</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">plan_timeline_node</span>(<span class="params">self, state: StoryboardWorkflowState</span>) -&gt; <span class="type">Dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;规划时间线节点&quot;&quot;&quot;</span></span><br><span class="line">        debug(<span class="string">&quot;规划时间线节点执行中&quot;</span>)</span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">            <span class="comment"># 进行时序规划</span></span><br><span class="line">        <span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">            error(<span class="string">f&quot;时序规划失败: <span class="subst">&#123;<span class="built_in">str</span>(e)&#125;</span>&quot;</span>)</span><br><span class="line">            <span class="keyword">return</span> &#123;</span><br><span class="line">                <span class="string">&quot;error&quot;</span>: <span class="built_in">str</span>(e)</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">generate_shot_node</span>(<span class="params">self, state: StoryboardWorkflowState</span>) -&gt; <span class="type">Dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">        生成分镜节点</span></span><br><span class="line"><span class="string">        &quot;&quot;&quot;</span></span><br><span class="line">        debug(<span class="string">f&quot;生成分镜节点执行中，当前分段索引: <span class="subst">&#123;state[<span class="string">&#x27;current_segment_index&#x27;</span>]&#125;</span>&quot;</span>)</span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">            <span class="comment"># 获取场景上下文，增加安全检查，生成连续性约束</span></span><br><span class="line">            <span class="comment"># 生成分镜</span></span><br><span class="line">        <span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">            error(<span class="string">f&quot;生成分镜节点发生严重错误: <span class="subst">&#123;<span class="built_in">str</span>(e)&#125;</span>&quot;</span>)</span><br><span class="line">            <span class="keyword">return</span> &#123;</span><br><span class="line">                <span class="string">&quot;error&quot;</span>: <span class="built_in">str</span>(e)</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">review_shot_node</span>(<span class="params">self, state: StoryboardWorkflowState</span>) -&gt; <span class="type">Dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;审查分镜节点，优化警告处理&quot;&quot;&quot;</span></span><br><span class="line">        info(<span class="string">&quot;审查分镜节点执行中&quot;</span>)</span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">            <span class="comment"># 审查分镜</span></span><br><span class="line">            <span class="comment"># 记录不同级别的问题</span></span><br><span class="line">        <span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">            error(<span class="string">f&quot;分镜审查失败: <span class="subst">&#123;<span class="built_in">str</span>(e)&#125;</span>&quot;</span>)</span><br><span class="line">            <span class="keyword">return</span> &#123;</span><br><span class="line">                <span class="string">&quot;qa_results&quot;</span>: qa_results</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">extract_continuity_node</span>(<span class="params">self, state: StoryboardWorkflowState</span>) -&gt; <span class="type">Dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;提取连续性信息节点&quot;&quot;&quot;</span></span><br><span class="line">        debug(<span class="string">&quot;提取连续性信息节点执行中&quot;</span>)</span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">            <span class="comment"># 如果是有效分镜，提取连续性锚点</span></span><br><span class="line">        <span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">            error(<span class="string">f&quot;提取连续性信息失败: <span class="subst">&#123;<span class="built_in">str</span>(e)&#125;</span>&quot;</span>)</span><br><span class="line">            <span class="keyword">return</span> &#123;</span><br><span class="line">                <span class="string">&quot;error&quot;</span>: <span class="built_in">str</span>(e)</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">review_sequence_node</span>(<span class="params">self, state: StoryboardWorkflowState</span>) -&gt; <span class="type">Dict</span>[<span class="built_in">str</span>, <span class="type">Any</span>]:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;审查分镜序列节点，优化序列连续性审查&quot;&quot;&quot;</span></span><br><span class="line">        debug(<span class="string">&quot;审查分镜序列连续性节点执行中&quot;</span>)</span><br><span class="line">        <span class="keyword">try</span>:    </span><br><span class="line">            <span class="comment"># 分类错误类型          </span></span><br><span class="line">            <span class="comment"># 记录警告</span></span><br><span class="line">        <span class="keyword">except</span> Exception <span class="keyword">as</span> e:</span><br><span class="line">            error(<span class="string">f&quot;分镜序列审查失败: <span class="subst">&#123;<span class="built_in">str</span>(e)&#125;</span>&quot;</span>)</span><br><span class="line">            <span class="comment"># 返回默认的审查结果</span></span><br><span class="line">            <span class="keyword">return</span> &#123;</span><br><span class="line">                <span class="string">&quot;sequence_qa&quot;</span>: &#123;<span class="string">&quot;has_continuity_issues&quot;</span>: <span class="literal">False</span>, <span class="string">&quot;issues&quot;</span>: [], <span class="string">&quot;warnings&quot;</span>: [<span class="string">f&quot;审查过程出错: <span class="subst">&#123;<span class="built_in">str</span>(e)&#125;</span>&quot;</span>]&#125;</span><br><span class="line">            &#125;</span><br></pre></td></tr></table></figure>
+<h3 id="LangGraph-流程编排">LangGraph 流程编排</h3>
+<p>多智能体协作流程，负责协调各个智能体完成端到端的分镜生成</p>
+<p>通过 <code>InMemorySaver</code> 编译工作流</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">_init_agents</span>(<span class="params">self</span>):</span><br><span class="line">    <span class="string">&quot;&quot;&quot;初始化各个智能体&quot;&quot;&quot;</span></span><br><span class="line">    debug(<span class="string">&quot;初始化智能体组件&quot;</span>)</span><br><span class="line"></span><br><span class="line">    <span class="variable language_">self</span>.script_parser = ScriptParserAgent(llm=<span class="variable language_">self</span>.llm)</span><br><span class="line">    <span class="variable language_">self</span>.temporal_planner = TemporalPlannerAgent()</span><br><span class="line">    <span class="variable language_">self</span>.continuity_guardian = ContinuityGuardianAgent()</span><br><span class="line">    <span class="variable language_">self</span>.shot_generator = ShotGeneratorAgent(llm=<span class="variable language_">self</span>.llm)</span><br><span class="line">    <span class="variable language_">self</span>.qa_agent = QAAgent(llm=<span class="variable language_">self</span>.llm)</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 初始化工作流节点集合</span></span><br><span class="line">    <span class="variable language_">self</span>.workflow_nodes = WorkflowNodes(</span><br><span class="line">        script_parser=<span class="variable language_">self</span>.script_parser,</span><br><span class="line">        temporal_planner=<span class="variable language_">self</span>.temporal_planner,</span><br><span class="line">        continuity_guardian=<span class="variable language_">self</span>.continuity_guardian,</span><br><span class="line">        shot_generator=<span class="variable language_">self</span>.shot_generator,</span><br><span class="line">        qa_agent=<span class="variable language_">self</span>.qa_agent,</span><br><span class="line">        llm=<span class="variable language_">self</span>.llm</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">_init_workflow</span>(<span class="params">self</span>):</span><br><span class="line">    <span class="string">&quot;&quot;&quot;初始化基于LangGraph的工作流&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment"># 创建状态图</span></span><br><span class="line">    workflow = StateGraph(StoryboardWorkflowState)</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 定义工作流节点</span></span><br><span class="line">    workflow.add_node(<span class="string">&quot;parse_script&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.parse_script_node)</span><br><span class="line">    workflow.add_node(<span class="string">&quot;plan_timeline&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.plan_timeline_node)</span><br><span class="line">    workflow.add_node(<span class="string">&quot;generate_shot&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.generate_shot_node)</span><br><span class="line">    workflow.add_node(<span class="string">&quot;review_shot&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.review_shot_node)</span><br><span class="line">    workflow.add_node(<span class="string">&quot;extract_continuity&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.extract_continuity_node)</span><br><span class="line">    workflow.add_node(<span class="string">&quot;review_sequence&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.review_sequence_node)</span><br><span class="line">    workflow.add_node(<span class="string">&quot;fix_continuity&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.fix_continuity_node)</span><br><span class="line">    workflow.add_node(<span class="string">&quot;generate_result&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.generate_result_node)</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 定义条件边，根据解析结果是否有效继续流程（工作流执行流程）</span></span><br><span class="line">    workflow.add_conditional_edges(</span><br><span class="line">        <span class="string">&quot;parse_script&quot;</span>,</span><br><span class="line">        <span class="keyword">lambda</span> state: <span class="string">&quot;continue&quot;</span>,  <span class="comment"># 始终继续到下一步</span></span><br><span class="line">        &#123;<span class="string">&quot;continue&quot;</span>: <span class="string">&quot;plan_timeline&quot;</span>&#125;</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    workflow.add_conditional_edges(</span><br><span class="line">        <span class="string">&quot;plan_timeline&quot;</span>,</span><br><span class="line">        <span class="keyword">lambda</span> state: <span class="string">&quot;continue&quot;</span>,</span><br><span class="line">        &#123;<span class="string">&quot;continue&quot;</span>: <span class="string">&quot;generate_shot&quot;</span>&#125;</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    workflow.add_conditional_edges(</span><br><span class="line">        <span class="string">&quot;generate_shot&quot;</span>,</span><br><span class="line">        <span class="keyword">lambda</span> state: <span class="string">&quot;continue&quot;</span>,</span><br><span class="line">        &#123;<span class="string">&quot;continue&quot;</span>: <span class="string">&quot;review_shot&quot;</span>&#125;</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    workflow.add_conditional_edges(</span><br><span class="line">        <span class="string">&quot;review_shot&quot;</span>,</span><br><span class="line">        <span class="keyword">lambda</span> state: <span class="string">&quot;valid&quot;</span> <span class="keyword">if</span> state[<span class="string">&quot;qa_results&quot;</span>][-<span class="number">1</span>][<span class="string">&quot;is_valid&quot;</span>] <span class="keyword">else</span> <span class="string">&quot;invalid&quot;</span>,</span><br><span class="line">        &#123;<span class="string">&quot;valid&quot;</span>: <span class="string">&quot;extract_continuity&quot;</span>, <span class="string">&quot;invalid&quot;</span>: <span class="string">&quot;check_retry&quot;</span>&#125;</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 添加检查重试逻辑的条件边</span></span><br><span class="line">    workflow.add_conditional_edges(</span><br><span class="line">        <span class="string">&quot;extract_continuity&quot;</span>,</span><br><span class="line">        <span class="keyword">lambda</span> state: <span class="string">&quot;next_segment&quot;</span> <span class="keyword">if</span> state[<span class="string">&quot;current_segment_index&quot;</span>] &lt; <span class="built_in">len</span>(state[<span class="string">&quot;segments&quot;</span>]) - <span class="number">1</span> <span class="keyword">else</span> <span class="string">&quot;review_sequence&quot;</span>,</span><br><span class="line">        &#123;<span class="string">&quot;next_segment&quot;</span>: <span class="string">&quot;generate_shot&quot;</span>, <span class="string">&quot;review_sequence&quot;</span>: <span class="string">&quot;review_sequence&quot;</span>&#125;</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 添加自定义检查重试节点</span></span><br><span class="line">    workflow.add_node(<span class="string">&quot;check_retry&quot;</span>, <span class="variable language_">self</span>.workflow_nodes.check_retry_node)</span><br><span class="line">    workflow.add_conditional_edges(</span><br><span class="line">        <span class="string">&quot;check_retry&quot;</span>,</span><br><span class="line">        <span class="keyword">lambda</span> state: <span class="string">&quot;retry&quot;</span> <span class="keyword">if</span> state[<span class="string">&quot;retry_count&quot;</span>] &lt; state[<span class="string">&quot;max_retries&quot;</span>] <span class="keyword">else</span> <span class="string">&quot;use_current&quot;</span>,</span><br><span class="line">        &#123;<span class="string">&quot;retry&quot;</span>: <span class="string">&quot;generate_shot&quot;</span>, <span class="string">&quot;use_current&quot;</span>: <span class="string">&quot;extract_continuity&quot;</span>&#125;</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    workflow.add_conditional_edges(</span><br><span class="line">        <span class="string">&quot;review_sequence&quot;</span>,</span><br><span class="line">        <span class="keyword">lambda</span> state: <span class="string">&quot;fix&quot;</span> <span class="keyword">if</span> state[<span class="string">&quot;sequence_qa&quot;</span>][<span class="string">&quot;has_continuity_issues&quot;</span>] <span class="keyword">else</span> <span class="string">&quot;done&quot;</span>,</span><br><span class="line">        &#123;<span class="string">&quot;fix&quot;</span>: <span class="string">&quot;fix_continuity&quot;</span>, <span class="string">&quot;done&quot;</span>: <span class="string">&quot;generate_result&quot;</span>&#125;</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    workflow.add_conditional_edges(</span><br><span class="line">        <span class="string">&quot;fix_continuity&quot;</span>,</span><br><span class="line">        <span class="keyword">lambda</span> state: <span class="string">&quot;continue&quot;</span>,</span><br><span class="line">        &#123;<span class="string">&quot;continue&quot;</span>: <span class="string">&quot;generate_result&quot;</span>&#125;</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 设置入口点</span></span><br><span class="line">    workflow.set_entry_point(<span class="string">&quot;parse_script&quot;</span>)</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 编译工作流</span></span><br><span class="line">    <span class="keyword">return</span> workflow.<span class="built_in">compile</span>(checkpointer=<span class="variable language_">self</span>.memory)</span><br></pre></td></tr></table></figure>
+<h3 id="LlamaIndex-向量检索">LlamaIndex 向量检索</h3>
+<h3 id="LangChain-状态记忆">LangChain 状态记忆</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>保存对话历史</strong>：让 LLM 知道上下文</p>
+</li>
+<li class="lvl-2">
+<p><strong>维护状态</strong>：跟踪用户偏好、任务进度</p>
+</li>
+<li class="lvl-2">
+<p><strong>支持多轮交互</strong>：如填表、分步任务</p>
+</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>适用场景</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ConversationBufferMemory</td>
+<td>简单对话（基础记忆）</td>
+<td>保存全部历史（可能超 token）</td>
+</tr>
+<tr>
+<td>ConversationBufferWindowMemory</td>
+<td>长对话（窗口记忆）</td>
+<td>仅保存最近 N 轮</td>
+</tr>
+<tr>
+<td>ConversationSummaryMemory</td>
+<td>超长对话（摘要记忆）</td>
+<td>用 LLM 生成摘要</td>
+</tr>
+<tr>
+<td>EntityMemory</td>
+<td>实体跟踪（实体记忆）</td>
+<td>记住人物/物品属性</td>
+</tr>
+<tr>
+<td>VectorStoreRetrieverMemory</td>
+<td>知识库问答（向量记忆）</td>
+<td>从向量库检索相关记忆</td>
+</tr>
+<tr>
+<td>ConversationBufferMemory<br />RedisChatMessageHistory</td>
+<td>Redis 持久化</td>
+<td>持久化到数据库</td>
+</tr>
+</tbody>
+</table>
+<h3 id="LangChain-LLM客户端">LangChain LLM客户端</h3>
+<h3 id="LangChain-工具集">LangChain 工具集</h3>
+<!-- flag of hidden posts --></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.github.io">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.github.io/2026/01/3fc3294840ac4c0d90363c9d811c359d/">https://pengline.github.io/2026/01/3fc3294840ac4c0d90363c9d811c359d/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.github.io" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/LlamaIndex%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">LlamaIndex向量检索</a><a class="post-meta__tags" href="/tags/LangGraph%E6%B5%81%E7%A8%8B%E7%BC%96%E6%8E%92/">LangGraph流程编排</a><a class="post-meta__tags" href="/tags/%E9%95%BF%E5%89%A7%E6%9C%AC%E6%8B%86%E5%88%86/">长剧本拆分</a><a class="post-meta__tags" href="/tags/%E9%95%BF%E5%89%A7%E6%9C%AC%E5%88%86%E9%95%9C/">长剧本分镜</a><a class="post-meta__tags" href="/tags/%E9%95%BF%E5%89%A7%E6%9C%AC%E8%A7%86%E9%A2%91%E7%94%9F%E6%88%90/">长剧本视频生成</a></div><div class="post-share"><div class="social-share" data-image="/img/essay/small193155ePROc1759577515.webp" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/10/0194020a663c408fb500dd7532349519/" title="剧本分镜智能体架构设计与实现（MVP版）"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/small212810tjRiI1754227690.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-10-29</div><div class="info-item-2">剧本分镜智能体架构设计与实现（MVP版）</div></div><div class="info-2"><div class="info-item-1">该工具将自然语言剧本自动拆分为多个N秒长度的短视频片段脚本，以适用于 AI 视频生成模型，可直接用于“文生视频”。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%89%A7%E6%9C%AC%E5%88%86%E9%95%9C%E6%99%BA%E8%83%BD%E4%BD%93"><span class="toc-number">1.</span> <span class="toc-text">剧本分镜智能体</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E7%9B%AE%E6%A0%87"><span class="toc-number">1.1.</span> <span class="toc-text">核心目标</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">1.2.</span> <span class="toc-text">使用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA"><span class="toc-number">1.3.</span> <span class="toc-text">输入输出</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9B%86%E6%88%90%E6%96%B9%E5%BC%8F"><span class="toc-number">1.4.</span> <span class="toc-text">集成方式</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%EF%BC%88%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">技术架构（多智能体）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E5%89%A7%E6%9C%AC%E8%A7%A3%E6%9E%90%E6%99%BA%E8%83%BD%E4%BD%93"><span class="toc-number">2.1.</span> <span class="toc-text">1.剧本解析智能体</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E5%8A%9F%E8%83%BD"><span class="toc-number">2.1.1.</span> <span class="toc-text">核心功能</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E6%8A%80%E6%9C%AF"><span class="toc-number">2.1.2.</span> <span class="toc-text">关键技术</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%BE%93%E5%85%A5%E8%BE%93%E5%87%BA-2"><span class="toc-number">2.1.3.</span> <span class="toc-text">输入输出</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E9%95%9C%E5%A4%B4%E6%8B%86%E5%88%86%E6%99%BA%E8%83%BD%E4%BD%93"><span class="toc-number">2.2.</span> <span class="toc-text">2.镜头拆分智能体</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E8%A7%86%E9%A2%91%E5%88%86%E6%AE%B5%E6%99%BA%E8%83%BD%E4%BD%93"><span class="toc-number">2.3.</span> <span class="toc-text">3.视频分段智能体</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-%E6%8C%87%E4%BB%A4%E8%BD%AC%E6%8D%A2%E6%99%BA%E8%83%BD%E4%BD%93"><span class="toc-number">2.4.</span> <span class="toc-text">4.指令转换智能体</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-%E8%B4%A8%E9%87%8F%E5%AE%A1%E6%9F%A5%E6%99%BA%E8%83%BD%E4%BD%93"><span class="toc-number">2.5.</span> <span class="toc-text">5.质量审查智能体</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%A3%80%E6%9F%A5%E7%BB%B4%E5%BA%A6"><span class="toc-number">2.5.1.</span> <span class="toc-text">检查维度</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%BE%93%E5%87%BA%E7%A4%BA%E4%BE%8B"><span class="toc-number">2.5.2.</span> <span class="toc-text">输出示例</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%84%E5%88%99%E5%BC%95%E6%93%8E%E5%BA%93"><span class="toc-number">2.6.</span> <span class="toc-text">规则引擎库</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%97%B6%E9%95%BF%E8%A7%84%E5%88%99%E9%9B%86"><span class="toc-number">2.6.1.</span> <span class="toc-text">时长规则集</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%88%87%E5%88%86%E8%A7%84%E5%88%99%E9%9B%86"><span class="toc-number">2.6.2.</span> <span class="toc-text">切分规则集</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%90%88%E5%B9%B6%E8%A7%84%E5%88%99%E9%9B%86"><span class="toc-number">2.6.3.</span> <span class="toc-text">合并规则集</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%B4%A8%E9%87%8F%E8%A7%84%E5%88%99%E9%9B%86"><span class="toc-number">2.6.4.</span> <span class="toc-text">质量规则集</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%8A%B6%E6%80%81%E7%AE%A1%E7%90%86%E5%99%A8"><span class="toc-number">2.7.</span> <span class="toc-text">状态管理器</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%97%B6%E9%97%B4%E7%BA%BF%E5%AD%98%E5%82%A8%E5%BC%95%E6%93%8E"><span class="toc-number">2.7.1.</span> <span class="toc-text">时间线存储引擎</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%B7%AE%E5%BC%82%E5%AD%98%E5%82%A8%E7%B3%BB%E7%BB%9F"><span class="toc-number">2.7.2.</span> <span class="toc-text">差异存储系统</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F"><span class="toc-number">2.7.3.</span> <span class="toc-text">缓存管理系统</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%A4%87%E4%BB%BD%E4%B8%8E%E6%81%A2%E5%A4%8D%E7%B3%BB%E7%BB%9F"><span class="toc-number">2.7.4.</span> <span class="toc-text">备份与恢复系统</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%9E%E7%BB%AD%E6%80%A7%E7%AE%A1%E7%90%86%E5%99%A8"><span class="toc-number">2.8.</span> <span class="toc-text">连续性管理器</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%8A%B6%E6%80%81%E9%AA%8C%E8%AF%81%E5%99%A8"><span class="toc-number">2.8.1.</span> <span class="toc-text">状态验证器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%94%9A%E7%82%B9%E7%94%9F%E6%88%90%E5%99%A8"><span class="toc-number">2.8.2.</span> <span class="toc-text">锚点生成器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%86%B2%E7%AA%81%E6%A3%80%E6%B5%8B%E5%99%A8"><span class="toc-number">2.8.3.</span> <span class="toc-text">冲突检测器</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%8A%B6%E6%80%81%E9%A2%84%E6%B5%8B%E5%99%A8"><span class="toc-number">2.8.4.</span> <span class="toc-text">状态预测器</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%99%BA%E8%83%BD%E4%BD%93%E5%AE%9E%E7%8E%B0%E7%BB%86%E8%8A%82"><span class="toc-number">3.</span> <span class="toc-text">智能体实现细节</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF%E5%8F%8A%E5%8A%A8%E4%BD%9C%E6%97%B6%E9%95%BF"><span class="toc-number">3.1.</span> <span class="toc-text">场景及动作时长</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8F%90%E7%A4%BA%E5%B7%A5%E7%A8%8B%E7%AE%A1%E7%90%86"><span class="toc-number">3.2.</span> <span class="toc-text">提示工程管理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E8%8A%82%E7%82%B9%E5%AE%9A%E4%B9%89"><span class="toc-number">3.3.</span> <span class="toc-text">工作流节点定义</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#LangGraph-%E6%B5%81%E7%A8%8B%E7%BC%96%E6%8E%92"><span class="toc-number">3.4.</span> <span class="toc-text">LangGraph 流程编排</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#LlamaIndex-%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2"><span class="toc-number">3.5.</span> <span class="toc-text">LlamaIndex 向量检索</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#LangChain-%E7%8A%B6%E6%80%81%E8%AE%B0%E5%BF%86"><span class="toc-number">3.6.</span> <span class="toc-text">LangChain 状态记忆</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#LangChain-LLM%E5%AE%A2%E6%88%B7%E7%AB%AF"><span class="toc-number">3.7.</span> <span class="toc-text">LangChain LLM客户端</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#LangChain-%E5%B7%A5%E5%85%B7%E9%9B%86"><span class="toc-number">3.8.</span> <span class="toc-text">LangChain 工具集</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
