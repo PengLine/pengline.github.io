@@ -269,6 +269,99 @@ function displayCurrentUser() {
     return user;
 }
 
+// 用户个人信息相关函数
+
+// 保存用户个人信息
+function saveUserProfile(profileData) {
+    localStorage.setItem('tmsUserProfile', JSON.stringify(profileData));
+    console.log('saveUserProfile - profileData:', profileData);
+}
+
+// 获取用户个人信息
+function getUserProfile() {
+    const profileStr = localStorage.getItem('tmsUserProfile');
+    const profile = profileStr ? JSON.parse(profileStr) : {};
+    console.log('getUserProfile - profile:', profile);
+    return profile;
+}
+
+// 更新用户个人信息
+function updateUserProfile(updates) {
+    const profile = getUserProfile();
+    const updatedProfile = { ...profile, ...updates };
+    saveUserProfile(updatedProfile);
+    console.log('updateUserProfile - updates:', updates, 'updatedProfile:', updatedProfile);
+    return updatedProfile;
+}
+
+// 积分相关函数
+
+// 初始化用户积分数据
+function initUserPoints() {
+    const pointsData = JSON.parse(localStorage.getItem('tmsUserPoints'));
+    if (!pointsData) {
+        const initialPoints = {
+            balance: 0,
+            history: []
+        };
+        localStorage.setItem('tmsUserPoints', JSON.stringify(initialPoints));
+        console.log('initUserPoints - initialized with:', initialPoints);
+        return initialPoints;
+    }
+    console.log('initUserPoints - existing pointsData:', pointsData);
+    return pointsData;
+}
+
+// 获取用户积分余额
+function getUserPointsBalance() {
+    const pointsData = JSON.parse(localStorage.getItem('tmsUserPoints')) || initUserPoints();
+    console.log('getUserPointsBalance - balance:', pointsData.balance);
+    return pointsData.balance;
+}
+
+// 添加积分
+function addUserPoints(amount, description) {
+    const pointsData = JSON.parse(localStorage.getItem('tmsUserPoints')) || initUserPoints();
+    pointsData.balance += amount;
+    pointsData.history.unshift({
+        id: Date.now(),
+        type: 'earn',
+        description: description,
+        points: amount,
+        date: new Date().toLocaleString()
+    });
+    localStorage.setItem('tmsUserPoints', JSON.stringify(pointsData));
+    console.log('addUserPoints - amount:', amount, 'description:', description, 'new balance:', pointsData.balance);
+    return pointsData.balance;
+}
+
+// 扣除积分
+function deductUserPoints(amount, description) {
+    const pointsData = JSON.parse(localStorage.getItem('tmsUserPoints')) || initUserPoints();
+    if (pointsData.balance >= amount) {
+        pointsData.balance -= amount;
+        pointsData.history.unshift({
+            id: Date.now(),
+            type: 'spend',
+            description: description,
+            points: -amount,
+            date: new Date().toLocaleString()
+        });
+        localStorage.setItem('tmsUserPoints', JSON.stringify(pointsData));
+        console.log('deductUserPoints - amount:', amount, 'description:', description, 'new balance:', pointsData.balance);
+        return true;
+    }
+    console.log('deductUserPoints - insufficient points:', pointsData.balance, 'needed:', amount);
+    return false;
+}
+
+// 获取积分历史记录
+function getUserPointsHistory() {
+    const pointsData = JSON.parse(localStorage.getItem('tmsUserPoints')) || initUserPoints();
+    console.log('getUserPointsHistory - history:', pointsData.history);
+    return pointsData.history;
+}
+
 // 导出函数到全局作用域
 window.hashCode = hashCode;
 window.generateOrderId = generateOrderId;
@@ -279,3 +372,11 @@ window.checkLoginStatus = checkLoginStatus;
 window.logout = logout;
 window.getCurrentUser = getCurrentUser;
 window.displayCurrentUser = displayCurrentUser;
+window.saveUserProfile = saveUserProfile;
+window.getUserProfile = getUserProfile;
+window.updateUserProfile = updateUserProfile;
+window.initUserPoints = initUserPoints;
+window.getUserPointsBalance = getUserPointsBalance;
+window.addUserPoints = addUserPoints;
+window.deductUserPoints = deductUserPoints;
+window.getUserPointsHistory = getUserPointsHistory;
