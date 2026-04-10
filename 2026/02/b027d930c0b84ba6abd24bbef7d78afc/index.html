@@ -1,0 +1,541 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>剧本分镜智能体-MCP 详解 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="PenShot MCP Server 完整实现。基于 Model Context Protocol 的剧本分镜服务，支持 tools&#x2F;list、tools&#x2F;call 等标准方法。包含任务管理、优先级队列、并发控制、状态持久化。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="剧本分镜智能体-MCP 详解">
+<meta property="og:url" content="https://pengline.github.io/2026/02/b027d930c0b84ba6abd24bbef7d78afc/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="PenShot MCP Server 完整实现。基于 Model Context Protocol 的剧本分镜服务，支持 tools&#x2F;list、tools&#x2F;call 等标准方法。包含任务管理、优先级队列、并发控制、状态持久化。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://pengline.github.io/img/essay/small222033hPqw01758118833.webp">
+<meta property="article:published_time" content="2026-02-11T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-04-10T11:48:07.332Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="任务池">
+<meta property="article:tag" content="MCP协议">
+<meta property="article:tag" content="Model Context Protocol">
+<meta property="article:tag" content="MCP Server">
+<meta property="article:tag" content="工具调用">
+<meta property="article:tag" content="异步任务">
+<meta property="article:tag" content="队列管理">
+<meta property="article:tag" content="Claude Desktop">
+<meta property="article:tag" content="Cursor">
+<meta property="article:tag" content="并发控制">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://pengline.github.io/img/essay/small222033hPqw01758118833.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "剧本分镜智能体-MCP 详解",
+  "url": "https://pengline.github.io/2026/02/b027d930c0b84ba6abd24bbef7d78afc/",
+  "image": "https://pengline.github.io/img/essay/small222033hPqw01758118833.webp",
+  "datePublished": "2026-02-11T16:00:00.000Z",
+  "dateModified": "2026-04-10T11:48:07.332Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.github.io/2026/02/b027d930c0b84ba6abd24bbef7d78afc/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '剧本分镜智能体-MCP 详解',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">66</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">329</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">42</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" href="https://github.com/neopen/video-shot-agent"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" href="/turnkey/aigc"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" href="https://neopen.github.io/task-schedule-manager/"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(/img/essay/small222033hPqw01758118833.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体-MCP 详解</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" href="https://github.com/neopen/video-shot-agent"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" href="/turnkey/aigc"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" href="https://neopen.github.io/task-schedule-manager/"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体-MCP 详解</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-02-11T16:00:00.000Z" title="发表于 2026-02-12 00:00:00">2026-02-12</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-04-10T11:48:07.332Z" title="更新于 2026-04-10 19:48:07">2026-04-10</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><blockquote>
+<p><strong>核心资源</strong>：<a href="https://github.com/neopen/video-shot-agent">📦 GitHub 项目</a> | <a href="https://pengline.cn/2026/02/7e6cd67dd5ee45248f2276ac145555f5">📖 技术博客</a></p>
+<p><strong>文档导航</strong>：<a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">架构设计</a> · <a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">集成指南</a> · <a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">实现详解</a></p>
+</blockquote>
+<hr>
+<h2 id="MCP-服务">MCP 服务</h2>
+<p>Penshot MCP Server 是基于 <strong>Model Context Protocol (MCP)</strong> 实现的剧本分镜服务，支持 Claude Desktop、Cursor 等 MCP 兼容的智能体客户端调用。通过 MCP 协议，AI 助手可以直接调用 Penshot 的功能，实现剧本到分镜的自动化转换。</p>
+<pre class="mermaid">sequenceDiagram
+    participant Client as MCP客户端<br/>(Claude/Cursor)
+    participant MCP as Penshot MCP Server
+    participant Task as 任务管理器
+    participant Agent as 分镜智能体
+
+    Client->>MCP: tools/list (获取工具列表)
+    MCP-->>Client: 返回可用工具
+
+    Client->>MCP: tools/call (breakdown_script)
+    MCP->>Task: 创建任务
+    Task-->>MCP: 返回task_id
+    MCP-->>Client: 返回task_id
+
+    loop 轮询状态
+        Client->>MCP: tools/call (get_task_status)
+        MCP->>Task: 查询状态
+        Task-->>MCP: 返回进度
+        MCP-->>Client: 返回状态
+    end
+
+    Client->>MCP: tools/call (get_task_result)
+    MCP->>Agent: 获取结果
+    Agent-->>MCP: 返回分镜数据
+    MCP-->>Client: 返回结果</pre>
+<p>工作流示例图：</p>
+<pre class="mermaid">flowchart LR
+    subgraph User[用户操作]
+        A[提交剧本] --> B[获取task_id]
+        B --> C[轮询状态]
+        C --> D[获取结果]
+    end
+
+    subgraph MCP[MCP Server]
+        E[breakdown_script] --> F[get_task_status]
+        F --> G[get_task_result]
+    end
+
+    subgraph Penshot[Penshot后端]
+        H[任务队列] --> I[分镜处理]
+        I --> J[结果存储]
+    end
+
+    A --> E
+    C --> F
+    D --> G
+    E --> H
+    I --> J
+    J --> G</pre>
+<h3 id="支持的工具">支持的工具</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">工具名称</th>
+<th style="text-align:left">功能描述</th>
+<th style="text-align:left">必需参数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>breakdown_script</code></td>
+<td style="text-align:left">提交剧本进行分镜拆分</td>
+<td style="text-align:left"><code>script</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>get_task_status</code></td>
+<td style="text-align:left">查询任务状态和进度</td>
+<td style="text-align:left"><code>task_id</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>get_task_result</code></td>
+<td style="text-align:left">获取任务结果</td>
+<td style="text-align:left"><code>task_id</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>cancel_task</code></td>
+<td style="text-align:left">取消正在执行的任务</td>
+<td style="text-align:left"><code>task_id</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><code>list_tasks</code></td>
+<td style="text-align:left">列出所有任务</td>
+<td style="text-align:left">可选</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>get_queue_status</code></td>
+<td style="text-align:left">获取队列状态</td>
+<td style="text-align:left">无</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>get_stats</code></td>
+<td style="text-align:left">获取服务器统计信息</td>
+<td style="text-align:left">无</td>
+</tr>
+</tbody>
+</table>
+<h3 id="安装与配置">安装与配置</h3>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">pip install penshot</span><br><span class="line"></span><br><span class="line"><span class="comment"># 配置环境变量 .env 文件</span></span><br><span class="line"><span class="comment"># ================= LLM默认配置 =================</span></span><br><span class="line"><span class="comment"># 系统支持的厂商（openai, qwen, deepseek, ollama）</span></span><br><span class="line">PENSHOT_LLM__DEFAULT__BASE_URL=https://api.openai.com/v1</span><br><span class="line">PENSHOT_LLM__DEFAULT__API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span><br><span class="line">PENSHOT_LLM__DEFAULT__MODEL_NAME=gpt-4-turbo-preview</span><br><span class="line">PENSHOT_LLM__DEFAULT__TEMPERATURE=0.7</span><br><span class="line">PENSHOT_LLM__DEFAULT__TIMEOUT=30</span><br><span class="line">PENSHOT_LLM__DEFAULT__MAX_RETRIES=3</span><br><span class="line">PENSHOT_LLM__DEFAULT__MAX_TOKENS=8192</span><br><span class="line"></span><br><span class="line"><span class="comment"># ================ 嵌入模型默认配置 ================</span></span><br><span class="line"><span class="comment"># 系统支持的厂商（openai, qwen, HuggingFace, ollama）</span></span><br><span class="line">PENSHOT_EMBED__DEFAULT__BASE_URL=https://dashscope-intl.aliyuncs.com/api/v1</span><br><span class="line">PENSHOT_EMBED__DEFAULT__API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span><br><span class="line">PENSHOT_EMBED__DEFAULT__MODEL_NAME=text-embedding-v4</span><br></pre></td></tr></table></figure>
+<h3 id="启动-MCP-Server">启动 MCP Server</h3>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 基础启动</span></span><br><span class="line">python -m penshot.mcp_server</span><br><span class="line"></span><br><span class="line"><span class="comment"># 指定并发参数</span></span><br><span class="line">python -m penshot.mcp_server --<span class="built_in">max</span>-concurrent <span class="number">5</span> --queue-size <span class="number">500</span></span><br></pre></td></tr></table></figure>
+<h3 id="MCP-客户端示例">MCP 客户端示例</h3>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">MCPClient</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;MCP 客户端 - 同步版本，Windows 兼容&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, server_module: <span class="built_in">str</span> = <span class="string">&quot;penshot.mcp_server&quot;</span></span>):</span><br><span class="line">        <span class="variable language_">self</span>.server_module = server_module</span><br><span class="line">        <span class="variable language_">self</span>.process: <span class="type">Optional</span>[subprocess.Popen] = <span class="literal">None</span></span><br><span class="line">        <span class="variable language_">self</span>._request_id = <span class="number">0</span></span><br><span class="line">        <span class="variable language_">self</span>._ansi_escape = re.<span class="built_in">compile</span>(<span class="string">r&#x27;\x1B\[[0-?]*[ -/]*[@-~]&#x27;</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">start</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;启动 MCP Server 子进程&quot;&quot;&quot;</span></span><br><span class="line">        cmd = [sys.executable, <span class="string">&quot;-m&quot;</span>, <span class="variable language_">self</span>.server_module]</span><br><span class="line"></span><br><span class="line">        <span class="variable language_">self</span>.process = subprocess.Popen(</span><br><span class="line">            cmd,</span><br><span class="line">            stdin=subprocess.PIPE,</span><br><span class="line">            stdout=subprocess.PIPE,</span><br><span class="line">            stderr=subprocess.PIPE,</span><br><span class="line">            text=<span class="literal">True</span>,</span><br><span class="line">            encoding=<span class="string">&#x27;utf-8&#x27;</span>,</span><br><span class="line">            bufsize=<span class="number">1</span></span><br><span class="line">        )</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;MCP Server 已启动，PID: <span class="subst">&#123;self.process.pid&#125;</span>&quot;</span>)</span><br><span class="line">        time.sleep(<span class="number">2</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_clean_ansi</span>(<span class="params">self, text: <span class="built_in">str</span></span>) -&gt; <span class="built_in">str</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;清理 ANSI 转义码&quot;&quot;&quot;</span></span><br><span class="line">        <span class="keyword">return</span> <span class="variable language_">self</span>._ansi_escape.sub(<span class="string">&#x27;&#x27;</span>, text)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">read_json_response</span>(<span class="params">self, timeout: <span class="built_in">float</span> = <span class="number">30</span></span>) -&gt; <span class="type">Optional</span>[<span class="built_in">dict</span>]:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;读取 JSON 响应，跳过非 JSON 行并清理 ANSI 转义码&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">        start_time = time.time()</span><br><span class="line"></span><br><span class="line">        <span class="keyword">while</span> time.time() - start_time &lt; timeout:</span><br><span class="line">            <span class="keyword">try</span>:</span><br><span class="line">                <span class="comment"># 检查是否有数据可读（非阻塞）</span></span><br><span class="line">                <span class="keyword">import</span> msvcrt</span><br><span class="line">                <span class="keyword">if</span> msvcrt.kbhit():</span><br><span class="line">                    <span class="keyword">pass</span></span><br><span class="line">            <span class="keyword">except</span>:</span><br><span class="line">                <span class="keyword">pass</span></span><br><span class="line"></span><br><span class="line">            <span class="comment"># 使用非阻塞方式读取</span></span><br><span class="line">            <span class="keyword">try</span>:</span><br><span class="line">                <span class="comment"># Windows 上不能直接 select 管道，使用轮询方式</span></span><br><span class="line">                line = <span class="variable language_">self</span>.process.stdout.readline()</span><br><span class="line">                <span class="keyword">if</span> line:</span><br><span class="line">                    cleaned_line = <span class="variable language_">self</span>._clean_ansi(line).strip()</span><br><span class="line">                    <span class="keyword">if</span> cleaned_line <span class="keyword">and</span> cleaned_line.startswith(<span class="string">&#x27;&#123;&#x27;</span>):</span><br><span class="line">                        <span class="keyword">try</span>:</span><br><span class="line">                            <span class="keyword">return</span> json.loads(cleaned_line)</span><br><span class="line">                        <span class="keyword">except</span> json.JSONDecodeError:</span><br><span class="line">                            <span class="keyword">continue</span></span><br><span class="line">            <span class="keyword">except</span> Exception:</span><br><span class="line">                <span class="keyword">pass</span></span><br><span class="line"></span><br><span class="line">            <span class="comment"># 短暂休眠，避免 CPU 占用过高</span></span><br><span class="line">            time.sleep(<span class="number">0.05</span>)</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> <span class="literal">None</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_call</span>(<span class="params">self, method: <span class="built_in">str</span>, params: <span class="built_in">dict</span> = <span class="literal">None</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;调用 MCP 方法&quot;&quot;&quot;</span></span><br><span class="line">        <span class="variable language_">self</span>._request_id += <span class="number">1</span></span><br><span class="line">        request = &#123;</span><br><span class="line">            <span class="string">&quot;jsonrpc&quot;</span>: <span class="string">&quot;2.0&quot;</span>,</span><br><span class="line">            <span class="string">&quot;id&quot;</span>: <span class="variable language_">self</span>._request_id,</span><br><span class="line">            <span class="string">&quot;method&quot;</span>: method,</span><br><span class="line">            <span class="string">&quot;params&quot;</span>: params <span class="keyword">or</span> &#123;&#125;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment"># 发送请求</span></span><br><span class="line">        request_str = json.dumps(request, ensure_ascii=<span class="literal">False</span>)</span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">            <span class="variable language_">self</span>.process.stdin.write(request_str + <span class="string">&quot;\n&quot;</span>)</span><br><span class="line">            <span class="variable language_">self</span>.process.stdin.flush()</span><br><span class="line">        <span class="keyword">except</span> BrokenPipeError:</span><br><span class="line">            <span class="keyword">raise</span> Exception(<span class="string">&quot;Server 进程已断开&quot;</span>)</span><br><span class="line"></span><br><span class="line">        <span class="comment"># 读取响应</span></span><br><span class="line">        response = <span class="variable language_">self</span>.read_json_response()</span><br><span class="line">        <span class="keyword">if</span> response <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">            stderr = <span class="variable language_">self</span>.process.stderr.read()</span><br><span class="line">            <span class="keyword">raise</span> Exception(<span class="string">f&quot;Server 无响应: <span class="subst">&#123;stderr&#125;</span>&quot;</span>)</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> response</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_tools</span>(<span class="params">self</span>) -&gt; <span class="built_in">list</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取工具列表&quot;&quot;&quot;</span></span><br><span class="line">        result = <span class="variable language_">self</span>._call(<span class="string">&quot;tools/list&quot;</span>)</span><br><span class="line">        <span class="keyword">return</span> result.get(<span class="string">&quot;result&quot;</span>, &#123;&#125;).get(<span class="string">&quot;tools&quot;</span>, [])</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">breakdown_script</span>(<span class="params">self, script: <span class="built_in">str</span>, language: <span class="built_in">str</span> = <span class="string">&quot;zh&quot;</span>, wait: <span class="built_in">bool</span> = <span class="literal">False</span>, timeout: <span class="built_in">int</span> = <span class="number">300</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;拆分剧本&quot;&quot;&quot;</span></span><br><span class="line">        result = <span class="variable language_">self</span>._call(<span class="string">&quot;tools/call&quot;</span>, &#123;</span><br><span class="line">            <span class="string">&quot;name&quot;</span>: <span class="string">&quot;breakdown_script&quot;</span>,</span><br><span class="line">            <span class="string">&quot;arguments&quot;</span>: &#123;</span><br><span class="line">                <span class="string">&quot;script&quot;</span>: script.strip(),</span><br><span class="line">                <span class="string">&quot;language&quot;</span>: language,</span><br><span class="line">                <span class="string">&quot;wait&quot;</span>: wait,</span><br><span class="line">                <span class="string">&quot;timeout&quot;</span>: timeout</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;)</span><br><span class="line"></span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;   [DEBUG] 原始响应: <span class="subst">&#123;result&#125;</span>&quot;</span>)</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> <span class="string">&quot;error&quot;</span> <span class="keyword">in</span> result:</span><br><span class="line">            <span class="keyword">raise</span> Exception(result[<span class="string">&quot;error&quot;</span>][<span class="string">&quot;message&quot;</span>])</span><br><span class="line"></span><br><span class="line">        content = result.get(<span class="string">&quot;result&quot;</span>, &#123;&#125;).get(<span class="string">&quot;content&quot;</span>, [])</span><br><span class="line">        <span class="keyword">if</span> content <span class="keyword">and</span> content[<span class="number">0</span>].get(<span class="string">&quot;type&quot;</span>) == <span class="string">&quot;text&quot;</span>:</span><br><span class="line">            text_content = content[<span class="number">0</span>][<span class="string">&quot;text&quot;</span>]</span><br><span class="line">            <span class="keyword">try</span>:</span><br><span class="line">                parsed = json.loads(text_content)</span><br><span class="line">                <span class="built_in">print</span>(<span class="string">f&quot;   [DEBUG] 解析后: <span class="subst">&#123;parsed&#125;</span>&quot;</span>)</span><br><span class="line">                <span class="keyword">return</span> parsed</span><br><span class="line">            <span class="keyword">except</span> json.JSONDecodeError:</span><br><span class="line">                <span class="built_in">print</span>(<span class="string">f&quot;   [DEBUG] JSON解析失败，原始文本: <span class="subst">&#123;text_content&#125;</span>&quot;</span>)</span><br><span class="line">                <span class="keyword">return</span> &#123;&#125;</span><br><span class="line">        <span class="keyword">return</span> &#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_task_status</span>(<span class="params">self, task_id: <span class="built_in">str</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取任务状态&quot;&quot;&quot;</span></span><br><span class="line">        result = <span class="variable language_">self</span>._call(<span class="string">&quot;tools/call&quot;</span>, &#123;</span><br><span class="line">            <span class="string">&quot;name&quot;</span>: <span class="string">&quot;get_task_status&quot;</span>,</span><br><span class="line">            <span class="string">&quot;arguments&quot;</span>: &#123;<span class="string">&quot;task_id&quot;</span>: task_id&#125;</span><br><span class="line">        &#125;)</span><br><span class="line"></span><br><span class="line">        content = result.get(<span class="string">&quot;result&quot;</span>, &#123;&#125;).get(<span class="string">&quot;content&quot;</span>, [])</span><br><span class="line">        <span class="keyword">if</span> content <span class="keyword">and</span> content[<span class="number">0</span>].get(<span class="string">&quot;type&quot;</span>) == <span class="string">&quot;text&quot;</span>:</span><br><span class="line">            <span class="keyword">return</span> json.loads(content[<span class="number">0</span>][<span class="string">&quot;text&quot;</span>])</span><br><span class="line">        <span class="keyword">return</span> &#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_task_result</span>(<span class="params">self, task_id: <span class="built_in">str</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取任务结果&quot;&quot;&quot;</span></span><br><span class="line">        result = <span class="variable language_">self</span>._call(<span class="string">&quot;tools/call&quot;</span>, &#123;</span><br><span class="line">            <span class="string">&quot;name&quot;</span>: <span class="string">&quot;get_task_result&quot;</span>,</span><br><span class="line">            <span class="string">&quot;arguments&quot;</span>: &#123;<span class="string">&quot;task_id&quot;</span>: task_id&#125;</span><br><span class="line">        &#125;)</span><br><span class="line"></span><br><span class="line">        content = result.get(<span class="string">&quot;result&quot;</span>, &#123;&#125;).get(<span class="string">&quot;content&quot;</span>, [])</span><br><span class="line">        <span class="keyword">if</span> content <span class="keyword">and</span> content[<span class="number">0</span>].get(<span class="string">&quot;type&quot;</span>) == <span class="string">&quot;text&quot;</span>:</span><br><span class="line">            <span class="keyword">return</span> json.loads(content[<span class="number">0</span>][<span class="string">&quot;text&quot;</span>])</span><br><span class="line">        <span class="keyword">return</span> &#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">stop</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;停止 Server&quot;&quot;&quot;</span></span><br><span class="line">        <span class="keyword">if</span> <span class="variable language_">self</span>.process:</span><br><span class="line">            <span class="variable language_">self</span>.process.terminate()</span><br><span class="line">            <span class="keyword">try</span>:</span><br><span class="line">                <span class="variable language_">self</span>.process.wait(timeout=<span class="number">5</span>)</span><br><span class="line">            <span class="keyword">except</span> subprocess.TimeoutExpired:</span><br><span class="line">                <span class="variable language_">self</span>.process.kill()</span><br><span class="line">            <span class="built_in">print</span>(<span class="string">&quot;MCP Server 已停止&quot;</span>)</span><br></pre></td></tr></table></figure>
+<h3 id="HTTP-MCP-客户端">HTTP MCP 客户端</h3>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">HTTPMCPClient</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;HTTP MCP 客户端&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, base_url: <span class="built_in">str</span> = <span class="string">&quot;http://127.0.0.1:8000&quot;</span></span>):</span><br><span class="line">        <span class="variable language_">self</span>.base_url = base_url</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_tools</span>(<span class="params">self</span>) -&gt; <span class="built_in">list</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取工具列表&quot;&quot;&quot;</span></span><br><span class="line">        resp = requests.get(<span class="string">f&quot;<span class="subst">&#123;self.base_url&#125;</span>/tools&quot;</span>)</span><br><span class="line">        <span class="keyword">return</span> resp.json().get(<span class="string">&quot;tools&quot;</span>, [])</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">breakdown_script</span>(<span class="params">self, script: <span class="built_in">str</span>, language: <span class="built_in">str</span> = <span class="string">&quot;zh&quot;</span>, wait: <span class="built_in">bool</span> = <span class="literal">False</span>, timeout: <span class="built_in">int</span> = <span class="number">300</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;拆分剧本&quot;&quot;&quot;</span></span><br><span class="line">        resp = requests.post(</span><br><span class="line">            <span class="string">f&quot;<span class="subst">&#123;self.base_url&#125;</span>/tools/breakdown_script&quot;</span>,</span><br><span class="line">            json=&#123;</span><br><span class="line">                <span class="string">&quot;script&quot;</span>: script,</span><br><span class="line">                <span class="string">&quot;language&quot;</span>: language,</span><br><span class="line">                <span class="string">&quot;wait&quot;</span>: wait,</span><br><span class="line">                <span class="string">&quot;timeout&quot;</span>: timeout</span><br><span class="line">            &#125;</span><br><span class="line">        )</span><br><span class="line">        resp.raise_for_status()</span><br><span class="line">        <span class="keyword">return</span> resp.json()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_task_status</span>(<span class="params">self, task_id: <span class="built_in">str</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取任务状态&quot;&quot;&quot;</span></span><br><span class="line">        resp = requests.post(</span><br><span class="line">            <span class="string">f&quot;<span class="subst">&#123;self.base_url&#125;</span>/tools/get_task_status&quot;</span>,</span><br><span class="line">            json=&#123;<span class="string">&quot;task_id&quot;</span>: task_id&#125;</span><br><span class="line">        )</span><br><span class="line">        resp.raise_for_status()</span><br><span class="line">        <span class="keyword">return</span> resp.json()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_task_result</span>(<span class="params">self, task_id: <span class="built_in">str</span></span>) -&gt; <span class="built_in">dict</span>:</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取任务结果&quot;&quot;&quot;</span></span><br><span class="line">        resp = requests.post(</span><br><span class="line">            <span class="string">f&quot;<span class="subst">&#123;self.base_url&#125;</span>/tools/get_task_result&quot;</span>,</span><br><span class="line">            json=&#123;<span class="string">&quot;task_id&quot;</span>: task_id&#125;</span><br><span class="line">        )</span><br><span class="line">        resp.raise_for_status()</span><br><span class="line">        <span class="keyword">return</span> resp.json()</span><br></pre></td></tr></table></figure>
+<h3 id="集成-Claude-Desktop">集成 Claude Desktop</h3>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;mcpServers&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;penshot&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;command&quot;</span><span class="punctuation">:</span> <span class="string">&quot;python&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;args&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">        <span class="string">&quot;-m&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="string">&quot;penshot.mcp_server&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="string">&quot;--max-concurrent&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="string">&quot;5&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="string">&quot;--queue-size&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="string">&quot;500&quot;</span></span><br><span class="line">      <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;env&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;PYTHONPATH&quot;</span><span class="punctuation">:</span> <span class="string">&quot;/path/to/your/project&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<ol>
+<li class="lvl-3">
+<p>基础调用（Claude 对话）</p>
+<p>在 Claude Desktop 中，可以直接用自然语言调用。Claude 会自动调用 <code>breakdown_script</code> 工具并返回结果。</p>
+</li>
+<li class="lvl-3">
+<p>异步模式调用</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">call_mcp_tool</span>():</span><br><span class="line">    <span class="comment"># 1. 提交任务</span></span><br><span class="line">    submit_result = <span class="keyword">await</span> client.call_tool(</span><br><span class="line">        <span class="string">&quot;breakdown_script&quot;</span>,</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="string">&quot;script&quot;</span>: <span class="string">&quot;你的剧本文本...&quot;</span>,</span><br><span class="line">            <span class="string">&quot;language&quot;</span>: <span class="string">&quot;zh&quot;</span>,</span><br><span class="line">            <span class="string">&quot;wait&quot;</span>: <span class="literal">False</span>  <span class="comment"># 异步模式</span></span><br><span class="line">        &#125;</span><br><span class="line">    )</span><br><span class="line">    </span><br><span class="line">    task_id = submit_result[<span class="string">&quot;result&quot;</span>][<span class="string">&quot;task_id&quot;</span>]</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">f&quot;任务已提交: <span class="subst">&#123;task_id&#125;</span>&quot;</span>)</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 2. 轮询状态</span></span><br><span class="line">    <span class="keyword">while</span> <span class="literal">True</span>:</span><br><span class="line">        status = <span class="keyword">await</span> client.call_tool(</span><br><span class="line">            <span class="string">&quot;get_task_status&quot;</span>,</span><br><span class="line">            &#123;<span class="string">&quot;task_id&quot;</span>: task_id&#125;</span><br><span class="line">        )</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">if</span> status[<span class="string">&quot;result&quot;</span>][<span class="string">&quot;status&quot;</span>] == <span class="string">&quot;completed&quot;</span>:</span><br><span class="line">            <span class="keyword">break</span></span><br><span class="line">        <span class="keyword">elif</span> status[<span class="string">&quot;result&quot;</span>][<span class="string">&quot;status&quot;</span>] == <span class="string">&quot;failed&quot;</span>:</span><br><span class="line">            <span class="built_in">print</span>(<span class="string">f&quot;任务失败: <span class="subst">&#123;status[<span class="string">&#x27;result&#x27;</span>].get(<span class="string">&#x27;error_message&#x27;</span>)&#125;</span>&quot;</span>)</span><br><span class="line">            <span class="keyword">return</span></span><br><span class="line">        </span><br><span class="line">        <span class="keyword">await</span> asyncio.sleep(<span class="number">2</span>)</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 3. 获取结果</span></span><br><span class="line">    result = <span class="keyword">await</span> client.call_tool(</span><br><span class="line">        <span class="string">&quot;get_task_result&quot;</span>,</span><br><span class="line">        &#123;<span class="string">&quot;task_id&quot;</span>: task_id&#125;</span><br><span class="line">    )</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">return</span> result[<span class="string">&quot;result&quot;</span>]</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>响应</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line"><span class="attr">&quot;success&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line"><span class="attr">&quot;result&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line"> <span class="attr">&quot;task_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;TSK202603291447329714&quot;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;pending&quot;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;message&quot;</span><span class="punctuation">:</span> <span class="string">&quot;任务已提交，请使用 get_task_status 查询进度，使用 get_task_result 获取结果&quot;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p>同步模式调用</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 等待任务完成（适合短剧本）</span></span><br><span class="line">result = <span class="keyword">await</span> client.call_tool(</span><br><span class="line">    <span class="string">&quot;breakdown_script&quot;</span>,</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="string">&quot;script&quot;</span>: <span class="string">&quot;剧本文本...&quot;</span>,</span><br><span class="line">        <span class="string">&quot;language&quot;</span>: <span class="string">&quot;zh&quot;</span>,</span><br><span class="line">        <span class="string">&quot;wait&quot;</span>: <span class="literal">True</span>,</span><br><span class="line">        <span class="string">&quot;timeout&quot;</span>: <span class="number">300</span>  <span class="comment"># 5分钟超时</span></span><br><span class="line">    &#125;</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> result[<span class="string">&quot;success&quot;</span>]:</span><br><span class="line">    data = result[<span class="string">&quot;result&quot;</span>][<span class="string">&quot;data&quot;</span>]</span><br><span class="line">    fragments = data.get(<span class="string">&quot;instructions&quot;</span>, &#123;&#125;).get(<span class="string">&quot;fragments&quot;</span>, [])</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">f&quot;生成了 <span class="subst">&#123;<span class="built_in">len</span>(fragments)&#125;</span> 个片段&quot;</span>)</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>响应</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line"><span class="attr">&quot;success&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line"><span class="attr">&quot;result&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line"> <span class="attr">&quot;task_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;TSK202603291447329714&quot;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;success&quot;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;success&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;data&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">   <span class="attr">&quot;instructions&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">     <span class="attr">&quot;project_info&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span>...<span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">     <span class="attr">&quot;fragments&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span>...<span class="punctuation">]</span></span><br><span class="line">   <span class="punctuation">&#125;</span></span><br><span class="line"> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;processing_time_ms&quot;</span><span class="punctuation">:</span> <span class="number">88988</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p>查询任务状态</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 获取单个任务状态</span></span><br><span class="line">status = <span class="keyword">await</span> client.call_tool(</span><br><span class="line">    <span class="string">&quot;get_task_status&quot;</span>,</span><br><span class="line">    &#123;<span class="string">&quot;task_id&quot;</span>: <span class="string">&quot;TSK202603291447329714&quot;</span>&#125;</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;状态: <span class="subst">&#123;status[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;status&#x27;</span>]&#125;</span>&quot;</span>)</span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;进度: <span class="subst">&#123;status[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;progress&#x27;</span>]&#125;</span>%&quot;</span>)</span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;阶段: <span class="subst">&#123;status[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;stage&#x27;</span>]&#125;</span>&quot;</span>)</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>响应</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line"><span class="attr">&quot;success&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line"><span class="attr">&quot;result&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line"> <span class="attr">&quot;task_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;TSK202603291447329714&quot;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;processing&quot;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;stage&quot;</span><span class="punctuation">:</span> <span class="string">&quot;parsing_script&quot;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;progress&quot;</span><span class="punctuation">:</span> <span class="number">30</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;created_at&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2026-03-29T14:47:32.971309&quot;</span><span class="punctuation">,</span></span><br><span class="line"> <span class="attr">&quot;updated_at&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2026-03-29T14:47:35.123456&quot;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p>取消任务</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 取消正在执行的任务</span></span><br><span class="line">result = <span class="keyword">await</span> client.call_tool(</span><br><span class="line">    <span class="string">&quot;cancel_task&quot;</span>,</span><br><span class="line">    &#123;<span class="string">&quot;task_id&quot;</span>: <span class="string">&quot;TSK202603291447329714&quot;</span>&#125;</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> result[<span class="string">&quot;success&quot;</span>]:</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;任务已取消&quot;</span>)</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p>监控服务器状态</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 获取队列状态</span></span><br><span class="line">queue = <span class="keyword">await</span> client.call_tool(<span class="string">&quot;get_queue_status&quot;</span>, &#123;&#125;)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;队列长度: <span class="subst">&#123;queue[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;queue_length&#x27;</span>]&#125;</span>&quot;</span>)</span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;活跃任务: <span class="subst">&#123;queue[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;active_tasks&#x27;</span>]&#125;</span>&quot;</span>)</span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;最大并发: <span class="subst">&#123;queue[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;max_concurrent&#x27;</span>]&#125;</span>&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 获取统计信息</span></span><br><span class="line">stats = <span class="keyword">await</span> client.call_tool(<span class="string">&quot;get_stats&quot;</span>, &#123;&#125;)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;总提交: <span class="subst">&#123;stats[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;total_submitted&#x27;</span>]&#125;</span>&quot;</span>)</span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;已完成: <span class="subst">&#123;stats[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;total_completed&#x27;</span>]&#125;</span>&quot;</span>)</span><br><span class="line"><span class="built_in">print</span>(<span class="string">f&quot;失败数: <span class="subst">&#123;stats[<span class="string">&#x27;result&#x27;</span>][<span class="string">&#x27;total_failed&#x27;</span>]&#125;</span>&quot;</span>)</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h3 id="注意事项">注意事项</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>异步模式推荐</strong>：对于较长的剧本（超过30秒），建议使用异步模式（<code>wait: false</code>），避免超时</p>
+</li>
+<li class="lvl-3">
+<p><strong>超时设置</strong>：同步模式下 <code>timeout</code> 默认300秒，可根据剧本长度调整</p>
+</li>
+<li class="lvl-3">
+<p><strong>并发限制</strong>：MCP Server 默认最大并发数为10，可通过 <code>--max-concurrent</code> 调整</p>
+</li>
+<li class="lvl-3">
+<p><strong>队列大小</strong>：默认队列大小为1000，超出会拒绝新任务</p>
+</li>
+<li class="lvl-3">
+<p><strong>LLM配置</strong>：确保正确配置了 LLM 的 API Key 和 Base URL</p>
+</li>
+</ol>
+<h3 id="常见问题">常见问题</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">可能原因</th>
+<th style="text-align:left">解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">连接失败</td>
+<td style="text-align:left">MCP Server未启动</td>
+<td style="text-align:left">检查进程是否运行</td>
+</tr>
+<tr>
+<td style="text-align:left">任务超时</td>
+<td style="text-align:left">剧本过长或LLM响应慢</td>
+<td style="text-align:left">增加timeout或使用异步模式</td>
+</tr>
+<tr>
+<td style="text-align:left">结果为空</td>
+<td style="text-align:left">剧本格式问题</td>
+<td style="text-align:left">检查剧本内容</td>
+</tr>
+<tr>
+<td style="text-align:left">队列已满</td>
+<td style="text-align:left">并发任务过多</td>
+<td style="text-align:left">增加queue_size或等待</td>
+</tr>
+</tbody>
+</table>
+<h2 id="相关链接">相关链接</h2>
+<h3 id="📖-核心文档">📖 核心文档</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">技术架构与设计</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">集成使用指南</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">核心实现详解</a></p>
+</li>
+</ul>
+<h3 id="🔧-技术专题">🔧 技术专题</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5b98fed4753340aa91fd9f8ecc4d87e1">工作流节点详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">全局一致性策略</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/b027d930c0b84ba6abd24bbef7d78afc">MCP 协议详解</a></p>
+</li>
+</ul>
+<h3 id="🔗-外部链接">🔗 外部链接</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/video-shot-agent">GitHub 项目</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/7e6cd67dd5ee45248f2276ac145555f5">技术博客首页</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.github.io">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.github.io/2026/02/b027d930c0b84ba6abd24bbef7d78afc/">https://pengline.github.io/2026/02/b027d930c0b84ba6abd24bbef7d78afc/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.github.io" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E6%B1%A0/">任务池</a><a class="post-meta__tags" href="/tags/MCP%E5%8D%8F%E8%AE%AE/">MCP协议</a><a class="post-meta__tags" href="/tags/Model-Context-Protocol/">Model Context Protocol</a><a class="post-meta__tags" href="/tags/MCP-Server/">MCP Server</a><a class="post-meta__tags" href="/tags/%E5%B7%A5%E5%85%B7%E8%B0%83%E7%94%A8/">工具调用</a><a class="post-meta__tags" href="/tags/%E5%BC%82%E6%AD%A5%E4%BB%BB%E5%8A%A1/">异步任务</a><a class="post-meta__tags" href="/tags/%E9%98%9F%E5%88%97%E7%AE%A1%E7%90%86/">队列管理</a><a class="post-meta__tags" href="/tags/Claude-Desktop/">Claude Desktop</a><a class="post-meta__tags" href="/tags/Cursor/">Cursor</a><a class="post-meta__tags" href="/tags/%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6/">并发控制</a></div><div class="post-share"><div class="social-share" data-image="/img/essay/small222033hPqw01758118833.webp" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e/" title="剧本分镜智能体-一致性策略"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/1715140728331171514072863.webp" onerror="onerror=null;src='/img/k3zssqvjw2d.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">剧本分镜智能体-一致性策略</div></div><div class="info-2"><div class="info-item-1">PenShot 全局一致性保障策略。涵盖角色/场景/道具/动作连续性检查、向量数据库语义检索、记忆管理（短期/中期/长期）、状态快照机制、连续性锚点传递、修复参数反馈闭环。</div></div></div></a><a class="pagination-related" href="/2026/01/238b779a48294b85b77d8aed05eb31da/" title="如何利用 AIGC 技术生成超长视频"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/1745746689748174574668963.webp" onerror="onerror=null;src='/img/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">如何利用 AIGC 技术生成超长视频</div></div><div class="info-2"><div class="info-item-1">利用大语言模型+ 多模态模型将一段超长剧本转化为视频，主要有"一站式全自动生成"和"专业级分步制作"两种主流模式。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4/" title="剧本分镜智能体-集成方式"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/small203823RMRXW1760099903.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体-集成方式</div></div><div class="info-2"><div class="info-item-1">PenShot 集成使用指南。支持 Python 库直接调用、REST API、MCP 协议（Claude/Cursor）、A2A 多智能体通信。包含同步/异步模式、任务管理、回调机制。</div></div></div></a><a class="pagination-related" href="/2026/02/7e6cd67dd5ee45248f2276ac145555f5/" title="剧本分镜智能体（PenShot）"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/small102614pbz4m1758680774.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作连贯性。支持LangGraph多智能体协作、MCP协议、向量记忆检索、质量审查与自动修复。</div></div></div></a><a class="pagination-related" href="/2026/04/118be805273f47408bc580c4bd1203d8/" title="任务调度（NeoTask）快速上手"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/1712590480744171259048056.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">任务调度（NeoTask）快速上手</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/03/0ec8d887591a40c98be76645d33a2f23/" title="分布式任务调度系统的架构演进之路"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/1634204644701163420464439.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-03-29</div><div class="info-item-2">分布式任务调度系统的架构演进之路</div></div><div class="info-2"><div class="info-item-1">从零构建通用分布式任务池的完整架构演进历程，涵盖单机版本、监控能力、分布式核心、高可用保障到企业级五个阶段。</div></div></div></a><a class="pagination-related" href="/2026/04/650ac5bb41c74e26bc4effcec88bf26c/" title="任务调度（NeoTask） API 参考"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/1755143910372175514391020.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">任务调度（NeoTask） API 参考</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/03/468d3a0ded1740dd802b912acf8bd757/" title="分布式任务调度系统架构设计与实现（MVP）"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/essay/small103754rLdNH1758681474.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-03-29</div><div class="info-item-2">分布式任务调度系统架构设计与实现（MVP）</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#MCP-%E6%9C%8D%E5%8A%A1"><span class="toc-number">1.</span> <span class="toc-text">MCP 服务</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%94%AF%E6%8C%81%E7%9A%84%E5%B7%A5%E5%85%B7"><span class="toc-number">1.1.</span> <span class="toc-text">支持的工具</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%89%E8%A3%85%E4%B8%8E%E9%85%8D%E7%BD%AE"><span class="toc-number">1.2.</span> <span class="toc-text">安装与配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%AF%E5%8A%A8-MCP-Server"><span class="toc-number">1.3.</span> <span class="toc-text">启动 MCP Server</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#MCP-%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.4.</span> <span class="toc-text">MCP 客户端示例</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#HTTP-MCP-%E5%AE%A2%E6%88%B7%E7%AB%AF"><span class="toc-number">1.5.</span> <span class="toc-text">HTTP MCP 客户端</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9B%86%E6%88%90-Claude-Desktop"><span class="toc-number">1.6.</span> <span class="toc-text">集成 Claude Desktop</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9"><span class="toc-number">1.7.</span> <span class="toc-text">注意事项</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98"><span class="toc-number">1.8.</span> <span class="toc-text">常见问题</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">2.</span> <span class="toc-text">相关链接</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%F0%9F%93%96-%E6%A0%B8%E5%BF%83%E6%96%87%E6%A1%A3"><span class="toc-number">2.1.</span> <span class="toc-text">📖 核心文档</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%F0%9F%94%A7-%E6%8A%80%E6%9C%AF%E4%B8%93%E9%A2%98"><span class="toc-number">2.2.</span> <span class="toc-text">🔧 技术专题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%F0%9F%94%97-%E5%A4%96%E9%83%A8%E9%93%BE%E6%8E%A5"><span class="toc-number">2.3.</span> <span class="toc-text">🔗 外部链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
