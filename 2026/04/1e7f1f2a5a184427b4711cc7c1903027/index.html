@@ -1,0 +1,1284 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>剧本分镜智能体（PenShot）RAG 知识库 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="深入解析 PenShot 中 RAG 知识库的完整设计与实现，涵盖基于 LlamaIndex 的向量知识库架构、短期&#x2F;中期&#x2F;长期三层记忆管理机制、统一知识路由器的检索策略、提示词模板的自动积累与复用，以及各工作流节点的知识集成方式。详细展示了系统如何实现语义检索、经验积累和智能增强的正向循环。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="剧本分镜智能体（PenShot）RAG 知识库">
+<meta property="og:url" content="https://pengline.github.io/2026/04/1e7f1f2a5a184427b4711cc7c1903027/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="深入解析 PenShot 中 RAG 知识库的完整设计与实现，涵盖基于 LlamaIndex 的向量知识库架构、短期&#x2F;中期&#x2F;长期三层记忆管理机制、统一知识路由器的检索策略、提示词模板的自动积累与复用，以及各工作流节点的知识集成方式。详细展示了系统如何实现语义检索、经验积累和智能增强的正向循环。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp">
+<meta property="article:published_time" content="2026-04-23T15:32:36.717Z">
+<meta property="article:modified_time" content="2026-04-24T09:19:35.194Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="向量检索">
+<meta property="article:tag" content="语义搜索">
+<meta property="article:tag" content="RAG检索">
+<meta property="article:tag" content="知识库增强">
+<meta property="article:tag" content="LlamaIndex">
+<meta property="article:tag" content="多层级记忆">
+<meta property="article:tag" content="提示词模板">
+<meta property="article:tag" content="知识路由">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "剧本分镜智能体（PenShot）RAG 知识库",
+  "url": "https://pengline.github.io/2026/04/1e7f1f2a5a184427b4711cc7c1903027/",
+  "image": "https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp",
+  "datePublished": "2026-04-23T15:32:36.717Z",
+  "dateModified": "2026-04-24T09:19:35.194Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.github.io/2026/04/1e7f1f2a5a184427b4711cc7c1903027/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '剧本分镜智能体（PenShot）RAG 知识库',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">70</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">349</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">43</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体（PenShot）RAG 知识库</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体（PenShot）RAG 知识库</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-23T15:32:36.717Z" title="发表于 2026-04-23 23:32:36">2026-04-23</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-04-24T09:19:35.194Z" title="更新于 2026-04-24 17:19:35">2026-04-24</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot RAG</h1>
+<p><a href="https://github.com/neopen/story-shot-agent">GitHub</a> | <a href="https://pengline.cn/2026/02/7e6cd67dd5ee45248f2276ac145555f5">技术博客</a> （<a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">架构设计</a> · <a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">集成指南</a> · <a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">实现详解</a> · <a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027">RAG 增强</a>）</p>
+<hr>
+<h2 id="概述">概述</h2>
+<p>剧本分镜智能体是一个基于多智能体协作的视频分镜生成系统。它将原始剧本作为输入，通过一系列智能体协作，输出可供 AI 视频生成模型使用的提示词序列。在这个过程中，RAG（检索增强生成）知识库扮演着核心记忆与检索角色，为各个智能体提供历史经验、相似场景和成功模板的参考。</p>
+<p>本文档将深入解析 PenShot 项目中 RAG 知识库的设计与实现，涵盖三个核心层次：基于 LlamaIndex 的向量知识库、多层级记忆管理、以及统一的知识路由器。</p>
+<hr>
+<h2 id="整体架构">整体架构</h2>
+<p>整个知识系统采用分层架构设计，从上到下分为四个层次。</p>
+<pre class="mermaid">flowchart TB
+    subgraph Workflow_Layer [工作流节点层]
+        W1[剧本解析节点]
+        W2[分镜生成节点]
+        W3[视频分割节点]
+        W4[提示词转换节点]
+        W5[质量审计节点]
+        W6[连续性守护节点]
+    end
+
+    subgraph Router_Layer [知识路由层]
+        R1[KnowledgeRouter<br/>知识路由器]
+        R2[查询路由策略]
+        R3[结果融合引擎]
+    end
+
+    subgraph Storage_Layer [知识存储层]
+        subgraph Vector [向量知识库]
+            V1[LlamaIndex<br/>VectorStoreIndex]
+            V2[场景向量索引]
+            V3[角色向量索引]
+            V4[提示词模板索引]
+        end
+        
+        subgraph Memory [多层级记忆]
+            M1[短期记忆<br/>ShortTerm]
+            M2[中期记忆<br/>MediumTerm]
+            M3[长期记忆<br/>LongTerm]
+        end
+        
+        subgraph Structured [结构化存储]
+            S1[剧本解析结果]
+            S2[场景/角色/道具]
+            S3[镜头/片段序列]
+        end
+    end
+
+    subgraph Persistence_Layer [持久化层]
+        P1[(向量索引文件<br/>vector_store.json)]
+        P2[(剧本解析缓存<br/>parsed_results/)]
+        P3[(Chroma<br/>向量数据库)]
+    end
+
+    W1 --> R1
+    W2 --> R1
+    W3 --> R1
+    W4 --> R1
+    W5 --> R1
+    W6 --> R1
+    
+    R1 --> R2
+    R2 --> V1
+    R2 --> M1
+    R2 --> S1
+    R3 --> W1
+    
+    V1 --> P1
+    S1 --> P2
+    M3 --> P3</pre>
+<p><strong>工作流节点层</strong>是知识的使用者。剧本解析节点负责将原始剧本转换为结构化数据，分镜生成节点将剧本拆分为视觉镜头，视频分割节点将长镜头切分为 AI 可处理的短片段，提示词转换节点生成文生视频提示词，质量审计节点检查生成质量，连续性守护节点检查角色、场景、道具的一致性。这些节点在执行过程中会向知识系统发起查询请求。</p>
+<p><strong>知识路由层</strong>是知识访问的统一入口。知识路由器接收来自工作流节点的查询请求，根据查询类型自动选择最优的检索策略，然后将多源结果融合后返回。</p>
+<p><strong>知识存储层</strong>包含三个核心组件：LlamaIndex 向量知识库负责语义检索，多层级记忆管理器负责短期、中期、长期记忆管理，结构化存储负责剧本元数据的精确查询。</p>
+<p><strong>持久化层</strong>负责数据的持久存储，包括向量索引文件、JSON 格式的剧本解析结果和 Chroma 向量数据库。</p>
+<hr>
+<h2 id="LlamaIndex-向量知识库">LlamaIndex 向量知识库</h2>
+<p>LlamaIndex 是一个专为 LLM 应用设计的索引框架，它提供了文档加载、索引构建、检索查询等一系列工具。在 PenShot 中，LlamaIndex 主要用于构建剧本的向量索引，实现语义级别的相似度检索。</p>
+<p>ScriptKnowledgeBase 类是向量知识库的核心实现。它在初始化时需要配置嵌入模型、存储目录、分块大小和重叠大小等参数。当添加剧本文本时，系统会调用解析工具将原始剧本转换为结构化文档，然后通过 SentenceSplitter 或 SentenceWindowNodeParser 将文档切分成合适的文本块。每个文本块会被嵌入模型转换为向量，存储到 SimpleVectorStore 中。</p>
+<p>检索功能支持两种模式：相似度检索和 MMR（最大边际相关性）检索。相似度检索返回与查询最相似的 top_k 个结果，而 MMR 检索在相似度的基础上增加了多样性优化，避免返回重复的内容。系统还支持使用 BAAI/bge-reranker-large 模型对检索结果进行重排序，提高相关性。</p>
+<p>向量知识库的数据流向如下：原始剧本首先通过解析工具转换为场景文档和角色文档，每个文档都附带元数据信息如类型、场景编号、地点、时间等。这些文档被转换为 LlamaIndex 的 Document 对象后，通过节点解析器切分成 nodes，最后存入向量存储并建立索引。当用户发起查询时，查询文本被转换为向量，通过相似度计算找到最相关的节点节点，经过重排序后返回结果。</p>
+<h3 id="核心架构">核心架构</h3>
+<p>LlamaIndex 是一个专为 LLM 应用设计的索引框架，提供了文档加载、索引构建、检索查询等完整工具链。在 PenShot 中，LlamaIndex 主要用于构建剧本的向量索引，实现语义级别的相似度检索。</p>
+<pre class="mermaid">flowchart LR
+    subgraph Input [输入]
+        I1[原始剧本]
+        I2[查询文本]
+    end
+
+    subgraph Processing [处理层]
+        P1[ScriptParserTool<br/>剧本解析器]
+        P2[SentenceSplitter<br/>节点解析器]
+        P3[EmbeddingModel<br/>嵌入模型]
+    end
+
+    subgraph Index [索引层]
+        I3[Document<br/>文档对象]
+        I4[TextNode<br/>文本节点]
+        I5[VectorStoreIndex<br/>向量索引]
+        I6[SimpleVectorStore<br/>向量存储]
+    end
+
+    subgraph Retrieval [检索层]
+        R1[VectorRetriever<br/>向量检索器]
+        R2[SentenceTransformerRerank<br/>重排序器]
+        R3[QueryEngine<br/>查询引擎]
+    end
+
+    subgraph Output [输出]
+        O1[相似场景]
+        O2[角色信息]
+        O3[提示词模板]
+    end
+
+    I1 --> P1
+    P1 --> I3
+    I3 --> P2
+    P2 --> I4
+    I4 --> P3
+    P3 --> I5
+    I5 --> I6
+    
+    I2 --> R1
+    I6 --> R1
+    R1 --> R2
+    R2 --> R3
+    R3 --> O1
+    R3 --> O2
+    R3 --> O3</pre>
+<h3 id="ScriptKnowledgeBase-核心类设计">ScriptKnowledgeBase 核心类设计</h3>
+<pre class="mermaid">classDiagram
+    class ScriptKnowledgeBase {
+        -embedding_model: BaseEmbedding
+        -storage_dir: str
+        -chunk_size: int
+        -chunk_overlap: int
+        -index: VectorStoreIndex
+        -retriever: BaseRetriever
+        -parsed_results: Dict
+        -document_cache: Dict
+        
+        +add_script_text(script_text, script_id) Dict
+        +add_script_file(file_path, script_id) Dict
+        +add_script_directory(directory_path) Dict
+        +create_retriever(search_type, top_k, use_rerank) BaseRetriever
+        +query(query_text, search_type, top_k) Dict
+        +query_scene(scene_number) Dict
+        +query_character(character_name) Dict
+        +get_statistics() Dict
+        +clear()
+        -_add_documents_to_index(documents, script_id)
+        -_load_storage()
+        -_save_storage()
+        -_save_parsed_result(script_id, result)
+    }
+
+    class Document {
+        +text: str
+        +metadata: Dict
+        +id_: str
+    }
+
+    class VectorStoreIndex {
+        +from_documents(documents, embed_model)
+        +from_vector_store(vector_store, embed_model)
+        +as_retriever(similarity_top_k)
+        +insert_nodes(nodes)
+    }
+
+    class SimpleVectorStore {
+        +add(nodes)
+        +query(query_embedding, similarity_top_k)
+        +persist(persist_path)
+        +from_persist_path(persist_path)
+    }
+
+    ScriptKnowledgeBase --> Document : creates
+    ScriptKnowledgeBase --> VectorStoreIndex : manages
+    VectorStoreIndex --> SimpleVectorStore : uses</pre>
+<h3 id="文档解析与索引流程">文档解析与索引流程</h3>
+<pre class="mermaid">flowchart TD
+    subgraph Parse [剧本解析]
+        A1[原始剧本文本] --> A2[ScriptParserTool.parse]
+        A2 --> A3[场景识别]
+        A3 --> A4[角色提取]
+        A4 --> A5[元素序列化]
+        A5 --> A6[ParsedScript 对象]
+    end
+
+    subgraph Document [文档创建]
+        B1[遍历场景列表] --> B2[创建场景文档]
+        B2 --> B3[添加场景元数据<br/>type=scene, scene_id, location]
+        B1 --> B4[遍历角色字典]
+        B4 --> B5[创建角色文档]
+        B5 --> B6[添加角色元数据<br/>type=character, character_name]
+    end
+
+    subgraph Index [索引构建]
+        C1[Document 列表] --> C2{SentenceWindowNodeParser<br/>或 SentenceSplitter}
+        C2 --> C3[TextNode 列表]
+        C3 --> C4[Embedding 向量化]
+        C4 --> C5[VectorStoreIndex]
+        C5 --> C6[持久化到磁盘]
+    end
+
+    A6 --> B1
+    B2 --> C1
+    B5 --> C1</pre>
+<h3 id="检索查询流程">检索查询流程</h3>
+<pre class="mermaid">flowchart TD
+    Q[查询文本] --> R{检索器类型}
+    
+    R -->|similarity| S1[向量相似度检索]
+    R -->|mmr| S2[MMR 多样性检索]
+    
+    S1 --> V[向量数据库查询]
+    S2 --> V
+    
+    V --> T{相似度阈值过滤}
+    T -->|低于阈值| D[丢弃]
+    T -->|高于阈值| K[保留]
+    
+    K --> RE{是否启用重排序}
+    RE -->|是| RS[SentenceTransformerRerank]
+    RS --> RT[返回 top_k 结果]
+    RE -->|否| RT
+    
+    RT --> F[格式化结果]
+    F --> FU[结果融合]</pre>
+<h2 id="多层级记忆管理器">多层级记忆管理器</h2>
+<p>MemoryManager 类实现了一个多层级记忆系统，模仿人类的记忆机制，将记忆分为三个层次。</p>
+<p>短期记忆用于存储当前任务的上下文信息，容量为 20 条，每条记忆的存活时间为一小时。这个层级的记忆主要用于在当前工作流执行过程中保持状态连贯，比如当前解析策略、最近发现的问题等。短期记忆会在任务完成后被清理。</p>
+<p>中期记忆用于存储跨任务的统计信息和修复历史，容量限制为 500 tokens。这个层级的记忆记录了每个智能体节点的历史统计，比如解析成功次数、平均片段时长、常见问题类型等。这些信息在后续任务中可以用于预测和优化。</p>
+<p>长期记忆用于存储全局知识，可以无限期保存。这个层级主要存储两类信息：常见问题模式和成功修复模式。长期记忆会与 Chroma 向量数据库联动，支持基于相似度的检索。</p>
+<p>这种分层设计的优势在于：不同粒度的信息存储在不同层级，既保证了当前任务的高效执行，又实现了跨任务的知识积累。</p>
+<h3 id="记忆层级架构">记忆层级架构</h3>
+<pre class="mermaid">flowchart TB
+    subgraph Memory_Arch [记忆层级架构]
+        direction TB
+        
+        subgraph Short [短期记忆层 ShortTerm]
+            S1[容量: 20条]
+            S2[TTL: 3600秒]
+            S3[存储内容:<br/>当前任务上下文<br/>最近问题列表<br/>解析策略]
+        end
+
+        subgraph Medium [中期记忆层 MediumTerm]
+            M1[容量: 500 tokens]
+            M2[存储内容:<br/>任务统计信息<br/>修复历史记录<br/>各阶段指标]
+        end
+
+        subgraph Long [长期记忆层 LongTerm]
+            L1[容量: 无限]
+            L2[存储内容:<br/>常见问题模式<br/>成功修复模式<br/>提示词模板]
+            L3[支持: Chroma 向量检索]
+        end
+    end
+
+    subgraph DataFlow [数据流动]
+        D1[工作流执行] -->|写入| S1
+        D1 -->|写入统计| M1
+        D1 -->|写入成功模式| L1
+        
+        S1 -->|过期清理| D2((丢弃))
+        M1 -->|汇总| L1
+        L1 -->|加载| D1
+    end
+
+    Short --> Medium --> Long</pre>
+<h3 id="MemoryManager-类设计">MemoryManager 类设计</h3>
+<pre class="mermaid">classDiagram
+    class MemoryManager {
+        -llm: BaseLLM
+        -script_id: str
+        -config: MemoryConfig
+        -short_term: Dict
+        -medium_term: Dict
+        -long_term: Dict
+        -embeddings: BaseEmbedding
+        
+        +add(key, value, level, metadata)
+        +get(key, level, default)
+        +get_latest_deserialized(key, level)
+        +clear_script(script_id)
+        +get_statistics()
+        -_serialize(value)
+        -_deserialize(value)
+        -_clean_expired()
+    }
+
+    class MemoryConfig {
+        +short_term_size: int
+        +short_term_ttl: int
+        +medium_term_max_tokens: int
+        +long_term_enabled: bool
+        +long_term_k: int
+        +embeddings: BaseEmbedding
+    }
+
+    class MemoryLevel {
+        <<enumeration>>
+        SHORT_TERM
+        MEDIUM_TERM
+        LONG_TERM
+    }
+
+    MemoryManager --> MemoryConfig
+    MemoryManager --> MemoryLevel</pre>
+<h3 id="记忆读写流程">记忆读写流程</h3>
+<pre class="mermaid">flowchart LR
+    subgraph Write [写入流程]
+        W1[调用 add] --> W2{判断层级}
+        W2 -->|SHORT_TERM| W3[存入短期缓存]
+        W2 -->|MEDIUM_TERM| W4[存入中期缓存<br/>检查 Token 限制]
+        W2 -->|LONG_TERM| W5[存入长期存储<br/>可选 Chroma 索引]
+        W3 --> W6[设置过期时间]
+    end
+
+    subgraph Read [读取流程]
+        R1[调用 get] --> R2{判断层级}
+        R2 -->|SHORT_TERM| R3[读取短期缓存]
+        R2 -->|MEDIUM_TERM| R4[读取中期缓存]
+        R2 -->|LONG_TERM| R5[读取长期存储]
+        R3 --> R6{检查过期}
+        R6 -->|过期| R7[返回默认值]
+        R6 -->|有效| R8[反序列化]
+        R5 --> R8
+    end
+
+    subgraph Clean [清理流程]
+        C1[定时触发] --> C2[扫描短期记忆]
+        C2 --> C3{是否过期}
+        C3 -->|是| C4[删除条目]
+        C3 -->|否| C5[保留]
+    end</pre>
+<hr>
+<h2 id="知识路由器">知识路由器</h2>
+<p>KnowledgeRouter 类是所有知识访问的统一入口，它封装了向量检索、记忆检索和结构化检索三种检索方式，并根据查询类型自动选择最优策略。</p>
+<p>向量检索通过 LlamaIndex 知识库执行语义搜索，适用于查找内容相似的场景、角色描述或提示词模板。当查询文本较长或需要理解语义含义时，向量检索效果最好。</p>
+<p>记忆检索从多层级记忆管理器中获取信息。短期记忆返回当前任务的上下文，中期记忆返回历史统计和修复记录，长期记忆返回常见问题模式。这种检索适合获取统计信息和历史经验。</p>
+<p>结构化检索直接从剧本解析结果中精确查询，比如根据场景编号查询场景信息、根据角色名称查询角色描述。这种检索速度快、准确性高，适合已知标识符的查询。</p>
+<p>混合检索模式会并行执行上述三种检索，然后将结果按分数排序、去重融合。这种模式提供了最佳的召回率，但耗时也最长。</p>
+<p>知识路由器的设计使得工作流节点不需要关心底层知识存储的细节，只需要构造一个 KnowledgeQuery 对象，指定查询文本和期望的来源类型，路由器就会自动完成检索并返回格式化的结果。</p>
+<h3 id="路由器架构">路由器架构</h3>
+<pre class="mermaid">flowchart TB
+    subgraph Input [查询输入]
+        I1[KnowledgeQuery]
+        I2[query_text: str]
+        I3[source: KnowledgeSource]
+        I4[top_k: int]
+        I5[similarity_threshold: float]
+    end
+
+    subgraph Router [KnowledgeRouter]
+        direction TB
+        
+        subgraph Vector [向量检索]
+            V1[ScriptKnowledgeBase]
+            V2[语义相似度搜索]
+            V3[重排序优化]
+        end
+        
+        subgraph Memory [记忆检索]
+            M1[MemoryManager]
+            M2[短期记忆查询]
+            M3[中期统计查询]
+            M4[长期模式查询]
+        end
+        
+        subgraph Structured [结构化检索]
+            S1[剧本解析缓存]
+            S2[场景精确查找]
+            S3[角色精确查找]
+        end
+    end
+
+    subgraph Fusion [结果融合]
+        F1[分数归一化]
+        F2[去重合并]
+        F3[按分数排序]
+        F4[截取 top_k]
+    end
+
+    subgraph Output [查询输出]
+        O1[KnowledgeResult]
+        O2[results: List]
+        O3[source: KnowledgeSource]
+        O4[query_time_ms: float]
+    end
+
+    I1 --> Router
+    
+    I3 -->|VECTOR_INDEX| Vector
+    I3 -->|SEMANTIC_MEMORY| Memory
+    I3 -->|STRUCTURED| Structured
+    I3 -->|HYBRID| Vector
+    I3 -->|HYBRID| Memory
+    I3 -->|HYBRID| Structured
+    
+    Vector --> Fusion
+    Memory --> Fusion
+    Structured --> Fusion
+    
+    Fusion --> Output</pre>
+<h3 id="查询决策流程">查询决策流程</h3>
+<pre class="mermaid">flowchart TD
+    Start([接收查询请求]) --> Parse[解析 KnowledgeQuery]
+    Parse --> Check{查询类型判断}
+    
+    Check -->|关键词明确| Struct[结构化检索]
+    Check -->|语义相似| Vector[向量检索]
+    Check -->|统计信息| Memory[记忆检索]
+    Check -->|综合需求| Hybrid[混合检索]
+    
+    Struct --> S1[查询场景/角色缓存]
+    S1 --> S2[返回精确结果]
+    
+    Vector --> V1[检查索引是否存在]
+    V1 -->|不存在| V2[返回空结果]
+    V1 -->|存在| V3[执行相似度检索]
+    V3 --> V4[重排序]
+    V4 --> V5[返回向量结果]
+    
+    Memory --> M1[查询短期记忆]
+    M1 --> M2[查询中期统计]
+    M2 --> M3[查询长期模式]
+    M3 --> M4[返回记忆结果]
+    
+    Hybrid --> H1[并行执行三种检索]
+    H1 --> H2[收集所有结果]
+    H2 --> H3[分数归一化]
+    H3 --> H4[内容去重]
+    H4 --> H5[排序取 top_k]
+    
+    S2 --> Format[格式化结果]
+    V5 --> Format
+    M4 --> Format
+    H5 --> Format
+    
+    Format --> Return([返回 KnowledgeResult])</pre>
+<h3 id="知识来源枚举">知识来源枚举</h3>
+<pre class="mermaid">classDiagram
+    class KnowledgeSource {
+        <<enumeration>>
+        VECTOR_INDEX
+        SEMANTIC_MEMORY
+        STRUCTURED
+        HYBRID
+    }
+
+    class KnowledgeQuery {
+        +query_text: str
+        +source: KnowledgeSource
+        +top_k: int
+        +filter_script_id: str
+        +filter_scene_id: str
+        +similarity_threshold: float
+        +include_metadata: bool
+    }
+
+    class KnowledgeResult {
+        +results: List~Dict~
+        +source: KnowledgeSource
+        +query_time_ms: float
+        +total_matches: int
+        +query_text: str
+    }
+
+    KnowledgeQuery --> KnowledgeSource
+    KnowledgeResult --> KnowledgeSource</pre>
+<hr>
+<h2 id="提示词模板管理器">提示词模板管理器</h2>
+<p>PromptTemplateManager 是专门管理成功提示词模板的组件。它在向量知识库和记忆层的基础上，增加了模板的存储、检索和应用功能。</p>
+<p>当质量审计节点判定某个片段的提示词通过审查后，系统会自动调用 save_successful_prompt 方法将该提示词保存到模板库。保存时不仅存储提示词文本，还会附带片段 ID、场景信息、风格类型、质量分数等元数据。</p>
+<p>在后续任务执行时，当提示词转换节点生成新的提示词后，系统会调用 enhance_prompt 方法，使用当前生成的提示词作为查询，在模板库中检索相似的成功模板，然后将检索到的模板以追加或融合的方式增强原提示词。</p>
+<p>模板管理器在启动时会从长期记忆层加载历史成功模板，构建向量索引。这样即使服务重启，历史积累的知识也不会丢失。当质量审查再次通过时，新的成功模板会被同时存入向量索引和长期记忆层，实现双向同步。</p>
+<p>这形成了一个正向循环：更多任务执行产生更多成功模板，更多成功模板带来更好的提示词增强效果，更好的提示词又产生更高质量的片段。</p>
+<h3 id="模板管理架构">模板管理架构</h3>
+<pre class="mermaid">flowchart TB
+    subgraph Collect [模板收集]
+        C1[质量审计通过] --> C2[提取成功提示词]
+        C2 --> C3[收集元数据<br/>fragment_id, scene, style, score]
+    end
+
+    subgraph Store [模板存储]
+        S1[PromptTemplateManager]
+        S2[向量索引存储]
+        S3[长期记忆存储]
+        S4[内存缓存]
+    end
+
+    subgraph Retrieve [模板检索]
+        R1[新提示词查询] --> R2[向量相似度检索]
+        R2 --> R3[相似度过滤 >0.7]
+        R3 --> R4[返回最佳匹配]
+    end
+
+    subgraph Apply [模板应用]
+        A1[原始提示词] --> A2{增强模式}
+        A2 -->|append| A3[追加参考]
+        A2 -->|replace| A4[模板替换]
+        A2 -->|hybrid| A5[智能融合]
+    end
+
+    subgraph Sync [双向同步]
+        Y1[内存缓存] <--> Y2[向量索引]
+        Y1 <--> Y3[长期记忆]
+    end
+
+    Collect --> Store
+    Store --> Sync
+    Retrieve --> Apply
+    Sync --> Retrieve</pre>
+<h3 id="PromptTemplateManager-类设计">PromptTemplateManager 类设计</h3>
+<pre class="mermaid">classDiagram
+    class PromptTemplateManager {
+        -embedding_model: BaseEmbedding
+        -memory_manager: MemoryManager
+        -storage_dir: str
+        -index: VectorStoreIndex
+        -_templates_cache: List
+        -node_parser: SentenceSplitter
+        -min_similarity_score: float
+        -top_k: int
+        
+        +add_template(prompt_text, metadata) bool
+        +search_similar(query_text, top_k, min_score) List
+        +get_best_match(query_text, min_score) Dict
+        +enhance_prompt(original_prompt, mode) str
+        +save_successful_prompt(fragment_id, prompt, score, metadata)
+        +is_available() bool
+        +get_statistics() Dict
+        -_load_from_memory()
+        -_add_template_direct(prompt_text, metadata)
+        -_save_to_memory(prompt_text, metadata)
+        -_merge_prompts(original, template)
+    }
+
+    class EnhancementMode {
+        <<enumeration>>
+        APPEND
+        REPLACE
+        HYBRID
+    }
+
+    PromptTemplateManager --> EnhancementMode</pre>
+<h3 id="提示词增强流程">提示词增强流程</h3>
+<pre class="mermaid">flowchart TD
+    Start([生成原始提示词]) --> Check{模板库是否可用}
+    Check -->|不可用| Return1[返回原始提示词]
+    
+    Check -->|可用| Query[使用提示词作为查询]
+    Query --> Search[检索相似模板]
+    Search --> Result{是否找到匹配模板}
+    
+    Result -->|未找到| Return1
+    
+    Result -->|找到| Score{相似度评分}
+    Score -->|<0.7| Return1
+    Score -->|>=0.7| Select[选择最佳模板]
+    
+    Select --> Mode{增强模式选择}
+    
+    Mode -->|append| Append[追加模板作为参考]
+    Append --> Merge1[原始 + 参考模板]
+    
+    Mode -->|replace| Replace[提取模板结构]
+    Replace --> Merge2[模板结构 + 原始内容]
+    
+    Mode -->|hybrid| Hybrid[智能融合]
+    Hybrid --> Merge3[保留两者优点]
+    
+    Merge1 --> Return2[返回增强后提示词]
+    Merge2 --> Return2
+    Merge3 --> Return2
+    
+    Return1 --> End([结束])
+    Return2 --> End</pre>
+<hr>
+<h2 id="工作流节点集成">工作流节点集成</h2>
+<h3 id="连续性检查的知识增强">连续性检查的知识增强</h3>
+<p>连续性守护节点的职责是检查片段序列中是否存在视觉、角色、场景或动作上的不一致。传统的做法是依靠规则和 LLM 判断，但在 PenShot 中，这个节点也得到了知识库的增强。</p>
+<blockquote>
+<p>当连续性检查发现问题时，系统会使用问题描述作为查询，去剧本知识库中检索相似的场景，查看历史上类似问题是如何解决的。检索到的历史解决方案会被附加到问题对象上，供后续修复使用。</p>
+<p>例如，如果检查发现某个角色的服装在相邻片段中不一致，系统会检索该角色在其他场景中的服装描述，或者检索类似服装问题的历史修复方案，为修复生成器提供参考。</p>
+</blockquote>
+<h3 id="知识库的初始化流程">知识库的初始化流程</h3>
+<p>知识库的初始化发生在 WorkflowNodes 的构造函数中。它会创建 PromptTemplateManager 实例，传入嵌入模型、记忆管理器和存储目录。PromptTemplateManager 在初始化时会做三件事：创建存储目录、从磁盘加载已有的向量索引、从长期记忆层加载历史成功模板。</p>
+<blockquote>
+<p>在剧本解析节点执行时，系统会将当前剧本添加到知识库。添加过程包括：解析剧本为场景和角色文档、创建 Document 对象、节点切分、向量化、存入索引、保存解析结果到磁盘。</p>
+<p>这样设计的好处是：每个剧本的知识都被独立存储，同时成功提示词模板被全局共享，实现了任务隔离与知识共享的平衡。</p>
+</blockquote>
+<h3 id="知识库在工作流中的位置">知识库在工作流中的位置</h3>
+<pre class="mermaid">flowchart TB
+    subgraph Workflow [LangGraph 工作流]
+        direction TB
+        
+        N1[剧本解析节点<br/>parse_script_node]
+        N2[分镜生成节点<br/>split_shots_node]
+        N3[视频分割节点<br/>fragment_for_ai_node]
+        N4[提示词转换节点<br/>generate_prompts_node]
+        N5[质量审计节点<br/>quality_audit_node]
+        N6[连续性守护节点<br/>continuity_check_node]
+        N7[结果生成节点<br/>generate_output_node]
+        
+        N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7
+    end
+
+    subgraph Knowledge [知识系统]
+        K1[KnowledgeRouter]
+        K2[ScriptKnowledgeBase]
+        K3[MemoryManager]
+        K4[PromptTemplateManager]
+    end
+
+    subgraph Integration [集成点]
+        I1[添加剧本到知识库]
+        I2[加载历史上下文]
+        I3[提示词模板增强]
+        I4[保存成功模板]
+        I5[检索相似场景]
+    end
+
+    N1 -.-> I1
+    N1 -.-> I2
+    N2 -.-> I2
+    N3 -.-> I2
+    N4 -.-> I3
+    N5 -.-> I4
+    N6 -.-> I5
+
+    I1 --> K2
+    I2 --> K3
+    I3 --> K4
+    I4 --> K4
+    I5 --> K1
+    K1 --> K2
+    K1 --> K3</pre>
+<h3 id="各节点的知识库使用方式">各节点的知识库使用方式</h3>
+<pre class="mermaid">flowchart LR
+    subgraph Parse [剧本解析节点]
+        P1[添加剧本到知识库]
+        P2[加载历史解析策略]
+        P3[加载常见问题模式]
+    end
+
+    subgraph Convert [提示词转换节点]
+        C1[生成原始提示词]
+        C2[检索相似成功模板]
+        C3[增强提示词内容]
+    end
+
+    subgraph Audit [质量审计节点]
+        A1[执行质量审查]
+        A2{审查是否通过}
+        A3[保存为成功模板]
+        A4[记录失败模式]
+    end
+
+    subgraph Continuity [连续性守护节点]
+        D1[检测连续性问题]
+        D2[检索相似历史场景]
+        D3[获取历史解决方案]
+        D4[生成修复参数]
+    end
+
+    P2 --> P3
+    C1 --> C2 --> C3
+    A1 --> A2
+    A2 -->|通过| A3
+    A2 -->|失败| A4
+    D1 --> D2 --> D3 --> D4</pre>
+<hr>
+<h2 id="数据流全景">数据流全景</h2>
+<p>在整个工作流执行过程中，知识库的数据流动如下：</p>
+<blockquote>
+<p><strong>剧本解析阶段</strong>：原始剧本流入 ScriptKnowledgeBase，被解析和索引，生成场景文档和角色文档存入向量库。同时，剧本解析结果存入结构化存储，问题检测结果存入短期记忆，统计信息存入中期记忆。</p>
+<p><strong>分镜生成阶段</strong>：从短期记忆加载历史拆分策略，从长期记忆加载常见镜头模式，用于指导当前的分镜生成。</p>
+<p><strong>视频分割阶段</strong>：从短期记忆加载历史分割问题，从中期记忆加载分割统计，利用这些信息优化分割策略。</p>
+<p><strong>提示词转换阶段</strong>：生成的提示词会通过 PromptTemplateManager 检索相似的成功模板进行增强。增强后的提示词被用于最终输出。</p>
+<p><strong>质量审计阶段</strong>：如果审查通过，当前的提示词被保存为成功模板，同时存入向量索引和长期记忆层。</p>
+<p><strong>连续性检查阶段</strong>：发现的问题会触发剧本知识库检索，查找相似场景和历史解决方案。</p>
+</blockquote>
+<h3 id="完整数据流图">完整数据流图</h3>
+<pre class="mermaid">flowchart TB
+    subgraph Input [输入层]
+        I1[原始剧本]
+    end
+
+    subgraph Stage1 [阶段一：剧本解析]
+        S1[ScriptParserTool]
+        S2[ParsedScript]
+        S3[场景/角色/元素]
+    end
+
+    subgraph Stage2 [阶段二：知识入库]
+        K1[ScriptKnowledgeBase.add_script_text]
+        K2[Document 创建]
+        K3[向量索引构建]
+        K4[解析结果缓存]
+    end
+
+    subgraph Stage3 [阶段三：分镜处理]
+        G1[ShotSegmenter]
+        G2[VideoSplitter]
+        G3[PromptConverter]
+    end
+
+    subgraph Stage4 [阶段四：知识增强]
+        E1[加载历史上下文]
+        E2[检索成功模板]
+        E3[提示词增强]
+    end
+
+    subgraph Stage5 [阶段五：质量控制]
+        Q1[QualityAuditor]
+        Q2{审查结果}
+        Q3[保存成功模板]
+        Q4[记录失败问题]
+    end
+
+    subgraph Stage6 [阶段六：连续性检查]
+        C1[ContinuityGuardian]
+        C2[检索相似场景]
+        C3[获取历史解决方案]
+    end
+
+    subgraph Output [输出层]
+        O1[Instructions]
+        O2[提示词序列]
+    end
+
+    I1 --> S1
+    S1 --> S2
+    S2 --> S3
+    
+    S3 --> K1
+    K1 --> K2
+    K2 --> K3
+    K2 --> K4
+    
+    S3 --> G1
+    G1 --> G2
+    G2 --> G3
+    
+    G3 --> E1
+    K4 --> E1
+    E1 --> E2
+    K3 --> E2
+    E2 --> E3
+    E3 --> G3
+    
+    G3 --> Q1
+    Q1 --> Q2
+    Q2 -->|通过| Q3
+    Q3 --> K3
+    Q2 -->|失败| Q4
+    Q4 --> K4
+    
+    G3 --> C1
+    C1 --> C2
+    K3 --> C2
+    C2 --> C3
+    
+    G3 --> O1
+    O1 --> O2</pre>
+<h3 id="知识积累正向循环">知识积累正向循环</h3>
+<pre class="mermaid">flowchart TD
+    Start([任务开始]) --> Execute[执行工作流]
+    Execute --> Generate[生成提示词]
+    Generate --> Audit[质量审查]
+    
+    Audit -->|通过| Save[保存成功模板]
+    Audit -->|失败| Record[记录失败模式]
+    
+    Save --> Index[更新向量索引]
+    Save --> Memory[存入长期记忆]
+    
+    Index --> NextTask[下一个任务]
+    Memory --> NextTask
+    Record --> NextTask
+    
+    NextTask --> Load[加载历史经验]
+    Load --> Better[更优的提示词生成]
+    Better --> Higher[更高的通过率]
+    
+    Higher --> Execute
+    
+    Save -->|积累| DB[(知识库)]
+    DB -->|增强| Better</pre>
+<hr>
+<h2 id="检索策略配置">检索策略配置</h2>
+<p>根据不同的使用场景，系统采用不同的检索策略配置：</p>
+<blockquote>
+<p>对于剧本解析阶段的历史上下文加载，使用混合检索模式，top_k 设置为 5，相似度阈值 0.5，优先从中期记忆获取统计信息。</p>
+<p>对于提示词模板检索，使用纯向量检索模式，top_k 设置为 3，相似度阈值 0.7，启用重排序以提高相关性。</p>
+<p>对于连续性检查的场景检索，使用纯向量检索模式，top_k 设置为 2，相似度阈值 0.6，只返回剧本知识库中的场景文档。</p>
+</blockquote>
+<p>这些配置可以根据实际效果进行调整，系统设计支持动态修改而不需要重启服务。</p>
+<h3 id="不同场景的检索配置">不同场景的检索配置</h3>
+<pre class="mermaid">flowchart LR
+    subgraph Scene1 [剧本解析场景]
+        Config1[来源: HYBRID]
+        Config1A[top_k: 5]
+        Config1B[阈值: 0.5]
+        Config1C[优先: 中期记忆]
+    end
+
+    subgraph Scene2 [提示词模板场景]
+        Config2[来源: VECTOR_INDEX]
+        Config2A[top_k: 3]
+        Config2B[阈值: 0.7]
+        Config2C[启用重排序]
+    end
+
+    subgraph Scene3 [连续性检查场景]
+        Config3[来源: VECTOR_INDEX]
+        Config3A[top_k: 2]
+        Config3B[阈值: 0.6]
+        Config3C[过滤: 场景文档]
+    end
+
+    subgraph Scene4 [错误处理场景]
+        Config4[来源: SEMANTIC_MEMORY]
+        Config4A[top_k: 3]
+        Config4B[优先: 短期记忆]
+        Config4C[回退: 长期模式]
+    end</pre>
+<hr>
+<h2 id="持久化与恢复">持久化与恢复</h2>
+<p>知识库的持久化分为两个层面：向量索引的持久化和解析结果的持久化。</p>
+<blockquote>
+<p>向量索引通过 LlamaIndex 的 SimpleVectorStore 的 persist 方法保存为 JSON 文件。保存路径由 storage_dir 参数指定，可以区分不同的剧本或模板库。</p>
+<p>解析结果以 JSON 格式单独保存，每个剧本对应一个文件，存储在 parsed_results 子目录下。这种分离设计使得删除某个剧本时只需要删除对应的文件，不影响其他剧本的知识。</p>
+<p>系统启动时会自动尝试加载持久化的数据：首先检查 vector_store.json 是否存在，存在则加载重建索引；然后扫描 parsed_results 目录，加载所有解析结果到缓存。</p>
+</blockquote>
+<p>这种设计支持服务的优雅重启，同时支持多剧本管理。</p>
+<h3 id="持久化架构">持久化架构</h3>
+<pre class="mermaid">flowchart TB
+    subgraph Runtime [运行时]
+        R1[向量索引内存]
+        R2[解析结果缓存]
+        R3[记忆层缓存]
+    end
+
+    subgraph Disk [磁盘存储]
+        D1[(vector_store.json<br/>向量索引文件)]
+        D2[(parsed_results/<br/>剧本解析结果)]
+        D3[(memory_cache.json<br/>记忆层备份)]
+    end
+
+    subgraph External [外部存储]
+        E1[(Chroma DB<br/>长期记忆向量库)]
+    end
+
+    R1 -->|persist| D1
+    R2 -->|save_json| D2
+    R3 -->|backup| D3
+    R3 -->|sync| E1
+
+    D1 -->|load| R1
+    D2 -->|load| R2
+    D3 -->|restore| R3
+    E1 -->|retrieve| R3</pre>
+<h3 id="服务启动恢复流程">服务启动恢复流程</h3>
+<pre class="mermaid">flowchart TD
+    Start([服务启动]) --> Init[初始化 KnowledgeRouter]
+    
+    Init --> LoadVector[加载向量索引]
+    LoadVector --> CheckVector{vector_store.json<br/>是否存在}
+    CheckVector -->|存在| RestoreVector[恢复向量索引]
+    CheckVector -->|不存在| CreateVector[创建空索引]
+    
+    Init --> LoadParsed[加载解析结果]
+    LoadParsed --> ScanDir[扫描 parsed_results 目录]
+    ScanDir --> LoadJSON[加载 JSON 文件]
+    LoadJSON --> RestoreCache[恢复解析缓存]
+    
+    Init --> LoadMemory[加载记忆层]
+    LoadMemory --> RestoreMemory[从长期记忆恢复]
+    RestoreMemory --> SyncChroma[同步 Chroma 向量库]
+    
+    RestoreVector --> Ready[就绪状态]
+    RestoreCache --> Ready
+    SyncChroma --> Ready
+    
+    Ready --> Log[记录统计信息]
+    Log --> End([服务可用])</pre>
+<hr>
+<h2 id="扩展性设计">扩展性设计</h2>
+<p>知识库系统在设计时充分考虑了扩展性：</p>
+<blockquote>
+<p>向量存储支持替换为 Chroma、Pinecone 等外部向量数据库，只需要修改 ScriptKnowledgeBase 中的 vector_store 实例化方式。</p>
+<p>嵌入模型支持替换，通过构造函数传入 embedding_model 参数即可。</p>
+<p>检索器支持自定义，可以在 KnowledgeRouter 中添加新的检索源。</p>
+<p>记忆层级支持扩展，可以在 MemoryLevel 枚举中添加新的层级。</p>
+</blockquote>
+<p>这些扩展点使得系统可以根据实际需求灵活调整，而不需要重写核心逻辑。</p>
+<h3 id="扩展点架构">扩展点架构</h3>
+<pre class="mermaid">flowchart TB
+    subgraph Core [核心系统]
+        Core1[KnowledgeRouter]
+        Core2[MemoryManager]
+        Core3[ScriptKnowledgeBase]
+    end
+
+    subgraph Extension [扩展点]
+        E1[VectorStore<br/>可替换向量存储]
+        E2[EmbeddingModel<br/>可替换嵌入模型]
+        E3[Retriever<br/>可定制检索器]
+        E4[MemoryLevel<br/>可扩展记忆层级]
+    end
+
+    subgraph Impl [实现选项]
+        I1[SimpleVectorStore]
+        I2[ChromaVectorStore]
+        I3[OpenAIEmbedding]
+        I4[HuggingFaceEmbedding]
+        I5[HybridRetriever]
+        I6[CustomRetriever]
+    end
+
+    Core3 --> E1
+    Core3 --> E2
+    Core1 --> E3
+    Core2 --> E4
+    
+    E1 --> I1
+    E1 --> I2
+    E2 --> I3
+    E2 --> I4
+    E3 --> I5
+    E3 --> I6</pre>
+<hr>
+<h2 id="总结">总结</h2>
+<p>PenShot 的 RAG 知识库系统通过三个核心组件实现了高效的知识存储与检索：</p>
+<p><strong>LlamaIndex 向量知识库</strong>提供了语义级别的相似度搜索能力。它支持多种文档格式的加载，提供了 Similarity 和 MMR 两种检索模式，还可以通过重排序模型提高检索质量。</p>
+<p><strong>多层级记忆管理</strong>实现了不同粒度的信息存储。短期记忆保持当前任务的上下文，中期记忆积累跨任务的统计信息，长期记忆沉淀全局的常见模式和成功经验。</p>
+<p><strong>知识路由器</strong>统一了知识访问接口。它根据查询类型自动选择最优的检索策略，支持向量检索、记忆检索、结构化检索和混合检索四种模式，并将多源结果融合后返回。</p>
+<p><strong>提示词模板管理器</strong>专门管理成功提示词模板的存储和检索。质量审计通过的提示词被自动保存，后续任务可以通过相似度检索找到最匹配的模板来增强新生成的提示词。</p>
+<p><strong>连续性检查的知识增强</strong>使用问题描述作为查询，从剧本知识库中检索相似的场景和历史解决方案，为修复生成器提供参考。</p>
+<p>这个设计使得工作流的每个节点都能获得历史经验的支撑。随着处理的任务增多，知识库不断积累，系统会变得越来越智能。成功提示词的积累和复用形成了一个正向循环，持续提升提示词的质量和一致性。</p>
+<hr>
+<h2 id="相关链接">相关链接</h2>
+<h3 id="核心文档">核心文档</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">技术架构与设计</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">集成使用指南</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">核心实现详解</a></p>
+</li>
+</ul>
+<h3 id="技术专题">技术专题</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5b98fed4753340aa91fd9f8ecc4d87e1">工作流节点详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">全局一致性策略</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/b027d930c0b84ba6abd24bbef7d78afc">MCP 协议详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027">RAG 知识库增强</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/6ddcf1cbfa17488e83c16d032d9814c7">开发者指南</a></p>
+</li>
+</ul>
+<h3 id="外部链接">外部链接</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/story-shot-agent">GitHub 项目</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/7e6cd67dd5ee45248f2276ac145555f5">技术博客首页</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.github.io">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.github.io/2026/04/1e7f1f2a5a184427b4711cc7c1903027/">https://pengline.github.io/2026/04/1e7f1f2a5a184427b4711cc7c1903027/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.github.io" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/%E8%AF%AD%E4%B9%89%E6%90%9C%E7%B4%A2/">语义搜索</a><a class="post-meta__tags" href="/tags/RAG%E6%A3%80%E7%B4%A2/">RAG检索</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E5%BA%93%E5%A2%9E%E5%BC%BA/">知识库增强</a><a class="post-meta__tags" href="/tags/LlamaIndex/">LlamaIndex</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E5%B1%82%E7%BA%A7%E8%AE%B0%E5%BF%86/">多层级记忆</a><a class="post-meta__tags" href="/tags/%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%A8%A1%E6%9D%BF/">提示词模板</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E8%B7%AF%E7%94%B1/">知识路由</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related full-width" href="/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/" title="剧本分镜智能体（PenShot）开发指南"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）开发指南</div></div><div class="info-2"><div class="info-item-1">基于多智能体协作的剧本分镜系统，将自然语言剧本自动转换为AI视频生成提示词。支持剧本解析、镜头分割、智能裁剪、双语提示词生成及质量审查，提供REST API、Python SDK、LangGraph节点、A2A/MCP协议等集成方式。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e/" title="剧本分镜智能体（PenShot）一致性策略"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1712590480744171259048056.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）一致性策略</div></div><div class="info-2"><div class="info-item-1">PenShot 全局一致性保障策略。涵盖角色/场景/道具/动作连续性检查、向量数据库语义检索、记忆管理（短期/中期/长期）、状态快照机制、连续性锚点传递、修复参数反馈闭环。</div></div></div></a><a class="pagination-related" href="/2026/02/7e6cd67dd5ee45248f2276ac145555f5/" title="NLP 剧本分镜智能体（PenShot）"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">NLP 剧本分镜智能体（PenShot）</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作连贯性。支持LangGraph多智能体协作、MCP协议、向量记忆检索、质量审查与自动修复。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot RAG</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A6%82%E8%BF%B0"><span class="toc-number">1.1.</span> <span class="toc-text">概述</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.</span> <span class="toc-text">整体架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#LlamaIndex-%E5%90%91%E9%87%8F%E7%9F%A5%E8%AF%86%E5%BA%93"><span class="toc-number">1.3.</span> <span class="toc-text">LlamaIndex 向量知识库</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%9E%B6%E6%9E%84"><span class="toc-number">1.3.1.</span> <span class="toc-text">核心架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ScriptKnowledgeBase-%E6%A0%B8%E5%BF%83%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.3.2.</span> <span class="toc-text">ScriptKnowledgeBase 核心类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%87%E6%A1%A3%E8%A7%A3%E6%9E%90%E4%B8%8E%E7%B4%A2%E5%BC%95%E6%B5%81%E7%A8%8B"><span class="toc-number">1.3.3.</span> <span class="toc-text">文档解析与索引流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A3%80%E7%B4%A2%E6%9F%A5%E8%AF%A2%E6%B5%81%E7%A8%8B"><span class="toc-number">1.3.4.</span> <span class="toc-text">检索查询流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E5%B1%82%E7%BA%A7%E8%AE%B0%E5%BF%86%E7%AE%A1%E7%90%86%E5%99%A8"><span class="toc-number">1.4.</span> <span class="toc-text">多层级记忆管理器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E5%B1%82%E7%BA%A7%E6%9E%B6%E6%9E%84"><span class="toc-number">1.4.1.</span> <span class="toc-text">记忆层级架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#MemoryManager-%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.4.2.</span> <span class="toc-text">MemoryManager 类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E8%AF%BB%E5%86%99%E6%B5%81%E7%A8%8B"><span class="toc-number">1.4.3.</span> <span class="toc-text">记忆读写流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E8%B7%AF%E7%94%B1%E5%99%A8"><span class="toc-number">1.5.</span> <span class="toc-text">知识路由器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B7%AF%E7%94%B1%E5%99%A8%E6%9E%B6%E6%9E%84"><span class="toc-number">1.5.1.</span> <span class="toc-text">路由器架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9F%A5%E8%AF%A2%E5%86%B3%E7%AD%96%E6%B5%81%E7%A8%8B"><span class="toc-number">1.5.2.</span> <span class="toc-text">查询决策流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E6%9D%A5%E6%BA%90%E6%9E%9A%E4%B8%BE"><span class="toc-number">1.5.3.</span> <span class="toc-text">知识来源枚举</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%A8%A1%E6%9D%BF%E7%AE%A1%E7%90%86%E5%99%A8"><span class="toc-number">1.6.</span> <span class="toc-text">提示词模板管理器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A8%A1%E6%9D%BF%E7%AE%A1%E7%90%86%E6%9E%B6%E6%9E%84"><span class="toc-number">1.6.1.</span> <span class="toc-text">模板管理架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#PromptTemplateManager-%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.6.2.</span> <span class="toc-text">PromptTemplateManager 类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%A2%9E%E5%BC%BA%E6%B5%81%E7%A8%8B"><span class="toc-number">1.6.3.</span> <span class="toc-text">提示词增强流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E8%8A%82%E7%82%B9%E9%9B%86%E6%88%90"><span class="toc-number">1.7.</span> <span class="toc-text">工作流节点集成</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%9E%E7%BB%AD%E6%80%A7%E6%A3%80%E6%9F%A5%E7%9A%84%E7%9F%A5%E8%AF%86%E5%A2%9E%E5%BC%BA"><span class="toc-number">1.7.1.</span> <span class="toc-text">连续性检查的知识增强</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E5%BA%93%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96%E6%B5%81%E7%A8%8B"><span class="toc-number">1.7.2.</span> <span class="toc-text">知识库的初始化流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E5%BA%93%E5%9C%A8%E5%B7%A5%E4%BD%9C%E6%B5%81%E4%B8%AD%E7%9A%84%E4%BD%8D%E7%BD%AE"><span class="toc-number">1.7.3.</span> <span class="toc-text">知识库在工作流中的位置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%84%E8%8A%82%E7%82%B9%E7%9A%84%E7%9F%A5%E8%AF%86%E5%BA%93%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F"><span class="toc-number">1.7.4.</span> <span class="toc-text">各节点的知识库使用方式</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E6%B5%81%E5%85%A8%E6%99%AF"><span class="toc-number">1.8.</span> <span class="toc-text">数据流全景</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%8C%E6%95%B4%E6%95%B0%E6%8D%AE%E6%B5%81%E5%9B%BE"><span class="toc-number">1.8.1.</span> <span class="toc-text">完整数据流图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E7%A7%AF%E7%B4%AF%E6%AD%A3%E5%90%91%E5%BE%AA%E7%8E%AF"><span class="toc-number">1.8.2.</span> <span class="toc-text">知识积累正向循环</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5%E9%85%8D%E7%BD%AE"><span class="toc-number">1.9.</span> <span class="toc-text">检索策略配置</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%8D%E5%90%8C%E5%9C%BA%E6%99%AF%E7%9A%84%E6%A3%80%E7%B4%A2%E9%85%8D%E7%BD%AE"><span class="toc-number">1.9.1.</span> <span class="toc-text">不同场景的检索配置</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E4%B8%8E%E6%81%A2%E5%A4%8D"><span class="toc-number">1.10.</span> <span class="toc-text">持久化与恢复</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E6%9E%B6%E6%9E%84"><span class="toc-number">1.10.1.</span> <span class="toc-text">持久化架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9C%8D%E5%8A%A1%E5%90%AF%E5%8A%A8%E6%81%A2%E5%A4%8D%E6%B5%81%E7%A8%8B"><span class="toc-number">1.10.2.</span> <span class="toc-text">服务启动恢复流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E6%80%A7%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.11.</span> <span class="toc-text">扩展性设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E7%82%B9%E6%9E%B6%E6%9E%84"><span class="toc-number">1.11.1.</span> <span class="toc-text">扩展点架构</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">1.12.</span> <span class="toc-text">总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.13.</span> <span class="toc-text">相关链接</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%96%87%E6%A1%A3"><span class="toc-number">1.13.1.</span> <span class="toc-text">核心文档</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8A%80%E6%9C%AF%E4%B8%93%E9%A2%98"><span class="toc-number">1.13.2.</span> <span class="toc-text">技术专题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%96%E9%83%A8%E9%93%BE%E6%8E%A5"><span class="toc-number">1.13.3.</span> <span class="toc-text">外部链接</span></a></li></ol></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

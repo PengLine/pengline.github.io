@@ -1,0 +1,867 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>剧本分镜智能体（PenShot）开发指南 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="基于多智能体协作的剧本分镜系统，将自然语言剧本自动转换为AI视频生成提示词。支持剧本解析、镜头分割、智能裁剪、双语提示词生成及质量审查，提供REST API、Python SDK、LangGraph节点、A2A&#x2F;MCP协议等集成方式。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="剧本分镜智能体（PenShot）开发指南">
+<meta property="og:url" content="https://pengline.github.io/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="基于多智能体协作的剧本分镜系统，将自然语言剧本自动转换为AI视频生成提示词。支持剧本解析、镜头分割、智能裁剪、双语提示词生成及质量审查，提供REST API、Python SDK、LangGraph节点、A2A&#x2F;MCP协议等集成方式。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp">
+<meta property="article:published_time" content="2026-04-23T09:43:32.000Z">
+<meta property="article:modified_time" content="2026-04-24T09:20:43.881Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="LangGraph">
+<meta property="article:tag" content="剧本分镜">
+<meta property="article:tag" content="多智能体">
+<meta property="article:tag" content="LLM">
+<meta property="article:tag" content="视频生成">
+<meta property="article:tag" content="提示词工程">
+<meta property="article:tag" content="AI影视">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "剧本分镜智能体（PenShot）开发指南",
+  "url": "https://pengline.github.io/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/",
+  "image": "https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp",
+  "datePublished": "2026-04-23T09:43:32.000Z",
+  "dateModified": "2026-04-24T09:20:43.881Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.github.io/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '剧本分镜智能体（PenShot）开发指南',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">70</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">349</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">43</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体（PenShot）开发指南</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体（PenShot）开发指南</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-23T09:43:32.000Z" title="发表于 2026-04-23 17:43:32">2026-04-23</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-04-24T09:20:43.881Z" title="更新于 2026-04-24 17:20:43">2026-04-24</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot 开发指南</h1>
+<p><a href="https://github.com/neopen/story-shot-agent">GitHub</a> | <a href="https://pengline.cn/2026/02/7e6cd67dd5ee45248f2276ac145555f5">技术博客</a> （<a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">架构设计</a> · <a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">集成指南</a> · <a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">实现详解</a> · <a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027">RAG 增强</a>）</p>
+<hr>
+<h2 id="项目概览">项目概览</h2>
+<h3 id="什么是-PenShot？">什么是 PenShot？</h3>
+<p>PenShot（Pen &amp; Shot）是一个基于大语言模型的多智能体协作系统，专门用于将自然语言剧本自动转换为适合AI视频生成的提示词序列。它通过多个专业化智能体的协同工作，完成剧本解析、镜头分割、视频分割、提示词转换和质量审查等全流程任务。</p>
+<h3 id="核心能力">核心能力</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>剧本智能解析</strong>：支持自然语言剧本、标准格式剧本、AI分镜脚本、纯对话等多种输入格式</p>
+</li>
+<li class="lvl-2">
+<p><strong>智能镜头拆分</strong>：基于剧本语义自动生成镜头序列，保持道具和角色一致性</p>
+</li>
+<li class="lvl-2">
+<p><strong>长镜头智能分割</strong>：对超过时长阈值的镜头进行智能分割，确保视觉连贯性</p>
+</li>
+<li class="lvl-2">
+<p><strong>双语提示词生成</strong>：同时生成英文和原始语言的高质量提示词</p>
+</li>
+<li class="lvl-2">
+<p><strong>音频提示词生成</strong>：基于剧本内容生成配套的音频提示词（台词、环境音、旁白）</p>
+</li>
+<li class="lvl-2">
+<p><strong>质量审查</strong>：自动审查提示词质量，检测截断、道具不一致等问题</p>
+</li>
+</ul>
+<h3 id="技术栈">技术栈</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">组件</th>
+<th style="text-align:left">技术选型</th>
+<th style="text-align:left">用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">LLM</td>
+<td style="text-align:left">Qwen-Plus / 可配置</td>
+<td style="text-align:left">剧本解析、镜头分割、提示词转换</td>
+</tr>
+<tr>
+<td style="text-align:left">Embedding</td>
+<td style="text-align:left">text-embedding-v4</td>
+<td style="text-align:left">语义检索（预留）</td>
+</tr>
+<tr>
+<td style="text-align:left">工作流框架</td>
+<td style="text-align:left">LangGraph</td>
+<td style="text-align:left">多智能体流程编排</td>
+</tr>
+<tr>
+<td style="text-align:left">API框架</td>
+<td style="text-align:left">FastAPI</td>
+<td style="text-align:left">RESTful服务</td>
+</tr>
+<tr>
+<td style="text-align:left">协议支持</td>
+<td style="text-align:left">A2A / MCP</td>
+<td style="text-align:left">跨Agent协作</td>
+</tr>
+<tr>
+<td style="text-align:left">缓存</td>
+<td style="text-align:left">Redis</td>
+<td style="text-align:left">任务状态管理</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="系统架构">系统架构</h2>
+<h3 id="整体架构图">整体架构图</h3>
+<pre class="mermaid">graph TB
+    subgraph "接入层"
+        A1[REST API]
+        A2[Python SDK]
+        A3[LangGraph节点]
+        A4[A2A协议]
+        A5[MCP Server]
+    end
+    
+    subgraph "核心处理层 - 多智能体流水线"
+        B1[任务调度器]
+        B2[剧本解析智能体]
+        B3[镜头分割智能体]
+        B4[视频分割智能体]
+        B5[提示词转换智能体]
+        B6[质量审查智能体]
+    end
+    
+    subgraph "基础设施层"
+        C1[LLM客户端]
+        C2[提示词管理器]
+        C3[缓存管理]
+        C4[日志服务]
+    end
+    
+    subgraph "数据层"
+        D1[任务状态]
+        D2[中间结果]
+        D3[最终输出]
+    end
+    
+    A1 --> B1
+    A2 --> B1
+    A3 --> B1
+    A4 --> B1
+    A5 --> B1
+    
+    B1 --> B2
+    B2 --> B3
+    B3 --> B4
+    B4 --> B5
+    B5 --> B6
+    
+    B2 -.-> C1
+    B3 -.-> C1
+    B4 -.-> C1
+    B5 -.-> C1
+    B6 -.-> C1
+    
+    B2 --> C2
+    B3 --> C2
+    B4 --> C2
+    B5 --> C2
+    
+    B1 --> D1
+    B2 --> D2
+    B3 --> D2
+    B4 --> D2
+    B5 --> D2
+    B6 --> D3</pre>
+<h3 id="核心数据流">核心数据流</h3>
+<pre class="mermaid">flowchart LR
+    subgraph "输入"
+        I[自然语言剧本]
+    end
+    
+    subgraph "阶段1: 剧本解析"
+        P1[剧本解析智能体]
+        P2[结构化剧本数据]
+    end
+    
+    subgraph "阶段2: 镜头分割"
+        S1[镜头分割智能体]
+        S2[镜头序列数据]
+    end
+    
+    subgraph "阶段3: 视频分割"
+        V1[视频分割智能体]
+        V2[片段序列数据]
+    end
+    
+    subgraph "阶段4: 提示词转换"
+        C1[提示词转换智能体]
+        C2[双语视频提示词]
+        C3[音频提示词]
+    end
+    
+    subgraph "阶段5: 质量审查"
+        Q1[质量审查智能体]
+        Q2[审查报告]
+    end
+    
+    I --> P1 --> P2 --> S1 --> S2 --> V1 --> V2 --> C1 --> C2 --> Q1 --> Q2
+    C1 --> C3</pre>
+<h3 id="智能体状态机">智能体状态机</h3>
+<pre class="mermaid">stateDiagram-v2
+    [*] --> PENDING: 提交任务
+    
+    PENDING --> PARSING: 开始解析
+    PARSING --> PARSED: 解析成功
+    PARSING --> FAILED: 解析失败
+    
+    PARSED --> SEGMENTING: 开始镜头分割
+    SEGMENTING --> SEGMENTED: 分割成功
+    SEGMENTING --> FAILED: 分割失败
+    
+    SEGMENTED --> SPLITTING: 开始视频分割
+    SPLITTING --> SPLIT: 分割成功
+    SPLITTING --> FAILED: 分割失败
+    
+    SPLIT --> CONVERTING: 开始提示词转换
+    CONVERTING --> CONVERTED: 转换成功
+    CONVERTING --> FAILED: 转换失败
+    
+    CONVERTED --> AUDITING: 开始质量审查
+    AUDITING --> COMPLETED: 审查通过
+    AUDITING --> FAILED: 审查失败
+    
+    COMPLETED --> [*]
+    FAILED --> [*]</pre>
+<hr>
+<h2 id="核心模块详解">核心模块详解</h2>
+<h3 id="多智能体协作模型">多智能体协作模型</h3>
+<pre class="mermaid">graph TD
+    subgraph "智能体协作图"
+        A[剧本解析智能体<br/>ScriptParserAgent]
+        B[镜头分割智能体<br/>ShotSegmenterAgent]
+        C[视频分割智能体<br/>VideoSplitterAgent]
+        D[提示词转换智能体<br/>PromptConverterAgent]
+        E[质量审查智能体<br/>QualityAuditorAgent]
+        
+        A -->|结构化数据| B
+        B -->|镜头序列| C
+        C -->|片段序列| D
+        D -->|提示词数据| E
+        
+        A -.->|降级| A1[规则解析器]
+        B -.->|降级| B1[规则镜头分割器]
+        C -.->|降级| C1[规则视频分割器]
+        D -.->|降级| D1[模板转换器]
+    end</pre>
+<h3 id="智能体职责说明">智能体职责说明</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">智能体</th>
+<th style="text-align:left">输入</th>
+<th style="text-align:left">输出</th>
+<th style="text-align:left">核心功能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>ScriptParserAgent</strong></td>
+<td style="text-align:left">自然语言剧本</td>
+<td style="text-align:left">ParsedScript</td>
+<td style="text-align:left">解析剧本结构，提取角色、场景、对话、动作</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>ShotSegmenterAgent</strong></td>
+<td style="text-align:left">ParsedScript</td>
+<td style="text-align:left">ShotSequence</td>
+<td style="text-align:left">将剧本元素拆分为镜头，估算时长，分配镜头类型</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>VideoSplitterAgent</strong></td>
+<td style="text-align:left">ShotSequence</td>
+<td style="text-align:left">FragmentSequence</td>
+<td style="text-align:left">智能分割长镜头，生成片段序列</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>PromptConverterAgent</strong></td>
+<td style="text-align:left">FragmentSequence</td>
+<td style="text-align:left">AIVideoInstructions</td>
+<td style="text-align:left">生成双语视频和音频提示词，保持道具一致性</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>QualityAuditorAgent</strong></td>
+<td style="text-align:left">AIVideoInstructions</td>
+<td style="text-align:left">QualityAuditReport</td>
+<td style="text-align:left">审查提示词质量，检测截断、不一致问题</td>
+</tr>
+</tbody>
+</table>
+<h3 id="核心数据模型">核心数据模型</h3>
+<pre class="mermaid">classDiagram
+    class ParsedScript {
+        +string title
+        +List~CharacterInfo~ characters
+        +List~SceneInfo~ scenes
+        +GlobalMetadata global_metadata
+        +Dict stats
+    }
+    
+    class CharacterInfo {
+        +string name
+        +string gender
+        +string role
+        +string description
+        +List~string~ key_traits
+    }
+    
+    class SceneInfo {
+        +string id
+        +string location
+        +string description
+        +string time_of_day
+        +string weather
+        +List~BaseElement~ elements
+    }
+    
+    class BaseElement {
+        +string id
+        +ElementType type
+        +int sequence
+        +float duration
+        +string content
+        +string description
+        +float intensity
+        +string emotion
+    }
+    
+    class ShotSequence {
+        +List~ShotInfo~ shots
+        +Dict script_reference
+        +Dict stats
+    }
+    
+    class ShotInfo {
+        +string id
+        +string scene_id
+        +string description
+        +float start_time
+        +float duration
+        +ShotType shot_type
+        +string main_character
+    }
+    
+    class FragmentSequence {
+        +List~VideoFragment~ fragments
+        +Dict source_info
+        +Dict stats
+    }
+    
+    class VideoFragment {
+        +string id
+        +string shot_id
+        +string description
+        +float start_time
+        +float duration
+        +Dict continuity_notes
+    }
+    
+    class AIVideoInstructions {
+        +List~AIVideoPrompt~ fragments
+        +Dict project_info
+        +Dict global_settings
+    }
+    
+    class QualityAuditReport {
+        +string status
+        +List~CheckResult~ checks
+        +List~Violation~ violations
+        +Dict stats
+    }
+    
+    ParsedScript --> ShotSequence
+    ShotSequence --> FragmentSequence
+    FragmentSequence --> AIVideoInstructions
+    AIVideoInstructions --> QualityAuditReport</pre>
+<hr>
+<h2 id="快速开始">快速开始</h2>
+<h3 id="环境准备">环境准备</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> https://github.com/neopen/story-shot-agent.git</span><br><span class="line"><span class="built_in">cd</span> story-shot-agent</span><br><span class="line">pip install -e .</span><br></pre></td></tr></table></figure>
+<h3 id="环境配置">环境配置</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">cp</span> .env.example .<span class="built_in">env</span></span><br></pre></td></tr></table></figure>
+<p>编辑 <code>.env</code> 文件，配置必要的 LLM 与 Embedding 参数：</p>
+<figure class="highlight properties"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">########################## LLM 模型配置 #########################</span></span><br><span class="line"><span class="attr">PENSHOT_LLM__DEFAULT__BASE_URL</span>=<span class="string">https://dashscope-intl.aliyuncs.com/api/v1</span></span><br><span class="line"><span class="attr">PENSHOT_LLM__DEFAULT__API_KEY</span>=<span class="string">sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span></span><br><span class="line"><span class="attr">PENSHOT_LLM__DEFAULT__MODEL_NAME</span>=<span class="string">qwen-plus</span></span><br><span class="line"><span class="attr">PENSHOT_LLM__DEFAULT__TIMEOUT</span>=<span class="string">30</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">########################## 嵌入模型配置 #########################</span></span><br><span class="line"><span class="attr">PENSHOT_EMBED__DEFAULT__BASE_URL</span>=<span class="string">https://dashscope-intl.aliyuncs.com/api/v1</span></span><br><span class="line"><span class="attr">PENSHOT_EMBED__DEFAULT__API_KEY</span>=<span class="string">sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</span></span><br><span class="line"><span class="attr">PENSHOT_EMBED__DEFAULT__MODEL_NAME</span>=<span class="string">text-embedding-v4</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">########################## Redis 配置 ##########################</span></span><br><span class="line"><span class="attr">PENSHOT_REDIS_URL</span>=<span class="string">redis://:123456@localhost:6379/0</span></span><br></pre></td></tr></table></figure>
+<h3 id="启动服务">启动服务</h3>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">python main.py</span><br></pre></td></tr></table></figure>
+<p>服务默认运行于 <code>http://0.0.0.0:8000</code>，提供完整的 REST API 接口。</p>
+<h3 id="API-调用示例">API 调用示例</h3>
+<p>提交分镜任务：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">curl -X POST <span class="string">&#x27;http://localhost:8000/api/v1/storyboard&#x27;</span> \</span><br><span class="line">-H <span class="string">&#x27;Content-Type: application/json&#x27;</span> \</span><br><span class="line">-d <span class="string">&#x27;&#123;</span></span><br><span class="line"><span class="string">  &quot;script&quot;: &quot;深夜11点，城市公寓客厅，窗外大雨滂沱。林然裹着旧羊毛毯蜷在沙发里，电视静音播放着黑白老电影...&quot;</span></span><br><span class="line"><span class="string">&#125;&#x27;</span></span><br></pre></td></tr></table></figure>
+<p>查询任务状态：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">curl <span class="string">&#x27;http://localhost:8000/api/v1/status/&#123;task_id&#125;&#x27;</span></span><br></pre></td></tr></table></figure>
+<p>获取任务结果：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">curl <span class="string">&#x27;http://localhost:8000/api/v1/result/&#123;task_id&#125;&#x27;</span></span><br></pre></td></tr></table></figure>
+<h3 id="输出数据结构">输出数据结构</h3>
+<p>系统返回标准化的 JSON 格式，包含视频提示词、负面提示词、时长估算、风格参数及配套的音频提示词：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;fragments&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;fragment_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;frag_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;prompt&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Cinematic wide shot: midnight 11 PM in a compact urban apartment living room...&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;negative_prompt&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cartoon, anime, 3D render, bright lighting, text, watermark...&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;duration&quot;</span><span class="punctuation">:</span> <span class="number">4.2</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;model&quot;</span><span class="punctuation">:</span> <span class="string">&quot;runway_gen2&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;style&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cinematic 35mm film, moody realism, shallow depth of field...&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;audio_prompt&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;audio_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;audio_001&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;prompt&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Low-frequency rain ambience (intensity 0.95), distant muffled TV static...&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;model_type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;AudioLDM_3&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;audio_style&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cinematic&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="集成方式">集成方式</h2>
+<h3 id="集成架构图">集成架构图</h3>
+<pre class="mermaid">graph LR
+    subgraph "调用方"
+        U1[Python应用]
+        U2[FastAPI服务]
+        U3[LangGraph工作流]
+        U4[A2A Agent]
+        U5[MCP客户端]
+    end
+    
+    subgraph "PenShot核心"
+        P[API Gateway<br/>create_penshot_agent]
+        E[执行引擎<br/>MultiAgentPipeline]
+        R[结果管理<br/>TaskManager]
+    end
+    
+    subgraph "外部依赖"
+        L[LLM服务]
+        C[Redis缓存]
+    end
+    
+    U1 --> P
+    U2 --> P
+    U3 --> P
+    U4 --> P
+    U5 --> P
+    
+    P --> E
+    E --> R
+    E --> L
+    E --> C</pre>
+<h3 id="五种集成方式">五种集成方式</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">集成方式</th>
+<th style="text-align:left">适用场景</th>
+<th style="text-align:left">示例文件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>Python SDK</strong></td>
+<td style="text-align:left">直接集成到Python应用</td>
+<td style="text-align:left"><code>direct_usage.py</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>FastAPI Web</strong></td>
+<td style="text-align:left">提供HTTP API服务</td>
+<td style="text-align:left"><code>web_app.py</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>LangGraph节点</strong></td>
+<td style="text-align:left">嵌入LangChain/LangGraph工作流</td>
+<td style="text-align:left"><code>langgraph_integration.py</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>A2A协议</strong></td>
+<td style="text-align:left">与其他Agent协作</td>
+<td style="text-align:left"><code>a2a_integration.py</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>MCP协议</strong></td>
+<td style="text-align:left">接入IDE或Agent框架</td>
+<td style="text-align:left"><code>mcp_client.py</code></td>
+</tr>
+</tbody>
+</table>
+<h4 id="1-Python-SDK-调用">1. Python SDK 调用</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> penshot.api <span class="keyword">import</span> create_penshot_agent</span><br><span class="line"></span><br><span class="line">agent = create_penshot_agent(max_concurrent=<span class="number">5</span>)</span><br><span class="line"></span><br><span class="line">script = <span class="string">&quot;早晨，一个女孩在咖啡馆读书，阳光透过窗户...&quot;</span></span><br><span class="line">task_id = agent.breakdown_script_async(</span><br><span class="line">    script,</span><br><span class="line">    callback=<span class="keyword">lambda</span> r: <span class="built_in">print</span>(<span class="string">f&quot;任务 <span class="subst">&#123;r.task_id&#125;</span> 已完成&quot;</span>)</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line">status = agent.get_task_status(task_id)</span><br><span class="line">result = <span class="keyword">await</span> agent.wait_for_result_async(task_id)</span><br></pre></td></tr></table></figure>
+<p>完整示例：<a href="https://github.com/neopen/story-shot-agent/blob/main/example/direct_usage.py">direct_usage.py</a></p>
+<h4 id="2-嵌入-FastAPI-Web-应用">2. 嵌入 FastAPI Web 应用</h4>
+<p>可通过标准 HTTP 接口集成至现有业务系统：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> fastapi <span class="keyword">import</span> FastAPI, HTTPException</span><br><span class="line"><span class="keyword">from</span> penshot.api <span class="keyword">import</span> create_penshot_agent</span><br><span class="line"></span><br><span class="line">app = FastAPI(title=<span class="string">&quot;Penshot API&quot;</span>, version=<span class="string">&quot;0.1.0&quot;</span>)</span><br><span class="line">agent = create_penshot_agent(max_concurrent=<span class="number">5</span>)</span><br><span class="line"></span><br><span class="line"><span class="meta">@app.post(<span class="params"><span class="string">&quot;/api/generate&quot;</span></span>)</span></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">generate</span>(<span class="params">script_text: <span class="built_in">str</span></span>):</span><br><span class="line">    task_id = agent.breakdown_script_async(script_text)</span><br><span class="line">    <span class="keyword">return</span> &#123;<span class="string">&quot;task_id&quot;</span>: task_id, <span class="string">&quot;status&quot;</span>: <span class="string">&quot;PENDING&quot;</span>&#125;</span><br></pre></td></tr></table></figure>
+<p>完整示例：<a href="https://github.com/neopen/story-shot-agent/blob/main/example/web_app.py">web_app.py</a></p>
+<h4 id="3-LangGraph-节点集成">3. LangGraph 节点集成</h4>
+<p>支持作为独立 Node 接入 LangChain/LangGraph 工作流，实现端到端自动化流水线。 完整示例：<a href="https://github.com/neopen/story-shot-agent/blob/main/example/langgraph_integration.py">langgraph_integration.py</a></p>
+<h4 id="4-A2A-协议协作">4. A2A 协议协作</h4>
+<p>支持与上游剧本创作 Agent、下游文生视频/剪辑 Agent 进行上下文传递与任务编排。 完整示例：<a href="https://github.com/neopen/story-shot-agent/blob/main/example/a2a_integration.py">a2a_integration.py</a></p>
+<h4 id="5-MCP-Model-Context-Protocol-支持">5. MCP (Model Context Protocol) 支持</h4>
+<p>启动 MCP Server：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">python -m penshot.mcp_server --max-concurrent 5 --queue-size 500</span><br></pre></td></tr></table></figure>
+<p>客户端调用工具 <code>breakdown_script</code> 与 <code>get_task_result</code> 即可无缝接入支持 MCP 的 IDE 或 Agent 框架。 完整示例：<a href="https://github.com/neopen/story-shot-agent/blob/main/example/mcp_client.py">mcp_client.py</a></p>
+<h3 id="任务执行流程图">任务执行流程图</h3>
+<pre class="mermaid">sequenceDiagram
+    participant Client as 客户端
+    participant API as API Gateway
+    participant Queue as 任务队列
+    participant Pipeline as 执行流水线
+    participant Cache as 结果缓存
+    
+    Client->>API: POST /api/v1/storyboard
+    API->>Queue: 创建任务 {task_id: PENDING}
+    API-->>Client: 返回 task_id
+    
+    loop 异步执行
+        Queue->>Pipeline: 获取任务
+        Pipeline->>Pipeline: 执行多智能体流程
+        Pipeline->>Cache: 存储结果 {task_id: COMPLETED}
+    end
+    
+    Client->>API: GET /api/v1/result/{task_id}
+    API->>Cache: 查询结果
+    API-->>Client: 返回最终数据</pre>
+<h2 id="开发环境搭建">开发环境搭建</h2>
+<h3 id="环境要求">环境要求</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>Python 3.10+</p>
+</li>
+<li class="lvl-2">
+<p>Redis 7.0+（可选，用于任务队列）</p>
+</li>
+<li class="lvl-2">
+<p>有效的LLM API密钥</p>
+</li>
+</ul>
+<h3 id="安装步骤">安装步骤</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 1. 克隆项目</span></span><br><span class="line">git <span class="built_in">clone</span> https://github.com/neopen/story-shot-agent.git</span><br><span class="line"><span class="built_in">cd</span> story-shot-agent</span><br><span class="line"></span><br><span class="line"><span class="comment"># 2. 创建虚拟环境</span></span><br><span class="line">python -m venv venv</span><br><span class="line"><span class="built_in">source</span> venv/bin/activate  <span class="comment"># Windows: venv\Scripts\activate</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 3. 安装依赖</span></span><br><span class="line">pip install -e .</span><br><span class="line"></span><br><span class="line"><span class="comment"># 4. 配置环境变量</span></span><br><span class="line"><span class="built_in">cp</span> .env.example .<span class="built_in">env</span></span><br><span class="line"><span class="comment"># 编辑 .env 填写 API 密钥</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 5. 启动 Redis（可选）</span></span><br><span class="line">docker run -d -p 6379:6379 redis:7-alpine</span><br><span class="line"></span><br><span class="line"><span class="comment"># 6. 运行测试</span></span><br><span class="line">python -m pytest tests/</span><br></pre></td></tr></table></figure>
+<h3 id="项目结构">项目结构</h3>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line">story-shot-agent/</span><br><span class="line">├── data/                           # 数据目录</span><br><span class="line">├── docs/                           # 文档</span><br><span class="line">├── example/                        # 示例代码</span><br><span class="line">├── logs/                           # 日志文件</span><br><span class="line">├── scripts/                        # 脚本工具</span><br><span class="line">├── src/penshot/                    # 核心源码</span><br><span class="line">│   ├── api/                        # API 接口</span><br><span class="line">│   │   ├── function_calls.py</span><br><span class="line">│   │   ├── index_api.py</span><br><span class="line">│   │   └── rest_api.py</span><br><span class="line">│   ├── app/                        # 应用层</span><br><span class="line">│   ├── config/                     # 配置管理</span><br><span class="line">│   ├── neopen/                     # 核心业务模块</span><br><span class="line">│   │   ├── agent/                  # 智能体</span><br><span class="line">│   │   ├── client/                 # 客户端</span><br><span class="line">│   │   ├── config/                 # 配置</span><br><span class="line">│   │   ├── knowledge/              # 知识库</span><br><span class="line">│   │   ├── prompts/                # 提示词</span><br><span class="line">│   │   ├── task/                   # 任务管理</span><br><span class="line">│   │   ├── tools/                  # 工具集</span><br><span class="line">│   │   ├── shot_config.py</span><br><span class="line">│   │   └── shot_context.py</span><br><span class="line">│   ├── utils/                      # 工具函数</span><br><span class="line">│   │   ├── file_utils.py</span><br><span class="line">│   │   ├── log_utils.py</span><br><span class="line">│   │   └── ...</span><br><span class="line">│   ├── http_server.py</span><br><span class="line">│   ├── mcp_server.py</span><br><span class="line">│   └── logger.py</span><br><span class="line">├── tests/                          # 测试代码</span><br><span class="line">├── .env                            # 环境变量</span><br><span class="line">├── main.py                         # 入口文件</span><br><span class="line">├── pyproject.toml                  # 项目配置</span><br><span class="line">├── requirements.txt                # 依赖列表</span><br></pre></td></tr></table></figure>
+<h2 id="开发指南">开发指南</h2>
+<h3 id="添加新的智能体">添加新的智能体</h3>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 1. 在对应模块创建新智能体</span></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">NewAgent</span>(BaseAgent, BaseXxx):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, llm_client, config</span>):</span><br><span class="line">        <span class="built_in">super</span>().__init__(config)</span><br><span class="line">        <span class="variable language_">self</span>.llm_client = llm_client</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">process</span>(<span class="params">self, input_data</span>):</span><br><span class="line">        <span class="comment"># 实现核心逻辑</span></span><br><span class="line">        <span class="keyword">pass</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 2. 在工作流中注册</span></span><br><span class="line">workflow.add_node(<span class="string">&quot;new_agent&quot;</span>, <span class="keyword">lambda</span> state: new_agent.process(state))</span><br><span class="line">workflow.add_edge(<span class="string">&quot;previous_node&quot;</span>, <span class="string">&quot;new_agent&quot;</span>)</span><br></pre></td></tr></table></figure>
+<h3 id="添加新的提示词模板">添加新的提示词模板</h3>
+<p><code> prompts/new_prompt.yaml</code></p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">new_prompt_system:</span></span><br><span class="line">  <span class="attr">template:</span> <span class="string">|</span></span><br><span class="line"><span class="string">    你是一个专业的助手...</span></span><br><span class="line"><span class="string"></span>    </span><br><span class="line"><span class="attr">new_prompt_user:</span></span><br><span class="line">  <span class="attr">template:</span> <span class="string">|</span></span><br><span class="line">    <span class="string">请处理以下内容：&#123;input&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="调试技巧">调试技巧</h3>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 启用调试日志</span></span><br><span class="line"><span class="keyword">from</span> penshot.logger <span class="keyword">import</span> set_level</span><br><span class="line">set_level(<span class="string">&quot;DEBUG&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 使用模拟数据测试</span></span><br><span class="line"><span class="keyword">from</span> penshot.agent.mock_data <span class="keyword">import</span> MOCK_SCRIPT</span><br><span class="line"></span><br><span class="line"><span class="comment"># 单步执行流水线</span></span><br><span class="line"><span class="keyword">from</span> penshot.agent.workflow_pipeline <span class="keyword">import</span> MultiAgentPipeline</span><br><span class="line"></span><br><span class="line">pipeline = MultiAgentPipeline(task_id=<span class="string">&quot;test&quot;</span>, config=config)</span><br><span class="line">state = <span class="keyword">await</span> pipeline.run_process(MOCK_SCRIPT, config)</span><br><span class="line"><span class="built_in">print</span>(state)</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="性能优化建议">性能优化建议</h2>
+<ol>
+<li class="lvl-3">
+<p><strong>LLM缓存</strong>：相同镜头描述的分割决策会被缓存，避免重复调用</p>
+</li>
+<li class="lvl-3">
+<p><strong>并发处理</strong>：支持多任务并发执行，可配置<code>max_concurrent</code>参数</p>
+</li>
+<li class="lvl-3">
+<p><strong>Redis队列</strong>：生产环境建议使用Redis管理任务队列</p>
+</li>
+<li class="lvl-3">
+<p><strong>降级策略</strong>：LLM失败时自动降级到规则引擎</p>
+</li>
+<li class="lvl-3">
+<p><strong>提示词优化</strong>：合理控制提示词长度，避免token超限</p>
+</li>
+</ol>
+<hr>
+<h2 id="常见问题">常见问题</h2>
+<h3 id="Q1-任务状态一直是PENDING？">Q1: 任务状态一直是PENDING？</h3>
+<p>检查Redis连接是否正常，或任务队列是否积压。</p>
+<h3 id="Q2-提示词被截断？">Q2: 提示词被截断？</h3>
+<p>检查<code>max_prompt_length</code>配置，或原始描述是否过长。</p>
+<h3 id="Q3-道具信息丢失？">Q3: 道具信息丢失？</h3>
+<p>确保<code>GlobalMetadata</code>中正确配置了<code>key_props</code>，并在后续流程中正确传递。</p>
+<h3 id="Q4-如何自定义LLM模型？">Q4: 如何自定义LLM模型？</h3>
+<p>修改<code>.env</code>中的<code>PENSHOT_LLM__DEFAULT__MODEL_NAME</code>配置。</p>
+<hr>
+<h2 id="相关链接">相关链接</h2>
+<h3 id="核心文档">核心文档</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">技术架构与设计</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">集成使用指南</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">核心实现详解</a></p>
+</li>
+</ul>
+<h3 id="技术专题">技术专题</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5b98fed4753340aa91fd9f8ecc4d87e1">工作流节点详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">全局一致性策略</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/b027d930c0b84ba6abd24bbef7d78afc">MCP 协议详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027">RAG 知识库增强</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/6ddcf1cbfa17488e83c16d032d9814c7">开发者指南</a></p>
+</li>
+</ul>
+<h3 id="外部链接">外部链接</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://github.com/neopen/story-shot-agent">GitHub 项目</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/7e6cd67dd5ee45248f2276ac145555f5">技术博客首页</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.github.io">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.github.io/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/">https://pengline.github.io/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.github.io" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/LangGraph/">LangGraph</a><a class="post-meta__tags" href="/tags/%E5%89%A7%E6%9C%AC%E5%88%86%E9%95%9C/">剧本分镜</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93/">多智能体</a><a class="post-meta__tags" href="/tags/LLM/">LLM</a><a class="post-meta__tags" href="/tags/%E8%A7%86%E9%A2%91%E7%94%9F%E6%88%90/">视频生成</a><a class="post-meta__tags" href="/tags/%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%B7%A5%E7%A8%8B/">提示词工程</a><a class="post-meta__tags" href="/tags/AI%E5%BD%B1%E8%A7%86/">AI影视</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/04/1e7f1f2a5a184427b4711cc7c1903027/" title="剧本分镜智能体（PenShot）RAG 知识库"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）RAG 知识库</div></div><div class="info-2"><div class="info-item-1">深入解析 PenShot 中 RAG 知识库的完整设计与实现，涵盖基于 LlamaIndex 的向量知识库架构、短期/中期/长期三层记忆管理机制、统一知识路由器的检索策略、提示词模板的自动积累与复用，以及各工作流节点的知识集成方式。详细展示了系统如何实现语义检索、经验积累和智能增强的正向循环。</div></div></div></a><a class="pagination-related" href="/2026/04/b24c3c4272f842eb926ba32d6e164cd8/" title="多智能体如何保证 AI 视频分镜一致性"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">多智能体如何保证 AI 视频分镜一致性</div></div><div class="info-2"><div class="info-item-1">从角色三视图、连续性锚点、RAG 知识库、结构化提示词、快照机制、质量审计到连续性守护七大核心策略出发，延伸至色彩管理、光照锚点、情绪曲线、双向约束等十五个补充机制，全面展示了一个多层次、系统化的视频分镜一致性保证方案。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/09/92bb519d826e4443936d4cce27ceb524/" title="LangChain + RAG 构建医疗问答Agent"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1743560732214174356073226.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-04</div><div class="info-item-2">LangChain + RAG 构建医疗问答Agent</div></div><div class="info-2"><div class="info-item-1">该系统能够利用预设的医疗知识库和网络搜索功能，为用户提供专业、准确的医疗健康咨询服务。</div></div></div></a><a class="pagination-related" href="/2026/04/b24c3c4272f842eb926ba32d6e164cd8/" title="多智能体如何保证 AI 视频分镜一致性"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-21</div><div class="info-item-2">多智能体如何保证 AI 视频分镜一致性</div></div><div class="info-2"><div class="info-item-1">从角色三视图、连续性锚点、RAG 知识库、结构化提示词、快照机制、质量审计到连续性守护七大核心策略出发，延伸至色彩管理、光照锚点、情绪曲线、双向约束等十五个补充机制，全面展示了一个多层次、系统化的视频分镜一致性保证方案。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot 开发指南</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%A1%B9%E7%9B%AE%E6%A6%82%E8%A7%88"><span class="toc-number">1.1.</span> <span class="toc-text">项目概览</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%80%E4%B9%88%E6%98%AF-PenShot%EF%BC%9F"><span class="toc-number">1.1.1.</span> <span class="toc-text">什么是 PenShot？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%83%BD%E5%8A%9B"><span class="toc-number">1.1.2.</span> <span class="toc-text">核心能力</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8A%80%E6%9C%AF%E6%A0%88"><span class="toc-number">1.1.3.</span> <span class="toc-text">技术栈</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B3%BB%E7%BB%9F%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.</span> <span class="toc-text">系统架构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E5%9B%BE"><span class="toc-number">1.2.1.</span> <span class="toc-text">整体架构图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.2.2.</span> <span class="toc-text">核心数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%99%BA%E8%83%BD%E4%BD%93%E7%8A%B6%E6%80%81%E6%9C%BA"><span class="toc-number">1.2.3.</span> <span class="toc-text">智能体状态机</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%A8%A1%E5%9D%97%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.3.</span> <span class="toc-text">核心模块详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%8D%8F%E4%BD%9C%E6%A8%A1%E5%9E%8B"><span class="toc-number">1.3.1.</span> <span class="toc-text">多智能体协作模型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%99%BA%E8%83%BD%E4%BD%93%E8%81%8C%E8%B4%A3%E8%AF%B4%E6%98%8E"><span class="toc-number">1.3.2.</span> <span class="toc-text">智能体职责说明</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%95%B0%E6%8D%AE%E6%A8%A1%E5%9E%8B"><span class="toc-number">1.3.3.</span> <span class="toc-text">核心数据模型</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B"><span class="toc-number">1.4.</span> <span class="toc-text">快速开始</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%8E%AF%E5%A2%83%E5%87%86%E5%A4%87"><span class="toc-number">1.4.1.</span> <span class="toc-text">环境准备</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%8E%AF%E5%A2%83%E9%85%8D%E7%BD%AE"><span class="toc-number">1.4.2.</span> <span class="toc-text">环境配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%AF%E5%8A%A8%E6%9C%8D%E5%8A%A1"><span class="toc-number">1.4.3.</span> <span class="toc-text">启动服务</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#API-%E8%B0%83%E7%94%A8%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.4.4.</span> <span class="toc-text">API 调用示例</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BE%93%E5%87%BA%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="toc-number">1.4.5.</span> <span class="toc-text">输出数据结构</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%9B%86%E6%88%90%E6%96%B9%E5%BC%8F"><span class="toc-number">1.5.</span> <span class="toc-text">集成方式</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9B%86%E6%88%90%E6%9E%B6%E6%9E%84%E5%9B%BE"><span class="toc-number">1.5.1.</span> <span class="toc-text">集成架构图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BA%94%E7%A7%8D%E9%9B%86%E6%88%90%E6%96%B9%E5%BC%8F"><span class="toc-number">1.5.2.</span> <span class="toc-text">五种集成方式</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#1-Python-SDK-%E8%B0%83%E7%94%A8"><span class="toc-number">1.5.2.1.</span> <span class="toc-text">1. Python SDK 调用</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#2-%E5%B5%8C%E5%85%A5-FastAPI-Web-%E5%BA%94%E7%94%A8"><span class="toc-number">1.5.2.2.</span> <span class="toc-text">2. 嵌入 FastAPI Web 应用</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#3-LangGraph-%E8%8A%82%E7%82%B9%E9%9B%86%E6%88%90"><span class="toc-number">1.5.2.3.</span> <span class="toc-text">3. LangGraph 节点集成</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#4-A2A-%E5%8D%8F%E8%AE%AE%E5%8D%8F%E4%BD%9C"><span class="toc-number">1.5.2.4.</span> <span class="toc-text">4. A2A 协议协作</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#5-MCP-Model-Context-Protocol-%E6%94%AF%E6%8C%81"><span class="toc-number">1.5.2.5.</span> <span class="toc-text">5. MCP (Model Context Protocol) 支持</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%BB%E5%8A%A1%E6%89%A7%E8%A1%8C%E6%B5%81%E7%A8%8B%E5%9B%BE"><span class="toc-number">1.5.3.</span> <span class="toc-text">任务执行流程图</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BC%80%E5%8F%91%E7%8E%AF%E5%A2%83%E6%90%AD%E5%BB%BA"><span class="toc-number">1.6.</span> <span class="toc-text">开发环境搭建</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%8E%AF%E5%A2%83%E8%A6%81%E6%B1%82"><span class="toc-number">1.6.1.</span> <span class="toc-text">环境要求</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%89%E8%A3%85%E6%AD%A5%E9%AA%A4"><span class="toc-number">1.6.2.</span> <span class="toc-text">安装步骤</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A1%B9%E7%9B%AE%E7%BB%93%E6%9E%84"><span class="toc-number">1.6.3.</span> <span class="toc-text">项目结构</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97"><span class="toc-number">1.7.</span> <span class="toc-text">开发指南</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B7%BB%E5%8A%A0%E6%96%B0%E7%9A%84%E6%99%BA%E8%83%BD%E4%BD%93"><span class="toc-number">1.7.1.</span> <span class="toc-text">添加新的智能体</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B7%BB%E5%8A%A0%E6%96%B0%E7%9A%84%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%A8%A1%E6%9D%BF"><span class="toc-number">1.7.2.</span> <span class="toc-text">添加新的提示词模板</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B0%83%E8%AF%95%E6%8A%80%E5%B7%A7"><span class="toc-number">1.7.3.</span> <span class="toc-text">调试技巧</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96%E5%BB%BA%E8%AE%AE"><span class="toc-number">1.8.</span> <span class="toc-text">性能优化建议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98"><span class="toc-number">1.9.</span> <span class="toc-text">常见问题</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Q1-%E4%BB%BB%E5%8A%A1%E7%8A%B6%E6%80%81%E4%B8%80%E7%9B%B4%E6%98%AFPENDING%EF%BC%9F"><span class="toc-number">1.9.1.</span> <span class="toc-text">Q1: 任务状态一直是PENDING？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Q2-%E6%8F%90%E7%A4%BA%E8%AF%8D%E8%A2%AB%E6%88%AA%E6%96%AD%EF%BC%9F"><span class="toc-number">1.9.2.</span> <span class="toc-text">Q2: 提示词被截断？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Q3-%E9%81%93%E5%85%B7%E4%BF%A1%E6%81%AF%E4%B8%A2%E5%A4%B1%EF%BC%9F"><span class="toc-number">1.9.3.</span> <span class="toc-text">Q3: 道具信息丢失？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Q4-%E5%A6%82%E4%BD%95%E8%87%AA%E5%AE%9A%E4%B9%89LLM%E6%A8%A1%E5%9E%8B%EF%BC%9F"><span class="toc-number">1.9.4.</span> <span class="toc-text">Q4: 如何自定义LLM模型？</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.10.</span> <span class="toc-text">相关链接</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%96%87%E6%A1%A3"><span class="toc-number">1.10.1.</span> <span class="toc-text">核心文档</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8A%80%E6%9C%AF%E4%B8%93%E9%A2%98"><span class="toc-number">1.10.2.</span> <span class="toc-text">技术专题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%96%E9%83%A8%E9%93%BE%E6%8E%A5"><span class="toc-number">1.10.3.</span> <span class="toc-text">外部链接</span></a></li></ol></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
