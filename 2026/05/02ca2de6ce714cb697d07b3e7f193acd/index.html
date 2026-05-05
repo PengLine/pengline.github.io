@@ -1,0 +1,1687 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>编程助手 Claude Code 全面使用指南 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="终端 AI 编程助手 Claude Code 的全面使用指南：安装配置、核心指令、权限沙箱与扩展机制。深入解析了 Git 集成、任务规划及高效工作流，助力开发者在命令行环境中安全、自动化地完成复杂编码任务。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="编程助手 Claude Code 全面使用指南">
+<meta property="og:url" content="https://pengline.cn/2026/05/02ca2de6ce714cb697d07b3e7f193acd/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="终端 AI 编程助手 Claude Code 的全面使用指南：安装配置、核心指令、权限沙箱与扩展机制。深入解析了 Git 集成、任务规划及高效工作流，助力开发者在命令行环境中安全、自动化地完成复杂编码任务。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp">
+<meta property="article:published_time" content="2026-05-05T15:07:22.588Z">
+<meta property="article:modified_time" content="2026-05-05T15:21:52.141Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Claude Code">
+<meta property="article:tag" content="AI Coding">
+<meta property="article:tag" content="Anthropic">
+<meta property="article:tag" content="CLI工具">
+<meta property="article:tag" content="开发指南">
+<meta property="article:tag" content="MCP集成">
+<meta property="article:tag" content="自动化工作流">
+<meta property="article:tag" content="权限沙箱">
+<meta property="article:tag" content="编程助手">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "编程助手 Claude Code 全面使用指南",
+  "url": "https://pengline.cn/2026/05/02ca2de6ce714cb697d07b3e7f193acd/",
+  "image": "https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp",
+  "datePublished": "2026-05-05T15:07:22.588Z",
+  "dateModified": "2026-05-05T15:21:52.141Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.cn"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/05/02ca2de6ce714cb697d07b3e7f193acd/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '编程助手 Claude Code 全面使用指南',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">74</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">373</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">45</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">编程助手 Claude Code 全面使用指南</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/turnkey/smart-city"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/smart-security"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" href="/turnkey/tms"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">编程助手 Claude Code 全面使用指南</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-05-05T15:07:22.588Z" title="发表于 2026-05-05 23:07:22">2026-05-05</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-05-05T15:21:52.141Z" title="更新于 2026-05-05 23:21:52">2026-05-05</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Tool/">Tool</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>Claude Code 使用说明书</h1>
+<blockquote>
+<p>版本：v2.1.112 | 更新时间：2026-05-05</p>
+</blockquote>
+<hr>
+<h2 id="目录">目录</h2>
+<ol>
+<li class="lvl-3">
+<p><a href="#1-%E7%AE%80%E4%BB%8B">简介</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#2-%E5%AE%89%E8%A3%85%E4%B8%8E%E5%90%AF%E5%8A%A8">安装与启动</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#3-cli-%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0">CLI 命令行参数</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#4-%E6%96%9C%E6%9D%A0%E5%91%BD%E4%BB%A4">斜杠命令</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#5-%E6%A0%B8%E5%BF%83%E5%B7%A5%E5%85%B7">核心工具</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#6-skills-%E6%8A%80%E8%83%BD%E7%B3%BB%E7%BB%9F">Skills 技能系统</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#7-%E9%85%8D%E7%BD%AE%E7%B3%BB%E7%BB%9F">配置系统</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#8-%E6%9D%83%E9%99%90%E4%B8%8E%E5%AE%89%E5%85%A8">权限与安全</a></p>
+</li>
+<li class="lvl-3">
+<p><a href="#9-claudemd-%E9%A1%B9%E7%9B%AE%E6%8C%87%E5%8D%97">CLAUDE.md 项目指南</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#10-%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F">记忆系统</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#11-git-%E9%9B%86%E6%88%90%E4%B8%8E%E5%B7%A5%E4%BD%9C%E6%A0%91">Git 集成与工作树</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#12-plan-%E6%A8%A1%E5%BC%8F%E4%B8%8E%E4%BB%BB%E5%8A%A1%E8%BF%BD%E8%B8%AA">Plan 模式与任务追踪</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#13-mcp-%E6%9C%8D%E5%8A%A1%E5%99%A8">MCP 服务器</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#14-ide-%E9%9B%86%E6%88%90">IDE 集成</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#15-%E9%94%AE%E7%9B%98%E5%BF%AB%E6%8D%B7%E9%94%AE">键盘快捷键</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#16-hooks-%E9%92%A9%E5%AD%90%E7%B3%BB%E7%BB%9F">Hooks 钩子系统</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#17-%E5%B8%B8%E8%A7%81%E5%B7%A5%E4%BD%9C%E6%B5%81">常见工作流</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#18-%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5">最佳实践</a></p>
+</li>
+<li class="lvl-4">
+<p><a href="#19-%E6%96%87%E4%BB%B6%E8%B7%AF%E5%BE%84%E9%80%9F%E6%9F%A5">文件路径速查</a></p>
+</li>
+</ol>
+<hr>
+<h2 id="简介">简介</h2>
+<p>Claude Code 是 Anthropic 推出的<strong>官方命令行 AI 编程助手</strong>。它运行在你的终端中，可以直接读写文件、执行命令、搜索代码库，帮助你完成各种软件工程任务。</p>
+<h3 id="核心能力">核心能力</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>文件操作</strong>：读取、创建、编辑文件，支持图片和 PDF</p>
+</li>
+<li class="lvl-2">
+<p><strong>代码搜索</strong>：基于 ripgrep 的正则搜索、Glob 模式匹配</p>
+</li>
+<li class="lvl-2">
+<p><strong>命令执行</strong>：在沙箱中执行 Bash 命令</p>
+</li>
+<li class="lvl-2">
+<p><strong>Git 集成</strong>：提交、分支管理、PR 创建与审查</p>
+</li>
+<li class="lvl-2">
+<p><strong>并行处理</strong>：通过子代理（Subagent）并行执行多个独立任务</p>
+</li>
+<li class="lvl-2">
+<p><strong>任务追踪</strong>：结构化的待办事项管理</p>
+</li>
+<li class="lvl-2">
+<p><strong>记忆系统</strong>：跨会话持久化偏好与上下文</p>
+</li>
+<li class="lvl-2">
+<p><strong>网页访问</strong>：WebFetch（抓取网页）和 WebSearch（搜索）</p>
+</li>
+</ul>
+<hr>
+<h2 id="安装与启动">安装与启动</h2>
+<h3 id="安装">安装</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># npm 全局安装</span></span><br><span class="line">npm install -g @anthropic-ai/claude-code</span><br><span class="line"></span><br><span class="line"><span class="comment"># 或使用各平台安装包</span></span><br><span class="line"><span class="comment"># Windows: 下载 .exe 安装包</span></span><br><span class="line"><span class="comment"># macOS: brew install claude-code</span></span><br></pre></td></tr></table></figure>
+<h3 id="认证">认证</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># OAuth 登录（推荐）</span></span><br><span class="line">claude auth login</span><br><span class="line"></span><br><span class="line"><span class="comment"># 或使用 Console API Key</span></span><br><span class="line">claude auth login --console</span><br></pre></td></tr></table></figure>
+<h3 id="启动">启动</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 交互模式（默认）</span></span><br><span class="line">claude</span><br><span class="line"></span><br><span class="line"><span class="comment"># 非交互模式（直接执行任务）</span></span><br><span class="line">claude -p <span class="string">&quot;修复 src/app.py 中的空指针异常&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 恢复上次会话</span></span><br><span class="line">claude --<span class="built_in">continue</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 指定模型</span></span><br><span class="line">claude --model claude-sonnet-4-6</span><br></pre></td></tr></table></figure>
+<h3 id="更新">更新</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">claude update</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="CLI-命令行参数">CLI 命令行参数</h2>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-p</code> / <code>--print</code></td>
+<td>非交互模式，传入 prompt 直接执行</td>
+</tr>
+<tr>
+<td><code>--resume [session-id]</code></td>
+<td>恢复之前的会话</td>
+</tr>
+<tr>
+<td><code>--continue</code></td>
+<td>恢复最近一次会话</td>
+</tr>
+<tr>
+<td><code>--model &lt;name&gt;</code></td>
+<td>指定模型</td>
+</tr>
+<tr>
+<td><code>--effort &lt;level&gt;</code></td>
+<td>设置努力级别 (low/medium/high/xhigh/max)</td>
+</tr>
+<tr>
+<td><code>--worktree &lt;name&gt;</code></td>
+<td>创建并进入 git worktree</td>
+</tr>
+<tr>
+<td><code>--bare</code></td>
+<td>脚本化模式，跳过 hooks/LSP/插件同步</td>
+</tr>
+<tr>
+<td><code>--dangerously-skip-permissions</code></td>
+<td>跳过所有权限提示（仅在可信环境使用）</td>
+</tr>
+<tr>
+<td><code>--output-format stream-json</code></td>
+<td>JSON 输出（用于无头/自动化场景）</td>
+</tr>
+<tr>
+<td><code>--debug</code></td>
+<td>启用调试日志</td>
+</tr>
+<tr>
+<td><code>--add-dir &lt;path&gt;</code></td>
+<td>添加会话允许访问的目录</td>
+</tr>
+<tr>
+<td><code>--version</code></td>
+<td>显示版本号</td>
+</tr>
+<tr>
+<td><code>--help</code></td>
+<td>显示帮助信息</td>
+</tr>
+</tbody>
+</table>
+<h3 id="子命令">子命令</h3>
+<table>
+<thead>
+<tr>
+<th>子命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>claude update</code></td>
+<td>更新到最新版本</td>
+</tr>
+<tr>
+<td><code>claude auth login</code></td>
+<td>认证登录</td>
+</tr>
+<tr>
+<td><code>claude doctor</code></td>
+<td>诊断配置问题</td>
+</tr>
+<tr>
+<td><code>claude mcp serve</code></td>
+<td>运行 MCP 服务器</td>
+</tr>
+<tr>
+<td><code>claude ultrareview [target]</code></td>
+<td>运行综合代码审查</td>
+</tr>
+<tr>
+<td><code>claude plugin install &lt;name&gt;</code></td>
+<td>安装插件</td>
+</tr>
+<tr>
+<td><code>claude plugin uninstall &lt;name&gt;</code></td>
+<td>卸载插件</td>
+</tr>
+<tr>
+<td><code>claude plugin marketplace</code></td>
+<td>管理插件市场</td>
+</tr>
+<tr>
+<td><code>claude project purge [path]</code></td>
+<td>清除项目的所有 Claude Code 状态</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="斜杠命令">斜杠命令</h2>
+<p>以下命令在交互模式（REPL）中输入：</p>
+<h3 id="基础命令">基础命令</h3>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/help</code></td>
+<td>显示帮助</td>
+</tr>
+<tr>
+<td><code>/clear</code></td>
+<td>清除对话上下文</td>
+</tr>
+<tr>
+<td><code>/compact</code></td>
+<td>压缩对话以节省 token</td>
+</tr>
+<tr>
+<td><code>/exit</code></td>
+<td>退出会话</td>
+</tr>
+</tbody>
+</table>
+<h3 id="会话管理">会话管理</h3>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/resume [id]</code></td>
+<td>恢复会话</td>
+</tr>
+<tr>
+<td><code>/branch</code> / <code>/fork</code></td>
+<td>分叉当前对话到新会话</td>
+</tr>
+<tr>
+<td><code>/rename &lt;name&gt;</code></td>
+<td>重命名当前会话</td>
+</tr>
+<tr>
+<td><code>/status</code></td>
+<td>显示会话状态</td>
+</tr>
+<tr>
+<td><code>/context</code></td>
+<td>查看上下文 / token 使用情况</td>
+</tr>
+<tr>
+<td><code>/usage</code></td>
+<td>查看使用统计</td>
+</tr>
+<tr>
+<td><code>/export [path]</code></td>
+<td>导出对话</td>
+</tr>
+<tr>
+<td><code>/copy [N]</code></td>
+<td>复制上一次回复到剪贴板</td>
+</tr>
+<tr>
+<td><code>/recap</code></td>
+<td>显示会话回顾</td>
+</tr>
+<tr>
+<td><code>/color [color]</code></td>
+<td>设置会话主题色</td>
+</tr>
+</tbody>
+</table>
+<h3 id="模型与配置">模型与配置</h3>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/model</code></td>
+<td>切换模型（显示选择器 UI）</td>
+</tr>
+<tr>
+<td><code>/effort</code></td>
+<td>设置努力级别</td>
+</tr>
+<tr>
+<td><code>/config</code></td>
+<td>打开配置 UI</td>
+</tr>
+<tr>
+<td><code>/permissions</code></td>
+<td>管理权限</td>
+</tr>
+<tr>
+<td><code>/sandbox</code></td>
+<td>管理沙箱设置</td>
+</tr>
+<tr>
+<td><code>/env</code></td>
+<td>查看环境变量</td>
+</tr>
+</tbody>
+</table>
+<h3 id="工作模式">工作模式</h3>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/plan [描述]</code></td>
+<td>进入计划模式</td>
+</tr>
+<tr>
+<td><code>/review</code></td>
+<td>审查当前更改</td>
+</tr>
+<tr>
+<td><code>/security-review</code></td>
+<td>安全审查</td>
+</tr>
+<tr>
+<td><code>/init</code></td>
+<td>初始化 <a href="http://CLAUDE.md">CLAUDE.md</a></td>
+</tr>
+<tr>
+<td><code>/loop &lt;间隔&gt; &lt;命令&gt;</code></td>
+<td>设置周期性任务</td>
+</tr>
+<tr>
+<td><code>/focus</code></td>
+<td>切换专注视图</td>
+</tr>
+</tbody>
+</table>
+<h3 id="操作">操作</h3>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/undo</code> / <code>/rewind</code></td>
+<td>撤销上一次操作</td>
+</tr>
+<tr>
+<td><code>/add-dir [--remember] &lt;path&gt;</code></td>
+<td>添加允许访问的目录</td>
+</tr>
+<tr>
+<td><code>/tui</code></td>
+<td>切换全屏/无闪烁模式</td>
+</tr>
+<tr>
+<td><code>/voice</code></td>
+<td>切换语音输入</td>
+</tr>
+<tr>
+<td><code>/statusline</code></td>
+<td>设置状态行</td>
+</tr>
+</tbody>
+</table>
+<h3 id="高级">高级</h3>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/ultraplan</code></td>
+<td>云端多代理规划</td>
+</tr>
+<tr>
+<td><code>/ultrareview</code></td>
+<td>云端综合代码审查</td>
+</tr>
+<tr>
+<td><code>/less-permission-prompts</code></td>
+<td>分析会话记录并优化权限列表</td>
+</tr>
+<tr>
+<td><code>/insights</code></td>
+<td>生成会话分析报告</td>
+</tr>
+<tr>
+<td><code>/team-onboarding</code></td>
+<td>生成团队成员入门指南</td>
+</tr>
+<tr>
+<td><code>/release-notes</code></td>
+<td>查看更新日志</td>
+</tr>
+<tr>
+<td><code>/powerup</code></td>
+<td>交互式功能教程</td>
+</tr>
+<tr>
+<td><code>/remote-control</code></td>
+<td>桥接会话到 <a href="http://claude.ai">claude.ai</a></td>
+</tr>
+<tr>
+<td><code>/feedback</code></td>
+<td>提交反馈</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="核心工具">核心工具</h2>
+<p>Claude Code 拥有以下内置工具，AI 模型可以自主调用：</p>
+<h3 id="文件操作">文件操作</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Read</strong></td>
+<td>读取文件内容（支持图片、PDF、Jupyter Notebook）</td>
+</tr>
+<tr>
+<td><strong>Write</strong></td>
+<td>创建新文件或完全覆盖已有文件</td>
+</tr>
+<tr>
+<td><strong>Edit</strong></td>
+<td>精确替换文件中的字符串（使用 old_string / new_string）</td>
+</tr>
+<tr>
+<td><strong>NotebookEdit</strong></td>
+<td>编辑 Jupyter Notebook 单元格</td>
+</tr>
+</tbody>
+</table>
+<h3 id="搜索与发现">搜索与发现</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Glob</strong></td>
+<td>快速文件名模式匹配（如 <code>src/**/*.ts</code>）</td>
+</tr>
+<tr>
+<td><strong>Grep</strong></td>
+<td>正则表达式搜索文件内容（基于 ripgrep）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="执行">执行</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Bash</strong></td>
+<td>执行 Bash 命令（默认沙箱隔离）</td>
+</tr>
+<tr>
+<td><strong>Agent</strong></td>
+<td>启动子代理并行执行复杂任务</td>
+</tr>
+</tbody>
+</table>
+<h3 id="信息获取">信息获取</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>WebFetch</strong></td>
+<td>获取并分析网页内容</td>
+</tr>
+<tr>
+<td><strong>WebSearch</strong></td>
+<td>网络搜索</td>
+</tr>
+</tbody>
+</table>
+<h3 id="项目管理">项目管理</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>TaskCreate</strong></td>
+<td>创建待办任务</td>
+</tr>
+<tr>
+<td><strong>TaskList</strong></td>
+<td>列出所有任务</td>
+</tr>
+<tr>
+<td><strong>TaskUpdate</strong></td>
+<td>更新任务状态</td>
+</tr>
+<tr>
+<td><strong>EnterWorktree</strong></td>
+<td>进入 Git 工作树</td>
+</tr>
+<tr>
+<td><strong>ExitWorktree</strong></td>
+<td>退出 Git 工作树</td>
+</tr>
+<tr>
+<td><strong>CronCreate</strong></td>
+<td>创建定时任务</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="Skills-技能系统">Skills 技能系统</h2>
+<p>Skills 是自定义的斜杠命令，可以为 Claude 定义专门的行为。</p>
+<h3 id="Skill-文件结构">Skill 文件结构</h3>
+<p>Skills 存储在 <code>.claude/skills/&lt;name&gt;/SKILL.md</code>（项目级或全局）：</p>
+<figure class="highlight markdown"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">---</span><br><span class="line">name: my-skill</span><br><span class="line">description: 这个技能做什么</span><br><span class="line">trigger<span class="emphasis">_keywords:</span></span><br><span class="line"><span class="emphasis">  - 关键词1</span></span><br><span class="line"><span class="emphasis">  - 关键词2</span></span><br><span class="line"><span class="emphasis">version: 1.0</span></span><br><span class="line"><span class="emphasis">author: 作者名</span></span><br><span class="line"><span class="emphasis">---</span></span><br><span class="line"><span class="emphasis"></span></span><br><span class="line"><span class="emphasis"># 指令内容</span></span><br><span class="line"><span class="emphasis"></span></span><br><span class="line"><span class="emphasis">Claude，当调用此技能时，请执行以下操作...</span></span><br></pre></td></tr></table></figure>
+<h3 id="Skill-元数据字段">Skill 元数据字段</h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>调用名称（用作 <code>/name</code>）</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>在 <code>/skills</code> 菜单中显示的描述</td>
+</tr>
+<tr>
+<td><code>trigger_keywords</code></td>
+<td>触发关键词，匹配时自动建议</td>
+</tr>
+<tr>
+<td><code>paths</code></td>
+<td>文件路径 Glob，条件自动激活</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td>覆盖默认模型</td>
+</tr>
+<tr>
+<td><code>effort</code></td>
+<td>覆盖努力级别</td>
+</tr>
+<tr>
+<td><code>context</code></td>
+<td>上下文模式（<code>fork</code> 或默认）</td>
+</tr>
+<tr>
+<td><code>allowed-tools</code></td>
+<td>允许使用的工具列表</td>
+</tr>
+</tbody>
+</table>
+<h3 id="常用技能">常用技能</h3>
+<table>
+<thead>
+<tr>
+<th>技能</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/init</code></td>
+<td>初始化项目的 <a href="http://CLAUDE.md">CLAUDE.md</a></td>
+</tr>
+<tr>
+<td><code>/review</code></td>
+<td>审查代码变更</td>
+</tr>
+<tr>
+<td><code>/security-review</code></td>
+<td>安全审查</td>
+</tr>
+<tr>
+<td><code>/simplify</code></td>
+<td>代码审查（质量、复用、效率）</td>
+</tr>
+<tr>
+<td><code>/claude-api</code></td>
+<td>Claude API/SDK 开发调试</td>
+</tr>
+<tr>
+<td><code>/code-comment-expert</code></td>
+<td>添加专业的中英双语注释</td>
+</tr>
+<tr>
+<td><code>/update-config</code></td>
+<td>配置 settings.json</td>
+</tr>
+<tr>
+<td><code>/keybindings-help</code></td>
+<td>自定义键盘快捷键</td>
+</tr>
+<tr>
+<td><code>/loop</code></td>
+<td>设置周期性任务</td>
+</tr>
+<tr>
+<td><code>/batch</code></td>
+<td>并行工作树批量处理</td>
+</tr>
+</tbody>
+</table>
+<h3 id="调用方式">调用方式</h3>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"># 直接调用</span><br><span class="line">/&lt;skill-name&gt;</span><br><span class="line"></span><br><span class="line"># Claude 会根据触发关键词自动建议相关技能</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="配置系统">配置系统</h2>
+<h3 id="配置优先级（从高到低）">配置优先级（从高到低）</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>CLI 参数</strong> — <code>--model</code>、<code>--dangerously-skip-permissions</code> 等</p>
+</li>
+<li class="lvl-3">
+<p><strong>环境变量</strong> — <code>ANTHROPIC_AUTH_TOKEN</code>、<code>ANTHROPIC_BASE_URL</code> 等</p>
+</li>
+<li class="lvl-3">
+<p><strong>本地覆盖</strong> — <code>&lt;project&gt;/.claude/settings.local.json</code>（应加入 .gitignore）</p>
+</li>
+<li class="lvl-3">
+<p><strong>项目设置</strong> — <code>&lt;project&gt;/.claude/settings.json</code></p>
+</li>
+<li class="lvl-3">
+<p><strong>全局用户设置</strong> — <code>~/.claude/settings.json</code></p>
+</li>
+<li class="lvl-3">
+<p><strong>组织设置</strong> — 管理员从 Anthropic Console 推送</p>
+</li>
+<li class="lvl-3">
+<p><strong>托管设置</strong> — <code>managed-settings.json</code>（管理员强制策略）</p>
+</li>
+</ol>
+<h3 id="主要配置项">主要配置项</h3>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;env&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;ANTHROPIC_AUTH_TOKEN&quot;</span><span class="punctuation">:</span> <span class="string">&quot;your-api-key&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;ANTHROPIC_BASE_URL&quot;</span><span class="punctuation">:</span> <span class="string">&quot;https://api.anthropic.com&quot;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;model&quot;</span><span class="punctuation">:</span> <span class="string">&quot;claude-sonnet-4-6&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;theme&quot;</span><span class="punctuation">:</span> <span class="string">&quot;dark&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;language&quot;</span><span class="punctuation">:</span> <span class="string">&quot;zh-CN&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;editorMode&quot;</span><span class="punctuation">:</span> <span class="string">&quot;normal&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;verbose&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">false</span></span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;sandbox&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;network&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;allowedDomains&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;*.github.com&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;deniedDomains&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">]</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;filesystem&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;allowWrite&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;*&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;denyRead&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;.env&quot;</span><span class="punctuation">,</span> <span class="string">&quot;*.secret&quot;</span><span class="punctuation">]</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;permissions&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;allow&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;Bash(git *)&quot;</span><span class="punctuation">,</span> <span class="string">&quot;Read(**)&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;deny&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;Bash(rm -rf *)&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;defaultMode&quot;</span><span class="punctuation">:</span> <span class="string">&quot;acceptEdits&quot;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;hooks&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;PostToolUse&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;matcher&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Write&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;if&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Write(**)&quot;</span><span class="punctuation">,</span> </span><br><span class="line">        <span class="attr">&quot;hooks&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;command&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;command&quot;</span><span class="punctuation">:</span> <span class="string">&quot;echo &#x27;文件已更新&#x27;&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">]</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;mcpServers&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;my-server&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;command&quot;</span><span class="punctuation">:</span> <span class="string">&quot;npx&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;args&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;-y&quot;</span><span class="punctuation">,</span> <span class="string">&quot;@modelcontextprotocol/server-something&quot;</span><span class="punctuation">]</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;cleanupPeriodDays&quot;</span><span class="punctuation">:</span> <span class="number">30</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;showThinkingSummaries&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="配置文件位置">配置文件位置</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全局设置</td>
+<td><code>~/.claude/settings.json</code></td>
+</tr>
+<tr>
+<td>项目设置</td>
+<td><code>&lt;project&gt;/.claude/settings.json</code></td>
+</tr>
+<tr>
+<td>本地覆盖</td>
+<td><code>&lt;project&gt;/.claude/settings.local.json</code></td>
+</tr>
+<tr>
+<td>键盘映射</td>
+<td><code>~/.claude/keybindings.json</code></td>
+</tr>
+<tr>
+<td>会话记录</td>
+<td><code>.claude/projects/&lt;hash&gt;.jsonl</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="权限与安全">权限与安全</h2>
+<h3 id="权限模式">权限模式</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Ask</strong>（默认）</td>
+<td>Claude 在执行每个操作前询问</td>
+</tr>
+<tr>
+<td><strong>Accept Edits</strong></td>
+<td>允许自由编辑文件，命令仍需确认</td>
+</tr>
+<tr>
+<td><strong>Bypass Permissions</strong></td>
+<td>完全信任模式</td>
+</tr>
+<tr>
+<td><strong>Auto</strong></td>
+<td>模型自行判断操作安全性（需要特定用户资格）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="权限规则语法">权限规则语法</h3>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;permissions&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;allow&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="string">&quot;Bash(git *)&quot;</span><span class="punctuation">,</span>        <span class="comment">// 允许所有 git 命令</span></span><br><span class="line">      <span class="string">&quot;Bash(npm *)&quot;</span><span class="punctuation">,</span>        <span class="comment">// 允许所有 npm 命令</span></span><br><span class="line">      <span class="string">&quot;Read(**)&quot;</span>            <span class="comment">// 允许读取所有文件</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;deny&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="string">&quot;Bash(rm -rf *)&quot;</span><span class="punctuation">,</span>     <span class="comment">// 禁止递归强制删除</span></span><br><span class="line">      <span class="string">&quot;Bash(sudo *)&quot;</span>        <span class="comment">// 禁止 sudo 命令</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="沙箱安全">沙箱安全</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>Linux</strong>：PID 命名空间隔离</p>
+</li>
+<li class="lvl-2">
+<p><strong>网络</strong>：可配置 <code>sandbox.network.allowedDomains</code> / <code>deniedDomains</code></p>
+</li>
+<li class="lvl-2">
+<p><strong>文件系统</strong>：可配置 <code>sandbox.filesystem.allowWrite</code> / <code>denyRead</code></p>
+</li>
+<li class="lvl-2">
+<p><strong>自动识别</strong>：只读命令（如 <code>ls</code>、<code>grep</code>）自动跳过权限提示</p>
+</li>
+<li class="lvl-2">
+<p><strong>超时控制</strong>：每个命令可设置执行超时</p>
+</li>
+</ul>
+<h3 id="安全建议">安全建议</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>不要在公共项目中提交 <code>.claude/settings.json</code> 中的敏感信息</p>
+</li>
+<li class="lvl-2">
+<p>使用 <code>.claude/settings.local.json</code> 存放个人配置（加入 .gitignore）</p>
+</li>
+<li class="lvl-2">
+<p>仅在你完全控制的终端中使用 <code>--dangerously-skip-permissions</code></p>
+</li>
+<li class="lvl-2">
+<p>定期使用 <code>/less-permission-prompts</code> 优化权限规则</p>
+</li>
+</ul>
+<hr>
+<h2 id="CLAUDE-md-项目指南"><a href="http://CLAUDE.md">CLAUDE.md</a> 项目指南</h2>
+<p><code>CLAUDE.md</code> 是你的项目专属&quot;AI 指南文件&quot;。Claude 在每次对话开始时自动加载它。</p>
+<h3 id="创建方式">创建方式</h3>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">/init          # 交互式创建</span><br><span class="line">claude -p &quot;帮我写 CLAUDE.md&quot;  # 让 Claude 帮你写</span><br></pre></td></tr></table></figure>
+<h3 id="位置">位置</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>./CLAUDE.md</code>（项目根目录）</p>
+</li>
+<li class="lvl-2">
+<p><code>./.claude/CLAUDE.md</code></p>
+</li>
+</ul>
+<h3 id="内容示例">内容示例</h3>
+<figure class="highlight markdown"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="section"># 项目：MyApp</span></span><br><span class="line"></span><br><span class="line"><span class="section">## 架构</span></span><br><span class="line"><span class="bullet">-</span> 前端：React + TypeScript + Tailwind</span><br><span class="line"><span class="bullet">-</span> 后端：FastAPI + PostgreSQL</span><br><span class="line"><span class="bullet">-</span> 测试：Jest（前端）、pytest（后端）</span><br><span class="line"></span><br><span class="line"><span class="section">## 编码规范</span></span><br><span class="line"><span class="bullet">-</span> TypeScript 严格模式</span><br><span class="line"><span class="bullet">-</span> 组件使用函数式写法</span><br><span class="line"><span class="bullet">-</span> API 端点遵循 RESTful 命名</span><br><span class="line"></span><br><span class="line"><span class="section">## 常用命令</span></span><br><span class="line"><span class="bullet">-</span> <span class="code">`npm run dev`</span> — 启动开发服务器</span><br><span class="line"><span class="bullet">-</span> <span class="code">`pytest`</span> — 运行所有后端测试</span><br><span class="line"></span><br><span class="line"><span class="section">## 注意事项</span></span><br><span class="line"><span class="bullet">-</span> 不要修改 <span class="code">`legacy/`</span> 目录</span><br><span class="line"><span class="bullet">-</span> 数据库迁移使用 Alembic</span><br></pre></td></tr></table></figure>
+<h3 id="技巧">技巧</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>HTML 注释 <code>&lt;!-- --&gt;</code> 在自动注入时被隐藏，但 Read 工具仍可看到（适合写给人类看的备注）</p>
+</li>
+<li class="lvl-2">
+<p>定期更新 <a href="http://CLAUDE.md">CLAUDE.md</a> 以反映项目最新状态</p>
+</li>
+</ul>
+<hr>
+<h2 id="记忆系统">记忆系统</h2>
+<h3 id="自动记忆">自动记忆</h3>
+<p>Claude 会在对话中自动识别并保存重要信息到记忆系统，存储在 <code>C:\Users\haeng\.claude\projects\C--Users-haeng\memory\</code> 目录。</p>
+<h3 id="记忆类型">记忆类型</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>user</strong></td>
+<td>用户角色、偏好、知识背景</td>
+</tr>
+<tr>
+<td><strong>feedback</strong></td>
+<td>用户对工作方式的反馈和纠正</td>
+</tr>
+<tr>
+<td><strong>project</strong></td>
+<td>项目目标、约束、正在进行的工作</td>
+</tr>
+<tr>
+<td><strong>reference</strong></td>
+<td>外部资源引用（如 Linear 项目、Grafana 面板）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="显式操作">显式操作</h3>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">记住：我更喜欢用 yarn 而不是 npm          # 保存到记忆</span><br><span class="line">检查你的记忆                              # 读取记忆</span><br><span class="line">忘了关于 yarn 的记忆                      # 删除记忆</span><br></pre></td></tr></table></figure>
+<h3 id="会话记录">会话记录</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>完整对话历史以 JSONL 格式保存在 <code>.claude/projects/</code> 目录</p>
+</li>
+<li class="lvl-2">
+<p>可通过 <code>--resume</code> 或 <code>--continue</code> 恢复</p>
+</li>
+<li class="lvl-2">
+<p>子代理的会话记录存储在子目录中</p>
+</li>
+</ul>
+<hr>
+<h2 id="Git-集成与工作树">Git 集成与工作树</h2>
+<h3 id="Git-功能">Git 功能</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>自动上下文注入</strong>：当前分支、状态、最近提交自动提供给 Claude</p>
+</li>
+<li class="lvl-2">
+<p><strong>智能提交</strong>：Claude 生成规范的提交信息</p>
+</li>
+<li class="lvl-2">
+<p><strong>PR 管理</strong>：创建、审查 Pull Request</p>
+</li>
+</ul>
+<h3 id="创建工作树（Worktree）">创建工作树（Worktree）</h3>
+<p>工作树提供隔离的开发环境，每个都在自己的分支上：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 命令行启动时创建</span></span><br><span class="line">claude --worktree feature-name</span><br><span class="line"></span><br><span class="line"><span class="comment"># 或在会话中使用工具</span></span><br><span class="line">EnterWorktree / ExitWorktree</span><br></pre></td></tr></table></figure>
+<h3 id="PR-工作流">PR 工作流</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 从 PR 开始审查</span></span><br><span class="line">claude --from-pr https://github.com/owner/repo/pull/123</span><br></pre></td></tr></table></figure>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"># 在会话中审查变更</span><br><span class="line">/review</span><br><span class="line"></span><br><span class="line"># 进行安全审查</span><br><span class="line">/security-review</span><br></pre></td></tr></table></figure>
+<h3 id="提交规范">提交规范</h3>
+<p>Claude 会使用 HEREDOC 格式提交：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">git commit -m <span class="string">&quot;<span class="subst">$(cat &lt;&lt;&#x27;EOF&#x27;</span></span></span><br><span class="line"><span class="subst"><span class="string">修复用户登录空指针异常</span></span></span><br><span class="line"><span class="subst"><span class="string"></span></span></span><br><span class="line"><span class="subst"><span class="string">Co-Authored-By: Claude Opus 4.7 &lt;noreply@anthropic.com&gt;</span></span></span><br><span class="line"><span class="subst"><span class="string">EOF</span></span></span><br><span class="line"><span class="subst"><span class="string">)</span>&quot;</span></span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="Plan-模式与任务追踪">Plan 模式与任务追踪</h2>
+<h3 id="Plan-模式">Plan 模式</h3>
+<p>进入计划模式，Claude 将仅探索和分析，不执行任何更改：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">/plan 实现用户身份认证功能</span><br></pre></td></tr></table></figure>
+<p>工作流程：</p>
+<ol>
+<li class="lvl-3">
+<p>描述你的需求</p>
+</li>
+<li class="lvl-3">
+<p>Claude 探索代码库，设计方案</p>
+</li>
+<li class="lvl-3">
+<p>审查计划，提出修改意见</p>
+</li>
+<li class="lvl-3">
+<p>确认后，Claude 开始实施</p>
+</li>
+<li class="lvl-3">
+<p>完成后标记任务完成</p>
+</li>
+</ol>
+<h3 id="任务追踪">任务追踪</h3>
+<p>Claude 会自动创建结构化任务列表：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>✅ <strong>已完成</strong> — 绿色标记</p>
+</li>
+<li class="lvl-2">
+<p>🔄 <strong>进行中</strong> — 带旋转动画</p>
+</li>
+<li class="lvl-2">
+<p>⏳ <strong>等待中</strong> — 灰色标记</p>
+</li>
+<li class="lvl-2">
+<p>🔒 <strong>阻塞</strong> — 红色标记（依赖其他任务）</p>
+</li>
+</ul>
+<hr>
+<h2 id="MCP-服务器">MCP 服务器</h2>
+<p>MCP（Model Context Protocol）允许你扩展 Claude 的能力，连接外部工具和数据源。</p>
+<h3 id="配置示例">配置示例</h3>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;mcpServers&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;postgres&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;command&quot;</span><span class="punctuation">:</span> <span class="string">&quot;npx&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;args&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;-y&quot;</span><span class="punctuation">,</span> <span class="string">&quot;@anthropic-ai/mcp-postgres&quot;</span><span class="punctuation">,</span> <span class="string">&quot;postgresql://localhost/mydb&quot;</span><span class="punctuation">]</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;slack&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;command&quot;</span><span class="punctuation">:</span> <span class="string">&quot;npx&quot;</span><span class="punctuation">,</span> </span><br><span class="line">      <span class="attr">&quot;args&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;-y&quot;</span><span class="punctuation">,</span> <span class="string">&quot;@modelcontextprotocol/server-slack&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;env&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;SLACK_BOT_TOKEN&quot;</span><span class="punctuation">:</span> <span class="string">&quot;xoxb-...&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;github&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;command&quot;</span><span class="punctuation">:</span> <span class="string">&quot;npx&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;args&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;-y&quot;</span><span class="punctuation">,</span> <span class="string">&quot;@modelcontextprotocol/server-github&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;env&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;GITHUB_PERSONAL_ACCESS_TOKEN&quot;</span><span class="punctuation">:</span> <span class="string">&quot;ghp_...&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="连接类型">连接类型</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>stdio</strong></td>
+<td>作为子进程启动（标准输入/输出）</td>
+</tr>
+<tr>
+<td><strong>http/sse</strong></td>
+<td>HTTP Server-Sent Events 连接</td>
+</tr>
+<tr>
+<td><strong>websocket</strong></td>
+<td>WebSocket 连接</td>
+</tr>
+</tbody>
+</table>
+<h3 id="管理">管理</h3>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">/mcp            # 打开 MCP 管理面板</span><br></pre></td></tr></table></figure>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>支持 OAuth 认证</p>
+</li>
+<li class="lvl-2">
+<p>服务器启动失败自动重试（最多 3 次）</p>
+</li>
+<li class="lvl-2">
+<p>MCP 工具自动出现在 Claude 的工具集中</p>
+</li>
+</ul>
+<hr>
+<h2 id="IDE-集成">IDE 集成</h2>
+<h3 id="VS-Code">VS Code</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>在集成终端中使用完整 Claude Code 功能</p>
+</li>
+<li class="lvl-2">
+<p>AI 生成的会话标签页标题</p>
+</li>
+<li class="lvl-2">
+<p>文件编辑的原生 diff 视图</p>
+</li>
+<li class="lvl-2">
+<p>可点击的文件链接</p>
+</li>
+<li class="lvl-2">
+<p>尊重 VS Code 的辅助功能设置</p>
+</li>
+</ul>
+<h3 id="JetBrains">JetBrains</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>作为集成终端功能使用</p>
+</li>
+<li class="lvl-2">
+<p>支持 <code>claude-cli://</code> 深度链接</p>
+</li>
+</ul>
+<h3 id="终端支持">终端支持</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>iTerm2、Kitty、Ghostty、WezTerm</p>
+</li>
+<li class="lvl-2">
+<p>Windows Terminal、tmux</p>
+</li>
+<li class="lvl-2">
+<p>OSC 8 超链接支持</p>
+</li>
+<li class="lvl-2">
+<p>Truecolor 检测和主题适配</p>
+</li>
+</ul>
+<hr>
+<h2 id="键盘快捷键">键盘快捷键</h2>
+<h3 id="基础操作">基础操作</h3>
+<table>
+<thead>
+<tr>
+<th>快捷键</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Ctrl+O</code></td>
+<td>切换对话记录/详细视图</td>
+</tr>
+<tr>
+<td><code>Ctrl+L</code></td>
+<td>强制刷新屏幕</td>
+</tr>
+<tr>
+<td><code>Ctrl+C</code></td>
+<td>中断/取消当前操作</td>
+</tr>
+<tr>
+<td><code>Ctrl+D</code></td>
+<td>退出（输入框中为删除前向字符）</td>
+</tr>
+<tr>
+<td><code>Esc</code></td>
+<td>中断/取消</td>
+</tr>
+<tr>
+<td><code>Ctrl+Z</code></td>
+<td>挂起进程</td>
+</tr>
+</tbody>
+</table>
+<h3 id="文本编辑">文本编辑</h3>
+<table>
+<thead>
+<tr>
+<th>快捷键</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Ctrl+U</code></td>
+<td>清除到行首</td>
+</tr>
+<tr>
+<td><code>Ctrl+Y</code></td>
+<td>恢复清除的文本</td>
+</tr>
+<tr>
+<td><code>Ctrl+G</code></td>
+<td>打开外部编辑器</td>
+</tr>
+<tr>
+<td><code>Ctrl+X Ctrl+E</code></td>
+<td>打开外部编辑器（别名）</td>
+</tr>
+<tr>
+<td><code>↑</code></td>
+<td>上一条提示 / 恢复中断的提示</td>
+</tr>
+<tr>
+<td><code>Tab</code></td>
+<td>自动补全 @-提及和命令</td>
+</tr>
+</tbody>
+</table>
+<h3 id="代理管理">代理管理</h3>
+<table>
+<thead>
+<tr>
+<th>快捷键</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Ctrl+B</code></td>
+<td>将前台任务发送到后台</td>
+</tr>
+<tr>
+<td><code>Ctrl+X Ctrl+K</code></td>
+<td>停止所有后台代理</td>
+</tr>
+</tbody>
+</table>
+<h3 id="搜索（对话记录模式）">搜索（对话记录模式）</h3>
+<table>
+<thead>
+<tr>
+<th>快捷键</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/</code></td>
+<td>搜索对话记录</td>
+</tr>
+<tr>
+<td><code>n</code></td>
+<td>下一个匹配</td>
+</tr>
+<tr>
+<td><code>N</code></td>
+<td>上一个匹配</td>
+</tr>
+</tbody>
+</table>
+<h3 id="Vim-模式">Vim 模式</h3>
+<p>通过 <code>/config</code> → Editor mode 启用，支持 NORMAL、INSERT、VISUAL、VISUAL-LINE 模式。</p>
+<hr>
+<h2 id="Hooks-钩子系统">Hooks 钩子系统</h2>
+<p>Hooks 允许你在 Claude Code 生命周期的特定时刻运行自定义脚本。</p>
+<h3 id="触发事件">触发事件</h3>
+<table>
+<thead>
+<tr>
+<th>事件</th>
+<th>触发时机</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SessionStart</code></td>
+<td>会话开始时</td>
+</tr>
+<tr>
+<td><code>SessionEnd</code></td>
+<td>会话结束时</td>
+</tr>
+<tr>
+<td><code>UserPromptSubmit</code></td>
+<td>用户提交提示时</td>
+</tr>
+<tr>
+<td><code>Stop</code></td>
+<td>Claude 停止响应时</td>
+</tr>
+<tr>
+<td><code>StopFailure</code></td>
+<td>API 错误导致回合结束时</td>
+</tr>
+<tr>
+<td><code>SubagentStop</code></td>
+<td>子代理完成时</td>
+</tr>
+<tr>
+<td><code>PreToolUse</code></td>
+<td>工具调用之前</td>
+</tr>
+<tr>
+<td><code>PostToolUse</code></td>
+<td>工具调用成功后</td>
+</tr>
+<tr>
+<td><code>PostToolUseFailure</code></td>
+<td>工具调用失败后</td>
+</tr>
+<tr>
+<td><code>PreCompact</code></td>
+<td>上下文压缩前（可用退出码 2 阻止）</td>
+</tr>
+<tr>
+<td><code>PostCompact</code></td>
+<td>压缩完成后</td>
+</tr>
+<tr>
+<td><code>PermissionRequest</code></td>
+<td>权限提示触发时</td>
+</tr>
+</tbody>
+</table>
+<h3 id="Hook-类型">Hook 类型</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>command</code></td>
+<td>运行 Shell 命令</td>
+</tr>
+<tr>
+<td><code>http</code></td>
+<td>发起 HTTP 请求</td>
+</tr>
+<tr>
+<td><code>mcp_tool</code></td>
+<td>调用 MCP 服务器工具</td>
+</tr>
+<tr>
+<td><code>prompt</code></td>
+<td>使用语言模型评估器</td>
+</tr>
+</tbody>
+</table>
+<h3 id="配置示例-2">配置示例</h3>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;hooks&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;PostToolUse&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;matcher&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Write|Edit&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;hooks&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">          <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;command&quot;</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;command&quot;</span><span class="punctuation">:</span> <span class="string">&quot;prettier --write \&quot;$CLAUDE_TOOL_INPUT_FILE\&quot;&quot;</span></span><br><span class="line">          <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">]</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;SessionStart&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;hooks&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">          <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;command&quot;</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;command&quot;</span><span class="punctuation">:</span> <span class="string">&quot;echo &#x27;Claude Code 会话已启动&#x27;&quot;</span></span><br><span class="line">          <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">]</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="常见工作流">常见工作流</h2>
+<h3 id="新功能开发">新功能开发</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 1. 创建工作树（隔离环境）</span></span><br><span class="line">claude --worktree feature-login</span><br><span class="line"></span><br><span class="line"><span class="comment"># 2. 制定计划</span></span><br><span class="line">/plan 实现用户登录功能</span><br><span class="line"></span><br><span class="line"><span class="comment"># 3. 审查并确认计划后，Claude 自动实现</span></span><br><span class="line"><span class="comment"># 4. 审查变更</span></span><br><span class="line">/review</span><br><span class="line"></span><br><span class="line"><span class="comment"># 5. 提交并创建 PR</span></span><br><span class="line">git commit &amp;&amp; git push &amp;&amp; gh <span class="built_in">pr</span> create</span><br></pre></td></tr></table></figure>
+<h3 id="Bug-修复">Bug 修复</h3>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1. 描述 Bug 现象：用户登录后页面白屏，控制台报错 &quot;Cannot read property &#x27;name&#x27; of null&quot;</span><br><span class="line">2. Claude 搜索相关代码，定位根因</span><br><span class="line">3. Claude 提出修复方案</span><br><span class="line">4. 审查 diff 后确认</span><br><span class="line">5. /review 最终检查</span><br></pre></td></tr></table></figure>
+<h3 id="代码审查">代码审查</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 审查当前分支变更</span></span><br><span class="line">/review</span><br><span class="line"></span><br><span class="line"><span class="comment"># 审查特定 PR</span></span><br><span class="line">claude --from-pr https://github.com/owner/repo/pull/123</span><br><span class="line"></span><br><span class="line"><span class="comment"># 深度安全审查</span></span><br><span class="line">/security-review</span><br></pre></td></tr></table></figure>
+<h3 id="探索代码库">探索代码库</h3>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">帮我找到所有使用了 deprecated API 的地方</span><br><span class="line">这个项目的认证逻辑是怎样的？</span><br><span class="line">分析 src/api/ 目录的架构</span><br></pre></td></tr></table></figure>
+<h3 id="周期性任务">周期性任务</h3>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">/loop 5m 检查构建状态</span><br><span class="line">/loop 30m 审查新的 PR</span><br></pre></td></tr></table></figure>
+<h3 id="批量重构">批量重构</h3>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">/batch 将所有数据库查询迁移到新的 ORM 层</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="最佳实践">最佳实践</h2>
+<h3 id="项目初始化">项目初始化</h3>
+<ol>
+<li class="lvl-3">
+<p>首次使用在新项目中运行 <code>/init</code> 创建 <a href="http://CLAUDE.md">CLAUDE.md</a></p>
+</li>
+<li class="lvl-3">
+<p>配置 <code>.claude/settings.local.json</code>（添加到 .gitignore）</p>
+</li>
+<li class="lvl-3">
+<p>用 <code>/statusline</code> 设置有用的会话信息展示</p>
+</li>
+</ol>
+<h3 id="会话管理-2">会话管理</h3>
+<ol>
+<li class="lvl-3">
+<p>切换任务时用 <code>/rename</code> 给会话取描述性名称</p>
+</li>
+<li class="lvl-3">
+<p>开启新任务时用 <code>/clear</code> 清空上下文</p>
+</li>
+<li class="lvl-3">
+<p>长时间会话用 <code>/compact</code> 减少 token 消耗</p>
+</li>
+<li class="lvl-3">
+<p>用 <code>/branch</code> 分叉会话探索替代方案</p>
+</li>
+<li class="lvl-3">
+<p>出错时用 <code>/undo</code> 撤销</p>
+</li>
+</ol>
+<h3 id="效率技巧">效率技巧</h3>
+<ol>
+<li class="lvl-3">
+<p>用 <code>@文件名</code> 引用文件（支持 Tab 补全）</p>
+</li>
+<li class="lvl-3">
+<p>批量相关修改，而非一次一个</p>
+</li>
+<li class="lvl-3">
+<p>使用 <code>/loop</code> 自动化周期性任务</p>
+</li>
+<li class="lvl-3">
+<p>明确描述需求，Claude 表现更好</p>
+</li>
+<li class="lvl-3">
+<p>不要模糊，给具体路径和场景</p>
+</li>
+</ol>
+<h3 id="安全性">安全性</h3>
+<ol>
+<li class="lvl-3">
+<p>仔细审查权限提示，不要盲目批准</p>
+</li>
+<li class="lvl-3">
+<p>仅在完全可信的环境中使用 <code>--dangerously-skip-permissions</code></p>
+</li>
+<li class="lvl-3">
+<p>用 <code>/less-permission-prompts</code> 分析和优化权限列表</p>
+</li>
+<li class="lvl-3">
+<p>敏感文件（<code>.env</code>、密钥）放在沙箱 denyRead 中</p>
+</li>
+<li class="lvl-3">
+<p>定期检查 <code>.claude/settings.json</code> 中的安全设置</p>
+</li>
+</ol>
+<hr>
+<h2 id="文件路径速查">文件路径速查</h2>
+<table>
+<thead>
+<tr>
+<th>用途</th>
+<th>路径</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全局设置</td>
+<td><code>~/.claude/settings.json</code></td>
+</tr>
+<tr>
+<td>键盘映射</td>
+<td><code>~/.claude/keybindings.json</code></td>
+</tr>
+<tr>
+<td>项目设置</td>
+<td><code>&lt;project&gt;/.claude/settings.json</code></td>
+</tr>
+<tr>
+<td>本地覆盖</td>
+<td><code>&lt;project&gt;/.claude/settings.local.json</code></td>
+</tr>
+<tr>
+<td>项目指南</td>
+<td><code>&lt;project&gt;/CLAUDE.md</code> 或 <code>&lt;project&gt;/.claude/CLAUDE.md</code></td>
+</tr>
+<tr>
+<td>技能目录</td>
+<td><code>&lt;project&gt;/.claude/skills/</code></td>
+</tr>
+<tr>
+<td>会话记录</td>
+<td><code>&lt;project&gt;/.claude/projects/&lt;hash&gt;.jsonl</code></td>
+</tr>
+<tr>
+<td>历史记录</td>
+<td><code>~/.claude/history.jsonl</code></td>
+</tr>
+<tr>
+<td>备份文件</td>
+<td><code>~/.claude/backups/</code></td>
+</tr>
+<tr>
+<td>缓存目录</td>
+<td><code>~/.claude/cache/</code></td>
+</tr>
+<tr>
+<td>子代理记录</td>
+<td><code>&lt;project&gt;/.claude/projects/&lt;hash&gt;/subagents/</code></td>
+</tr>
+<tr>
+<td>内存文件</td>
+<td><code>~/.claude/projects/&lt;hash&gt;/memory/</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="附录：当前环境配置">附录：当前环境配置</h2>
+<p>你的当前环境：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>版本</strong>：Claude Code v2.1.112</p>
+</li>
+<li class="lvl-2">
+<p><strong>API 端点</strong>：<code>https://api.deepseek.com/anthropic</code>（第三方网关）</p>
+</li>
+<li class="lvl-2">
+<p><strong>模型</strong>：deepseek-v4-pro</p>
+</li>
+<li class="lvl-2">
+<p><strong>平台</strong>：Windows 10 Pro（通过 bash shell 运行）</p>
+</li>
+<li class="lvl-2">
+<p><strong>工作目录</strong>：<code>C:\Users\haeng</code></p>
+</li>
+</ul>
+<hr>
+<blockquote>
+<p>更多帮助：输入 <code>/help</code> 或访问 <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code 官方文档</a></p>
+</blockquote>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/05/02ca2de6ce714cb697d07b3e7f193acd/">https://pengline.cn/2026/05/02ca2de6ce714cb697d07b3e7f193acd/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Claude-Code/">Claude Code</a><a class="post-meta__tags" href="/tags/AI-Coding/">AI Coding</a><a class="post-meta__tags" href="/tags/Anthropic/">Anthropic</a><a class="post-meta__tags" href="/tags/CLI%E5%B7%A5%E5%85%B7/">CLI工具</a><a class="post-meta__tags" href="/tags/%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97/">开发指南</a><a class="post-meta__tags" href="/tags/MCP%E9%9B%86%E6%88%90/">MCP集成</a><a class="post-meta__tags" href="/tags/%E8%87%AA%E5%8A%A8%E5%8C%96%E5%B7%A5%E4%BD%9C%E6%B5%81/">自动化工作流</a><a class="post-meta__tags" href="/tags/%E6%9D%83%E9%99%90%E6%B2%99%E7%AE%B1/">权限沙箱</a><a class="post-meta__tags" href="/tags/%E7%BC%96%E7%A8%8B%E5%8A%A9%E6%89%8B/">编程助手</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related full-width" href="/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/" title="剧本分镜智能体（PenShot）召回策略"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small202824LQTsk1760099304.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）召回策略</div></div><div class="info-2"><div class="info-item-1">深入解析多维度召回体系：GraphRAG知识图谱、三层记忆系统、混合检索策略（BM25+向量+图谱）、自迭代优化闭环及多智能体协作架构，通过“记忆中枢”实现高精度、高召回率的剧本分镜智能检索。</div></div></div></a></nav><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">Claude Code 使用说明书</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%AE%E5%BD%95"><span class="toc-number">1.1.</span> <span class="toc-text">目录</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AE%80%E4%BB%8B"><span class="toc-number">1.2.</span> <span class="toc-text">简介</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%83%BD%E5%8A%9B"><span class="toc-number">1.2.1.</span> <span class="toc-text">核心能力</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%89%E8%A3%85%E4%B8%8E%E5%90%AF%E5%8A%A8"><span class="toc-number">1.3.</span> <span class="toc-text">安装与启动</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%89%E8%A3%85"><span class="toc-number">1.3.1.</span> <span class="toc-text">安装</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%A4%E8%AF%81"><span class="toc-number">1.3.2.</span> <span class="toc-text">认证</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%AF%E5%8A%A8"><span class="toc-number">1.3.3.</span> <span class="toc-text">启动</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9B%B4%E6%96%B0"><span class="toc-number">1.3.4.</span> <span class="toc-text">更新</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#CLI-%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0"><span class="toc-number">1.4.</span> <span class="toc-text">CLI 命令行参数</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AD%90%E5%91%BD%E4%BB%A4"><span class="toc-number">1.4.1.</span> <span class="toc-text">子命令</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%96%9C%E6%9D%A0%E5%91%BD%E4%BB%A4"><span class="toc-number">1.5.</span> <span class="toc-text">斜杠命令</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9F%BA%E7%A1%80%E5%91%BD%E4%BB%A4"><span class="toc-number">1.5.1.</span> <span class="toc-text">基础命令</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%9A%E8%AF%9D%E7%AE%A1%E7%90%86"><span class="toc-number">1.5.2.</span> <span class="toc-text">会话管理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A8%A1%E5%9E%8B%E4%B8%8E%E9%85%8D%E7%BD%AE"><span class="toc-number">1.5.3.</span> <span class="toc-text">模型与配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%A8%A1%E5%BC%8F"><span class="toc-number">1.5.4.</span> <span class="toc-text">工作模式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%93%8D%E4%BD%9C"><span class="toc-number">1.5.5.</span> <span class="toc-text">操作</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%AB%98%E7%BA%A7"><span class="toc-number">1.5.6.</span> <span class="toc-text">高级</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E5%B7%A5%E5%85%B7"><span class="toc-number">1.6.</span> <span class="toc-text">核心工具</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%87%E4%BB%B6%E6%93%8D%E4%BD%9C"><span class="toc-number">1.6.1.</span> <span class="toc-text">文件操作</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%90%9C%E7%B4%A2%E4%B8%8E%E5%8F%91%E7%8E%B0"><span class="toc-number">1.6.2.</span> <span class="toc-text">搜索与发现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A7%E8%A1%8C"><span class="toc-number">1.6.3.</span> <span class="toc-text">执行</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BF%A1%E6%81%AF%E8%8E%B7%E5%8F%96"><span class="toc-number">1.6.4.</span> <span class="toc-text">信息获取</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A1%B9%E7%9B%AE%E7%AE%A1%E7%90%86"><span class="toc-number">1.6.5.</span> <span class="toc-text">项目管理</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Skills-%E6%8A%80%E8%83%BD%E7%B3%BB%E7%BB%9F"><span class="toc-number">1.7.</span> <span class="toc-text">Skills 技能系统</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Skill-%E6%96%87%E4%BB%B6%E7%BB%93%E6%9E%84"><span class="toc-number">1.7.1.</span> <span class="toc-text">Skill 文件结构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Skill-%E5%85%83%E6%95%B0%E6%8D%AE%E5%AD%97%E6%AE%B5"><span class="toc-number">1.7.2.</span> <span class="toc-text">Skill 元数据字段</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%B8%E7%94%A8%E6%8A%80%E8%83%BD"><span class="toc-number">1.7.3.</span> <span class="toc-text">常用技能</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B0%83%E7%94%A8%E6%96%B9%E5%BC%8F"><span class="toc-number">1.7.4.</span> <span class="toc-text">调用方式</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%85%8D%E7%BD%AE%E7%B3%BB%E7%BB%9F"><span class="toc-number">1.8.</span> <span class="toc-text">配置系统</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%85%8D%E7%BD%AE%E4%BC%98%E5%85%88%E7%BA%A7%EF%BC%88%E4%BB%8E%E9%AB%98%E5%88%B0%E4%BD%8E%EF%BC%89"><span class="toc-number">1.8.1.</span> <span class="toc-text">配置优先级（从高到低）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BB%E8%A6%81%E9%85%8D%E7%BD%AE%E9%A1%B9"><span class="toc-number">1.8.2.</span> <span class="toc-text">主要配置项</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6%E4%BD%8D%E7%BD%AE"><span class="toc-number">1.8.3.</span> <span class="toc-text">配置文件位置</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9D%83%E9%99%90%E4%B8%8E%E5%AE%89%E5%85%A8"><span class="toc-number">1.9.</span> <span class="toc-text">权限与安全</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9D%83%E9%99%90%E6%A8%A1%E5%BC%8F"><span class="toc-number">1.9.1.</span> <span class="toc-text">权限模式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9D%83%E9%99%90%E8%A7%84%E5%88%99%E8%AF%AD%E6%B3%95"><span class="toc-number">1.9.2.</span> <span class="toc-text">权限规则语法</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B2%99%E7%AE%B1%E5%AE%89%E5%85%A8"><span class="toc-number">1.9.3.</span> <span class="toc-text">沙箱安全</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%89%E5%85%A8%E5%BB%BA%E8%AE%AE"><span class="toc-number">1.9.4.</span> <span class="toc-text">安全建议</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#CLAUDE-md-%E9%A1%B9%E7%9B%AE%E6%8C%87%E5%8D%97"><span class="toc-number">1.10.</span> <span class="toc-text">CLAUDE.md 项目指南</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%9B%E5%BB%BA%E6%96%B9%E5%BC%8F"><span class="toc-number">1.10.1.</span> <span class="toc-text">创建方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%8D%E7%BD%AE"><span class="toc-number">1.10.2.</span> <span class="toc-text">位置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%86%85%E5%AE%B9%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.10.3.</span> <span class="toc-text">内容示例</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8A%80%E5%B7%A7"><span class="toc-number">1.10.4.</span> <span class="toc-text">技巧</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F"><span class="toc-number">1.11.</span> <span class="toc-text">记忆系统</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E5%8A%A8%E8%AE%B0%E5%BF%86"><span class="toc-number">1.11.1.</span> <span class="toc-text">自动记忆</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E7%B1%BB%E5%9E%8B"><span class="toc-number">1.11.2.</span> <span class="toc-text">记忆类型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%98%BE%E5%BC%8F%E6%93%8D%E4%BD%9C"><span class="toc-number">1.11.3.</span> <span class="toc-text">显式操作</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%9A%E8%AF%9D%E8%AE%B0%E5%BD%95"><span class="toc-number">1.11.4.</span> <span class="toc-text">会话记录</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Git-%E9%9B%86%E6%88%90%E4%B8%8E%E5%B7%A5%E4%BD%9C%E6%A0%91"><span class="toc-number">1.12.</span> <span class="toc-text">Git 集成与工作树</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Git-%E5%8A%9F%E8%83%BD"><span class="toc-number">1.12.1.</span> <span class="toc-text">Git 功能</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%9B%E5%BB%BA%E5%B7%A5%E4%BD%9C%E6%A0%91%EF%BC%88Worktree%EF%BC%89"><span class="toc-number">1.12.2.</span> <span class="toc-text">创建工作树（Worktree）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#PR-%E5%B7%A5%E4%BD%9C%E6%B5%81"><span class="toc-number">1.12.3.</span> <span class="toc-text">PR 工作流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8F%90%E4%BA%A4%E8%A7%84%E8%8C%83"><span class="toc-number">1.12.4.</span> <span class="toc-text">提交规范</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Plan-%E6%A8%A1%E5%BC%8F%E4%B8%8E%E4%BB%BB%E5%8A%A1%E8%BF%BD%E8%B8%AA"><span class="toc-number">1.13.</span> <span class="toc-text">Plan 模式与任务追踪</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Plan-%E6%A8%A1%E5%BC%8F"><span class="toc-number">1.13.1.</span> <span class="toc-text">Plan 模式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%BB%E5%8A%A1%E8%BF%BD%E8%B8%AA"><span class="toc-number">1.13.2.</span> <span class="toc-text">任务追踪</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#MCP-%E6%9C%8D%E5%8A%A1%E5%99%A8"><span class="toc-number">1.14.</span> <span class="toc-text">MCP 服务器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%85%8D%E7%BD%AE%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.14.1.</span> <span class="toc-text">配置示例</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%9E%E6%8E%A5%E7%B1%BB%E5%9E%8B"><span class="toc-number">1.14.2.</span> <span class="toc-text">连接类型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AE%A1%E7%90%86"><span class="toc-number">1.14.3.</span> <span class="toc-text">管理</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#IDE-%E9%9B%86%E6%88%90"><span class="toc-number">1.15.</span> <span class="toc-text">IDE 集成</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#VS-Code"><span class="toc-number">1.15.1.</span> <span class="toc-text">VS Code</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#JetBrains"><span class="toc-number">1.15.2.</span> <span class="toc-text">JetBrains</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BB%88%E7%AB%AF%E6%94%AF%E6%8C%81"><span class="toc-number">1.15.3.</span> <span class="toc-text">终端支持</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%94%AE%E7%9B%98%E5%BF%AB%E6%8D%B7%E9%94%AE"><span class="toc-number">1.16.</span> <span class="toc-text">键盘快捷键</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9F%BA%E7%A1%80%E6%93%8D%E4%BD%9C"><span class="toc-number">1.16.1.</span> <span class="toc-text">基础操作</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%87%E6%9C%AC%E7%BC%96%E8%BE%91"><span class="toc-number">1.16.2.</span> <span class="toc-text">文本编辑</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%A3%E7%90%86%E7%AE%A1%E7%90%86"><span class="toc-number">1.16.3.</span> <span class="toc-text">代理管理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%90%9C%E7%B4%A2%EF%BC%88%E5%AF%B9%E8%AF%9D%E8%AE%B0%E5%BD%95%E6%A8%A1%E5%BC%8F%EF%BC%89"><span class="toc-number">1.16.4.</span> <span class="toc-text">搜索（对话记录模式）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Vim-%E6%A8%A1%E5%BC%8F"><span class="toc-number">1.16.5.</span> <span class="toc-text">Vim 模式</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Hooks-%E9%92%A9%E5%AD%90%E7%B3%BB%E7%BB%9F"><span class="toc-number">1.17.</span> <span class="toc-text">Hooks 钩子系统</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%A6%E5%8F%91%E4%BA%8B%E4%BB%B6"><span class="toc-number">1.17.1.</span> <span class="toc-text">触发事件</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Hook-%E7%B1%BB%E5%9E%8B"><span class="toc-number">1.17.2.</span> <span class="toc-text">Hook 类型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%85%8D%E7%BD%AE%E7%A4%BA%E4%BE%8B-2"><span class="toc-number">1.17.3.</span> <span class="toc-text">配置示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B8%B8%E8%A7%81%E5%B7%A5%E4%BD%9C%E6%B5%81"><span class="toc-number">1.18.</span> <span class="toc-text">常见工作流</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%B0%E5%8A%9F%E8%83%BD%E5%BC%80%E5%8F%91"><span class="toc-number">1.18.1.</span> <span class="toc-text">新功能开发</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Bug-%E4%BF%AE%E5%A4%8D"><span class="toc-number">1.18.2.</span> <span class="toc-text">Bug 修复</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%A3%E7%A0%81%E5%AE%A1%E6%9F%A5"><span class="toc-number">1.18.3.</span> <span class="toc-text">代码审查</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8E%A2%E7%B4%A2%E4%BB%A3%E7%A0%81%E5%BA%93"><span class="toc-number">1.18.4.</span> <span class="toc-text">探索代码库</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%91%A8%E6%9C%9F%E6%80%A7%E4%BB%BB%E5%8A%A1"><span class="toc-number">1.18.5.</span> <span class="toc-text">周期性任务</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%B9%E9%87%8F%E9%87%8D%E6%9E%84"><span class="toc-number">1.18.6.</span> <span class="toc-text">批量重构</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5"><span class="toc-number">1.19.</span> <span class="toc-text">最佳实践</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A1%B9%E7%9B%AE%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="toc-number">1.19.1.</span> <span class="toc-text">项目初始化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%9A%E8%AF%9D%E7%AE%A1%E7%90%86-2"><span class="toc-number">1.19.2.</span> <span class="toc-text">会话管理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%88%E7%8E%87%E6%8A%80%E5%B7%A7"><span class="toc-number">1.19.3.</span> <span class="toc-text">效率技巧</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%89%E5%85%A8%E6%80%A7"><span class="toc-number">1.19.4.</span> <span class="toc-text">安全性</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%96%87%E4%BB%B6%E8%B7%AF%E5%BE%84%E9%80%9F%E6%9F%A5"><span class="toc-number">1.20.</span> <span class="toc-text">文件路径速查</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%99%84%E5%BD%95%EF%BC%9A%E5%BD%93%E5%89%8D%E7%8E%AF%E5%A2%83%E9%85%8D%E7%BD%AE"><span class="toc-number">1.21.</span> <span class="toc-text">附录：当前环境配置</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
