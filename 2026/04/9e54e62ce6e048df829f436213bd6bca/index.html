@@ -1,29 +1,29 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>分布式任务调度（NeoTask）架构设计 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>分布式任务调度（NeoTask）架构设计 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="全面阐述 NeoTask 分布式任务调度系统的整体架构设计，涵盖分层架构、核心模块职责、数据流设计、分布式协调机制、高可用保障以及多存储后端支持，呈现从入门到生产的完整技术方案。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="分布式任务调度（NeoTask）架构设计">
 <meta property="og:url" content="https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/index.html">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。">
+<meta property="og:description" content="全面阐述 NeoTask 分布式任务调度系统的整体架构设计，涵盖分层架构、核心模块职责、数据流设计、分布式协调机制、高可用保障以及多存储后端支持，呈现从入门到生产的完整技术方案。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small225718E2h9r1757257038.webp">
 <meta property="article:published_time" content="2026-04-21T15:36:03.743Z">
-<meta property="article:modified_time" content="2026-04-25T04:01:30.017Z">
+<meta property="article:modified_time" content="2026-05-06T11:21:46.588Z">
 <meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="架构设计">
 <meta property="article:tag" content="任务池">
 <meta property="article:tag" content="任务调度">
 <meta property="article:tag" content="资源调度">
 <meta property="article:tag" content="分布式任务调度">
-<meta property="article:tag" content="嵌入式任务调度">
-<meta property="article:tag" content="嵌入式任务管理">
+<meta property="article:tag" content="系统架构">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp"><script type="application/ld+json">{
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small225718E2h9r1757257038.webp"><script type="application/ld+json">{
   "@context": "https://schema.org",
   "@type": "BlogPosting",
   "headline": "分布式任务调度（NeoTask）架构设计",
   "url": "https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/",
-  "image": "https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp",
+  "image": "https://tool.pengline.cn/imgs/blog/essay/small225718E2h9r1757257038.webp",
   "datePublished": "2026-04-21T15:36:03.743Z",
-  "dateModified": "2026-04-25T04:01:30.017Z",
+  "dateModified": "2026-05-06T11:21:46.588Z",
   "author": [
     {
       "@type": "Person",
@@ -165,10 +165,10 @@
   isToc: true,
   pageType: 'post'
 }</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">74</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">373</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">45</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">分布式任务调度（NeoTask）架构设计</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">分布式任务调度（NeoTask）架构设计</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-21T15:36:03.743Z" title="发表于 2026-04-21 23:36:03">2026-04-21</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-04-25T04:01:30.017Z" title="更新于 2026-04-25 12:01:30">2026-04-25</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Task/">Task</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>NeoTask 架构设计</h1>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">81</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">387</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">45</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small225718E2h9r1757257038.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">分布式任务调度（NeoTask）架构设计</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.pengline.cn"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.pengline.cn"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/tools/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" href="/tools/diagrams/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" href="/tools/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" href="/tools/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" href="/tools/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" href="/tools/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" href="/tools/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" href="/tools/download/"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" href="/tools/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" href="/tools/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://clock.pengline.cn"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tool.pengline.cn"><i class="fa-fw fas fa-cogs"></i><span> 更多工具....</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">分布式任务调度（NeoTask）架构设计</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-21T15:36:03.743Z" title="发表于 2026-04-21 23:36:03">2026-04-21</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-05-06T11:21:46.588Z" title="更新于 2026-05-06 19:21:46">2026-05-06</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Task/">Task</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>NeoTask 架构设计</h1>
 <p>📚 <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">返回首页</a> | 📖 <a href="https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8">快速上手</a> | 📘 <a href="https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c">API 参考</a> | ⚙️ <a href="https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77">配置说明</a> | 🐙  <a target="_blank" rel="noopener" href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a target="_blank" rel="noopener" href="https://task.pengline.cn">NeoTask 官网</a></p>
 <hr>
-<h2 id="一、概述">一、概述</h2>
+<h2 id="概述">概述</h2>
 <p>NeoTask 是一个纯 Python 实现的轻量级异步任务调度系统，专为耗时任务（AI 生成、视频处理、数据爬取等）设计。无需部署 Redis、PostgreSQL 等外部服务，安装后即可在任意 Python 项目中直接使用。</p>
 <h3 id="设计目标">设计目标</h3>
 <table>
@@ -235,69 +235,79 @@
 </li>
 </ul>
 <hr>
-<h2 id="二、系统架构">二、系统架构</h2>
+<h2 id="系统架构">系统架构</h2>
 <h3 id="整体架构图">整体架构图</h3>
 <pre class="mermaid">graph TB
-    subgraph User["👤 用户应用层"]
+    subgraph User["用户应用层"]
         APP[用户代码]
     end
     
-    subgraph Entry["🚪 入口层"]
+    subgraph Entry["入口层"]
         TP[TaskPool<br/>即时任务入口]
         TS[TaskScheduler<br/>定时任务入口]
         WF[WorkflowEngine<br/>工作流编排入口]
     end
     
-    subgraph Core["⚙️ 核心层"]
+    subgraph Core["核心层"]
         direction TB
         
-        subgraph Management["📋 任务管理"]
+        subgraph Management["任务管理"]
             LM[LifecycleManager]
             FM[FutureManager]
         end
         
-        subgraph Queue["📊 队列系统"]
+        subgraph Queue["队列系统"]
             QS[QueueScheduler]
             PQ[PriorityQueue]
             DQ[DelayedQueue]
+            TW[TimeWheel<br/>时间轮]
         end
         
-        subgraph Execute["🔧 执行层"]
+        subgraph Execute["执行层"]
             WP[WorkerPool]
+            PF[TaskPrefetcher<br/>预取器]
             SP[Supervisor]
+            RC[TaskReclaimer<br/>任务回收器]
         end
         
-        subgraph Support["🔌 支撑组件"]
+        subgraph Support["支撑组件"]
             EB[EventBus]
             MC[MetricsCollector]
             LF[LockFactory]
+            WD[WatchDog<br/>看门狗]
         end
     end
     
-    subgraph Orchestration["🔄 编排层"]
-        DAG[DAG引擎]
-        COND[条件分支]
-        PARA[并行执行]
+    subgraph Distributed["分布式层"]
+        NM[NodeManager<br/>节点管理]
+        CO[Coordinator<br/>协调器]
+        EL[Elector<br/>选举器]
+        SH[Sharder<br/>分片器]
     end
     
-    subgraph Storage["💾 存储层"]
+    subgraph Storage["存储层"]
         MEM[(Memory)]
         SQLITE[(SQLite)]
         REDIS[(Redis)]
     end
     
-    subgraph Business["🏭 业务层"]
-        EXEC[TaskExecutor]
+    subgraph Business["业务层"]
+        EXEC[TaskExecutor<br/>用户业务逻辑]
     end
     
     APP --> TP & TS & WF
     TS --> TP
-    WF --> TP & EB & DAG & COND & PARA
+    WF --> TP & EB
     TP --> LM & QS & WP & FM
     LM --> MEM & SQLITE & REDIS
-    QS --> PQ & DQ
-    WP --> EXEC & EB & MC & LF
-    SP --> WP</pre>
+    QS --> PQ & DQ & TW
+    WP --> PF & SP & RC
+    WP --> EXEC & EB & MC & LF & WD
+    TP --> NM & CO & EL & SH
+    NM --> REDIS
+    CO --> REDIS
+    EL --> REDIS
+    SH --> REDIS</pre>
 <h3 id="分层架构说明">分层架构说明</h3>
 <pre class="mermaid">graph LR
     subgraph L1["入口层"]
@@ -312,16 +322,18 @@
         B3[WorkerPool]
     end
     
-    subgraph L3["编排层"]
-        C1[DAGEngine]
-        C2[ConditionEvaluator]
-        C3[ParallelExecutor]
+    subgraph L3["分布式层"]
+        C1[NodeManager]
+        C2[Coordinator]
+        C3[Elector]
+        C4[Sharder]
     end
     
     subgraph L4["支撑层"]
         D1[EventBus]
         D2[MetricsCollector]
         D3[LockFactory]
+        D4[WatchDog]
     end
     
     subgraph L5["存储层"]
@@ -416,8 +428,20 @@
 <tr>
 <td style="text-align:left">WorkerPool</td>
 <td style="text-align:left"><code>worker/pool.py</code></td>
-<td style="text-align:left">Worker 管理，并发控制</td>
-<td style="text-align:left">QueueScheduler, TaskExecutor</td>
+<td style="text-align:left">Worker 管理，并发控制，预取集成</td>
+<td style="text-align:left">QueueScheduler, TaskExecutor, Prefetcher</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskPrefetcher</td>
+<td style="text-align:left"><code>worker/prefetcher.py</code></td>
+<td style="text-align:left">批量预取任务，减少远程访问</td>
+<td style="text-align:left">QueueScheduler</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskReclaimer</td>
+<td style="text-align:left"><code>worker/reclaimer.py</code></td>
+<td style="text-align:left">孤儿任务回收，超时检测</td>
+<td style="text-align:left">TaskRepository, QueueScheduler, Lock</td>
 </tr>
 <tr>
 <td style="text-align:left">FutureManager</td>
@@ -432,27 +456,64 @@
 <td style="text-align:left">-</td>
 </tr>
 <tr>
-<td style="text-align:left">DistributedLock</td>
-<td style="text-align:left"><code>lock/distributed.py</code></td>
-<td style="text-align:left">分布式锁，防止重复执行</td>
+<td style="text-align:left">NodeManager</td>
+<td style="text-align:left"><code>distributed/node.py</code></td>
+<td style="text-align:left">节点注册，心跳，健康检查</td>
 <td style="text-align:left">Redis</td>
 </tr>
 <tr>
-<td style="text-align:left">DAGEngine</td>
-<td style="text-align:left"><code>workflow/dag.py</code></td>
-<td style="text-align:left">DAG 解析和执行</td>
+<td style="text-align:left">Coordinator</td>
+<td style="text-align:left"><code>distributed/coordinator.py</code></td>
+<td style="text-align:left">任务分发，负载均衡</td>
+<td style="text-align:left">NodeManager, QueueScheduler</td>
+</tr>
+<tr>
+<td style="text-align:left">Elector</td>
+<td style="text-align:left"><code>distributed/elector.py</code></td>
+<td style="text-align:left">主节点选举</td>
+<td style="text-align:left">Redis</td>
+</tr>
+<tr>
+<td style="text-align:left">Sharder</td>
+<td style="text-align:left"><code>distributed/sharding.py</code></td>
+<td style="text-align:left">一致性哈希分片</td>
 <td style="text-align:left">-</td>
+</tr>
+<tr>
+<td style="text-align:left">RedisLock</td>
+<td style="text-align:left"><code>lock/redis.py</code></td>
+<td style="text-align:left">Redis 分布式锁</td>
+<td style="text-align:left">Redis</td>
+</tr>
+<tr>
+<td style="text-align:left">WatchDog</td>
+<td style="text-align:left"><code>lock/watchdog.py</code></td>
+<td style="text-align:left">自动锁续期</td>
+<td style="text-align:left">TaskLock</td>
+</tr>
+<tr>
+<td style="text-align:left">MetricsCollector</td>
+<td style="text-align:left"><code>monitor/metrics.py</code></td>
+<td style="text-align:left">指标收集，滑动窗口统计</td>
+<td style="text-align:left">-</td>
+</tr>
+<tr>
+<td style="text-align:left">HealthChecker</td>
+<td style="text-align:left"><code>monitor/health.py</code></td>
+<td style="text-align:left">健康检查，系统状态监控</td>
+<td style="text-align:left">TaskRepository, Queue</td>
 </tr>
 </tbody>
 </table>
 <hr>
-<h2 id="三、核心数据流">三、核心数据流</h2>
+<h2 id="核心数据流">核心数据流</h2>
 <h3 id="即时任务数据流">即时任务数据流</h3>
 <pre class="mermaid">sequenceDiagram
     participant User
     participant Pool as TaskPool
     participant LM as LifecycleManager
     participant QS as QueueScheduler
+    participant PF as Prefetcher
     participant WP as WorkerPool
     participant FM as FutureManager
     participant Storage as Storage
@@ -465,24 +526,35 @@
     Pool->>FM: get(task_id)
     Pool-->>User: 返回 task_id
     
+    loop 预取循环
+        PF->>QS: pop_batch(prefetch_size)
+        QS-->>PF: 返回任务列表
+        PF->>PF: 放入本地队列
+    end
+    
     loop Worker 调度循环
-        WP->>QS: pop() 获取任务
-        WP->>LM: start_task(task_id)
-        WP->>Storage: 更新状态(RUNNING)
-        
-        alt 任务执行成功
-            WP->>WP: executor.execute(data)
-            WP->>LM: complete_task(result)
-            WP->>FM: complete(task_id, result)
-            WP->>Storage: 更新状态(SUCCESS)
-        else 任务执行失败
-            WP->>LM: fail_task(error)
-            WP->>FM: complete(task_id, error)
-            WP->>Storage: 更新状态(FAILED)
-            WP->>QS: push(重试入队)
-        else 任务取消
-            WP->>LM: cancel_task()
-            WP->>FM: complete(task_id, error)
+        WP->>PF: get() 从本地队列获取
+        alt 本地队列非空
+            WP->>LM: start_task(task_id)
+            WP->>Storage: 更新状态(RUNNING)
+            WP->>WP: 获取分布式锁
+            
+            alt 任务执行成功
+                WP->>WP: executor.execute(data)
+                WP->>LM: complete_task(result)
+                WP->>FM: complete(task_id, result)
+                WP->>Storage: 更新状态(SUCCESS)
+                WP->>Storage: 释放锁
+            else 任务执行失败
+                WP->>LM: fail_task(error)
+                WP->>FM: complete(task_id, error)
+                WP->>Storage: 更新状态(FAILED)
+                alt 未超过重试次数
+                    WP->>QS: push(重试入队, delay)
+                else 超过重试次数
+                    WP->>Storage: 移入死信队列
+                end
+            end
         end
     end
     
@@ -490,34 +562,83 @@
     Pool->>FM: wait()
     FM-->>Pool: 返回结果
     Pool-->>User: 任务结果</pre>
-<h3 id="定时任务数据流">定时任务数据流</h3>
+<h3 id="即时任务数据流-2">即时任务数据流</h3>
 <pre class="mermaid">sequenceDiagram
     participant User
     participant TS as TaskScheduler
-    participant Pool as TaskPool
-    participant Scheduler as 调度循环
-    participant Storage as Storage
+    participant QS as QueueScheduler
+    participant DQ as DelayedQueue
+    participant PQ as PriorityQueue
+    participant WP as WorkerPool
 
-    User->>TS: submit_delayed(data, delay)
-    TS->>Pool: submit(data, delay)
-    Pool-->>TS: task_id
+    User->>TS: submit_delayed(data, delay_seconds)
+    TS->>QS: push(task_id, priority, delay)
+    QS->>DQ: schedule(task_id, priority, delay)
+    DQ-->>QS: 调度成功
+    QS-->>TS: 入队成功
     TS-->>User: task_id
-    
-    User->>TS: submit_interval(data, interval, run_immediately)
-    TS->>TS: 创建 PeriodicTask
-    TS->>Storage: 保存周期任务配置
-    TS-->>User: task_id
-    
-    alt run_immediately = True
-        TS->>Pool: submit(data, task_id)
-    end
-    
-    loop 调度循环扫描
-        Scheduler->>Scheduler: 检查到期周期任务
+
+    loop 时间轮扫描
+        DQ->>DQ: 检查到期任务
         alt 任务到期
-            Scheduler->>Pool: 重新调度任务
-            Scheduler->>Scheduler: 更新 next_run
+            DQ->>PQ: push(task_id, priority)
+            PQ-->>DQ: 入队成功
         end
+    end
+
+    WP->>PQ: pop()
+    PQ-->>WP: 返回任务
+    WP->>WP: 执行任务</pre>
+<h3 id="节点管理数据流">节点管理数据流</h3>
+<pre class="mermaid">sequenceDiagram
+    participant NodeA as 节点 A
+    participant NodeB as 节点 B
+    participant Redis as Redis
+    participant Monitor as 监控服务
+
+    NodeA->>Redis: 注册节点信息
+    NodeA->>Redis: 启动心跳循环(每2秒)
+    NodeB->>Redis: 注册节点信息
+    NodeB->>Redis: 启动心跳循环(每2秒)
+
+    loop 节点正常运行
+        NodeA->>Redis: 更新心跳时间戳
+        NodeB->>Redis: 更新心跳时间戳
+    end
+
+    Note over NodeA: 节点 A 崩溃
+
+    Monitor->>Redis: 扫描节点心跳
+    Redis-->>Monitor: 节点 A 心跳超时
+    Monitor->>Monitor: 标记节点 A 为可疑
+
+    Note over Monitor: 等待宽限期
+
+    Monitor->>Redis: 再次扫描
+    Redis-->>Monitor: 节点 A 仍无心跳
+    Monitor->>Monitor: 标记节点 A 为死亡
+    Monitor->>Monitor: 触发任务回收</pre>
+<h3 id="预取机制数据流">预取机制数据流</h3>
+<pre class="mermaid">sequenceDiagram
+    participant Worker as Worker协程
+    participant Prefetcher as TaskPrefetcher
+    participant LocalQ as 本地队列
+    participant SharedQ as 共享队列(Redis)
+
+    loop 预取循环
+        Prefetcher->>LocalQ: 检查队列大小
+        alt 队列大小 < 阈值
+            Prefetcher->>SharedQ: 批量抢占任务
+            SharedQ-->>Prefetcher: 返回任务列表
+            Prefetcher->>LocalQ: 批量放入本地队列
+        end
+    end
+
+    loop Worker消费
+        Worker->>LocalQ: 从本地队列获取
+        LocalQ-->>Worker: 返回任务
+        Worker->>Worker: 执行任务
+        Worker->>Worker: 确认完成
     end</pre>
 <h3 id="工作流编排数据流">工作流编排数据流</h3>
 <pre class="mermaid">sequenceDiagram
@@ -572,6 +693,29 @@
     note right of PENDING: 等待执行
     note right of RUNNING: 正在执行
     note right of SCHEDULED: 延迟等待</pre>
+<h3 id="节点状态流转图">节点状态流转图</h3>
+<pre class="mermaid">stateDiagram-v2
+    [*] --> 注册中: 节点启动
+    
+    注册中 --> 活跃: 注册成功
+    注册中 --> 失败: 注册失败
+    
+    活跃 --> 活跃: 心跳正常
+    活跃 --> 可疑: 心跳超时
+    
+    可疑 --> 活跃: 收到心跳
+    可疑 --> 死亡: 宽限期结束
+    
+    死亡 --> 恢复中: 节点重启
+    恢复中 --> 活跃: 重新注册成功
+    
+    活跃 --> 停止中: 正常关闭
+    停止中 --> [*]: 清理完成
+    
+    note right of 活跃: 正常处理任务
+    note right of 可疑: 网络抖动
+    note right of 死亡: 确认故障
+    note right of 恢复中: 重新加入</pre>
 <h3 id="工作流状态流转图">工作流状态流转图</h3>
 <pre class="mermaid">stateDiagram-v2
     [*] --> PENDING: 创建工作流
@@ -590,31 +734,334 @@
     CANCELLED --> [*]: 已取消
     TIMEOUT --> [*]: 超时结束</pre>
 <hr>
-<h2 id="七、相关链接">七、相关链接</h2>
+<h2 id="分布式架构设计">分布式架构设计</h2>
+<h3 id="去中心化对等架构">去中心化对等架构</h3>
+<p>NeoTask 采用去中心化的对等架构，所有节点完全对等，没有主节点或从节点的区分。这种设计带来了几个核心优势。</p>
+<p>首先是线性扩展能力。由于没有中心化调度节点，系统吞吐量可以随节点数量线性增长。增加新节点只需要启动进程并连接到共享存储，无需任何协调操作。</p>
+<p>其次是故障隔离性。单个节点的故障不会影响其他节点的正常运行，也不会触发复杂的恢复流程。其他节点继续从共享队列中抢占任务，故障节点的任务会在锁超时后被其他节点接管。</p>
+<p>第三是部署简便性。节点之间没有依赖关系，不需要配置领导者地址，也不需要维护节点间的连接。这使得容器化部署和弹性伸缩变得异常简单。</p>
+<pre class="mermaid">graph TB
+    subgraph Shared["共享存储层"]
+        R[(Redis)]
+    end
+    
+    subgraph Nodes["对等节点层"]
+        N1[节点 A<br/>抢占消费]
+        N2[节点 B<br/>抢占消费]
+        N3[节点 C<br/>抢占消费]
+        N4[节点 D<br/>抢占消费]
+    end
+    
+    N1 -->|抢占任务| R
+    N2 -->|抢占任务| R
+    N3 -->|抢占任务| R
+    N4 -->|抢占任务| R
+    
+    N1 <-->|无直接通信| N2
+    N1 <-->|无直接通信| N3
+    N2 <-->|无直接通信| N4</pre>
+<h3 id="抢占式消费机制">抢占式消费机制</h3>
+<p>抢占式消费是去中心化架构的核心。所有节点从共享队列中竞争任务，处理能力强的节点自然获取更多任务，实现自动的负载均衡。</p>
+<p>抢占操作通过 Lua 脚本在 Redis 服务端原子执行。脚本从有序集合中取出指定数量的最小分数任务，为每个任务设置分布式锁，锁的值为节点标识和执行时间戳，最后从队列中移除这些任务并返回。整个过程不会被其他操作打断，保证了任务不会被重复分配。</p>
+<pre class="mermaid">flowchart LR
+    subgraph PreemptScript["Lua脚本执行流程"]
+        A[开始] --> B[ZRANGE queue 0 count-1]
+        B --> C{还有任务?}
+        C -->|是| D[SET lock:task NX EX ttl]
+        D --> E{锁成功?}
+        E -->|是| F[加入结果列表]
+        E -->|否| C
+        F --> G[ZREM queue task]
+        G --> C
+        C -->|否| H[返回结果列表]
+        H --> I[结束]
+    end</pre>
+<h3 id="预取机制">预取机制</h3>
+<p>预取机制通过批量获取任务减少对 Redis 的频繁访问，显著提高系统吞吐量。</p>
+<p>每个节点维护一个本地队列。预取循环检查本地队列大小，当队列大小低于最小阈值时触发预取操作，从 Redis 批量抢占任务放入本地队列。当队列大小高于最大阈值时预取循环暂停，等待队列被消耗至低于阈值。</p>
+<p>工作协程从本地队列头部获取任务，始终保持优先级顺序。本地队列为空时工作协程等待预取器补充新任务。</p>
+<pre class="mermaid">flowchart TB
+    subgraph PrefetchLoop["预取循环"]
+        CheckLocal[检查本地队列大小] --> Compare{对比阈值}
+        
+        Compare -->|低于最小阈值| Prefetch[执行批量抢占]
+        Compare -->|高于最大阈值| SleepLong[长时间休眠]
+        Compare -->|介于之间| SleepShort[短时间休眠]
+        
+        Prefetch --> AddLocal[放入本地队列]
+        AddLocal --> Compare
+        
+        SleepLong --> Compare
+        SleepShort --> Compare
+    end
+    
+    subgraph WorkerLoop["工作循环"]
+        GetLocal[从本地队列获取] --> Execute[执行任务]
+        Execute --> UpdateStats[更新统计]
+        UpdateStats --> GetLocal
+    end
+    
+    PrefetchLoop -->|任务| WorkerLoop</pre>
+<hr>
+<h2 id="高可用设计">高可用设计</h2>
+<h3 id="节点故障检测">节点故障检测</h3>
+<p>节点故障检测采用分级超时策略。节点每隔固定时间向 Redis 写入心跳时间戳，监控服务定期扫描所有节点的心跳记录。</p>
+<p>短超时用于快速感知可能的问题，默认值为心跳间隔的三倍。宽限期介于短超时和长超时之间，用于过滤网络抖动导致的临时失联。长超时用于确认节点死亡，默认值为六十秒。</p>
+<p>这种分级设计在故障检测的及时性和准确性之间取得了平衡。过于敏感的检测会导致不必要的任务回收和告警，过于迟钝的检测则会延长故障恢复时间。</p>
+<pre class="mermaid">flowchart TB
+    subgraph Detection["故障检测流程"]
+        Monitor[监控节点心跳] --> Check{检查每个节点}
+        
+        Check -->|心跳正常| Active[标记活跃]
+        Check -->|超过短超时| Suspect[标记可疑]
+        Check -->|超过长超时| Dead[标记死亡]
+        
+        Suspect --> Wait[等待宽限期]
+        Wait --> CheckAgain{收到心跳}
+        CheckAgain -->|是| Active
+        CheckAgain -->|否| Dead
+        
+        Dead --> Reclaim[回收节点任务]
+        Reclaim --> Alert[发送告警]
+    end</pre>
+<h3 id="孤儿任务回收">孤儿任务回收</h3>
+<p>当节点崩溃且其持有的锁过期后，原本由该节点执行的任务成为孤儿任务。回收协程定期扫描运行中状态的任务，检查关联的分布式锁是否存在。</p>
+<p>如果锁不存在或已过期，说明原执行节点可能已崩溃，将该任务标记为孤儿并应用恢复策略。恢复策略根据任务类型、优先级、重试次数决定是立即重试、延迟重试还是移入死信队列。</p>
+<pre class="mermaid">flowchart TB
+    subgraph ReclaimCycle["回收周期"]
+        Start([开始]) --> AcquireLock[获取回收锁]
+        AcquireLock --> LockSuccess{获取成功}
+        
+        LockSuccess -->|否| Skip[跳过本轮]
+        LockSuccess -->|是| Scan[扫描运行中任务]
+        
+        Scan --> Loop{还有任务}
+        Loop -->|是| CheckLock[检查分布式锁]
+        
+        CheckLock --> LockExists{锁存在}
+        LockExists -->|是| CheckNode{节点心跳正常}
+        CheckNode -->|是| SkipTask[跳过此任务]
+        CheckNode -->|否| MarkOrphan[标记孤儿]
+        
+        LockExists -->|否| MarkOrphan
+        
+        MarkOrphan --> ApplyPolicy[应用恢复策略]
+        ApplyPolicy --> UpdateStats[更新统计]
+        UpdateStats --> Loop
+        
+        Loop -->|否| ReleaseLock[释放回收锁]
+        ReleaseLock --> End([结束])
+        
+        Skip --> End
+        SkipTask --> Loop
+    end</pre>
+<h3 id="任务重试与死信">任务重试与死信</h3>
+<p>任务执行失败时，系统根据重试配置决定处理方式。重试采用指数退避策略，每次重试的延迟时间递增，避免对下游服务造成压力。</p>
+<p>超过最大重试次数的任务移入死信队列。死信队列存储失败任务的完整信息，包括原始数据、失败原因、重试历史和时间戳。运维人员可以通过管理工具查看死信详情，决定重新执行、跳过还是修复数据。</p>
+<pre class="mermaid">flowchart TB
+    subgraph RetryFlow["重试流程"]
+        Task[任务执行失败] --> CheckRetry{重试次数检查}
+        
+        CheckRetry -->|未超限| CalculateDelay[计算延迟时间]
+        CalculateDelay --> Requeue[重新入队]
+        Requeue --> UpdateStats[更新重试计数]
+        
+        CheckRetry -->|超限| ToDLQ[移入死信队列]
+        ToDLQ --> StoreInfo[存储失败信息]
+        StoreInfo --> SendAlert[发送告警]
+        
+        ToDLQ --> Classify{分类处理}
+        Classify -->|临时故障| AutoRetry[自动重试]
+        Classify -->|业务错误| Manual[人工处理]
+        Classify -->|确认无用| Archive[归档清理]
+    end</pre>
+<hr>
+<h2 id="监控与可观测性">监控与可观测性</h2>
+<h3 id="指标收集体系">指标收集体系</h3>
+<p>NeoTask 内置了多层次的监控指标收集能力。指标采集器周期性收集任务计数、执行时间、队列长度等数据。系统采集器通过系统调用获取 CPU 使用率、内存占用、线程数等资源指标。事件采集器监听事件总线，记录任务状态变更、节点状态变更等关键事件。</p>
+<p>采集到的指标经过聚合后可以导出到多个目的地。控制台输出适合开发和调试场景，REST API 供外部系统集成，Prometheus 端点与主流监控生态对接。</p>
+<pre class="mermaid">graph TB
+    subgraph Collection["数据采集"]
+        MC[指标采集器]
+        SC[系统采集器]
+        EC[事件采集器]
+    end
+    
+    subgraph Aggregation["数据聚合"]
+        RA[实时聚合器]
+        PA[周期聚合器]
+    end
+    
+    subgraph Export["数据导出"]
+        Console[控制台输出]
+        API[REST API]
+        Prom[Prometheus]
+        Log[日志文件]
+    end
+    
+    MC --> RA
+    SC --> RA
+    EC --> PA
+    
+    RA --> Console
+    RA --> API
+    PA --> Prom
+    PA --> Log</pre>
+<h3 id="健康检查">健康检查</h3>
+<p>健康检查是自动化运维的基础。存活检查通过心跳检测判断节点是否还在运行。就绪检查判断节点是否能够接受新任务，节点启动时需完成组件初始化才能通过就绪检查。深度检查包括存储连接测试、队列操作测试、锁操作测试等，深度检查失败意味着节点功能受损。</p>
+<pre class="mermaid">flowchart TB
+    subgraph Liveness["存活检查"]
+        L1[检查心跳时间戳]
+        L2{心跳在阈值内?}
+        L3[节点存活]
+    end
+    
+    subgraph Readiness["就绪检查"]
+        R1[检查初始化状态]
+        R2[检查组件状态]
+        R3[节点就绪]
+    end
+    
+    subgraph Deep["深度检查"]
+        D1[存储连接测试]
+        D2[队列操作测试]
+        D3[锁操作测试]
+        D4[健康状况评估]
+    end
+    
+    L1 --> L2
+    L2 -->|是| L3
+    L2 -->|否| Dead[节点死亡]
+    
+    R1 --> R2
+    R2 -->|全部正常| R3
+    R2 -->|任一异常| NotReady[节点未就绪]
+    
+    D1 --> D4
+    D2 --> D4
+    D3 --> D4
+    D4 -->|通过| Healthy[节点健康]
+    D4 -->|失败| Unhealthy[节点异常]</pre>
+<hr>
+<h2 id="存储后端">存储后端</h2>
+<h3 id="存储抽象">存储抽象</h3>
+<p>NeoTask 通过定义统一的存储接口，将任务数据的操作与具体存储实现解耦。任务存储接口负责任务的创建、查询、更新、删除和列表操作。队列存储接口负责队列的入队、出队、大小查询和清空操作。</p>
+<pre class="mermaid">classDiagram
+    class TaskRepository {
+        <<interface>>
+        +save(task) None
+        +get(task_id) Optional[Task]
+        +delete(task_id) bool
+        +list_by_status(status, limit) List[Task]
+        +update_status(task_id, status) None
+        +exists(task_id) bool
+    }
+    
+    class QueueRepository {
+        <<interface>>
+        +push(task_id, priority) None
+        +pop(count) List[str]
+        +remove(task_id) bool
+        +size() int
+        +peek(count) List[str]
+        +clear() None
+        +contains(task_id) bool
+    }
+    
+    class MemoryTaskRepo {
+        -tasks: Dict
+        -lock: Lock
+        +save(task)
+        +get(task_id)
+    }
+    
+    class SQLiteTaskRepo {
+        -db_path: str
+        +save(task)
+        +get(task_id)
+    }
+    
+    class RedisTaskRepo {
+        -redis: Redis
+        -key_prefix: str
+        +save(task)
+        +get(task_id)
+    }
+    
+    TaskRepository <|.. MemoryTaskRepo
+    TaskRepository <|.. SQLiteTaskRepo
+    TaskRepository <|.. RedisTaskRepo</pre>
+<h3 id="存储选型建议">存储选型建议</h3>
+<p>不同场景下的存储选型策略有所不同。</p>
+<p>开发测试场景使用内存存储，提供最快的响应速度，不需要持久化能力。单机生产场景使用 SQLite 存储，数据持久化到本地文件，部署简单且数据可靠。分布式生产场景使用 Redis 存储，支持多节点共享数据，提供高性能和高可用。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 开发测试环境 - 内存存储</span></span><br><span class="line">config = TaskPoolConfig.memory()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 单机生产环境 - SQLite存储</span></span><br><span class="line">config = TaskPoolConfig.sqlite(path=<span class="string">&quot;neotask.db&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 分布式生产环境 - Redis存储</span></span><br><span class="line">config = TaskPoolConfig.redis(url=<span class="string">&quot;redis://localhost:6379&quot;</span>)</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="相关链接">相关链接</h2>
+<p><a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">返回首页</a></p>
+<p><a href="https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8">快速上手</a> - 5 分钟入门</p>
 </li>
 <li class="lvl-2">
-<p><a href="https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8">快速上手</a></p>
+<p><a href="https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c">API 参考</a> - 完整 API 文档</p>
 </li>
 <li class="lvl-2">
-<p><a href="https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c">API 参考</a></p>
+<p><a href="https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77">配置说明</a> - 配置参数详解</p>
 </li>
 <li class="lvl-2">
-<p><a href="https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77">配置说明</a></p>
-</li>
-<li class="lvl-2">
-<p><a href="https://pengline.cn/2026/03/0ec8d887591a40c98be76645d33a2f23">架构设计</a></p>
-</li>
-<li class="lvl-2">
-<p><a target="_blank" rel="noopener" href="https://github.com/neopen/neotask">GitHub</a></p>
-</li>
-<li class="lvl-2">
-<p><a target="_blank" rel="noopener" href="https://task.pengline.cn">NeoTask 官网</a></p>
+<p><a href="https://pengline.cn/2026/05/a56a8344c61d4ef69ab8d629baac2c5f">最佳实践</a> - 生产环境建议</p>
 </li>
 </ul>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/">https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E6%B1%A0/">任务池</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">任务调度</a><a class="post-meta__tags" href="/tags/%E8%B5%84%E6%BA%90%E8%B0%83%E5%BA%A6/">资源调度</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">分布式任务调度</a><a class="post-meta__tags" href="/tags/%E5%B5%8C%E5%85%A5%E5%BC%8F%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">嵌入式任务调度</a><a class="post-meta__tags" href="/tags/%E5%B5%8C%E5%85%A5%E5%BC%8F%E4%BB%BB%E5%8A%A1%E7%AE%A1%E7%90%86/">嵌入式任务管理</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/" title="剧本分镜智能体（PenShot）开发指南"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1755144020384175514402028.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）开发指南</div></div><div class="info-2"><div class="info-item-1">基于多智能体协作的剧本分镜系统，将自然语言剧本自动转换为AI视频生成提示词。支持剧本解析、镜头分割、智能裁剪、双语提示词生成及质量审查，提供REST API、Python SDK、LangGraph节点、A2A/MCP协议等集成方式。</div></div></div></a><a class="pagination-related" href="/2026/04/b24c3c4272f842eb926ba32d6e164cd8/" title="多智能体如何保证 AI 视频分镜一致性"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small162627wjXnR1759047987.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">多智能体如何保证 AI 视频分镜一致性</div></div><div class="info-2"><div class="info-item-1">从角色三视图、连续性锚点、RAG 知识库、结构化提示词、快照机制、质量审计到连续性守护七大核心策略出发，延伸至色彩管理、光照锚点、情绪曲线、双向约束等十五个补充机制，全面展示了一个多层次、系统化的视频分镜一致性保证方案。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/04/118be805273f47408bc580c4bd1203d8/" title="分布式任务调度（NeoTask）快速上手"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1755144740598175514474060.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">分布式任务调度（NeoTask）快速上手</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/04/650ac5bb41c74e26bc4effcec88bf26c/" title="分布式任务调度（NeoTask） API 参考"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1658044897410165804489720.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">分布式任务调度（NeoTask） API 参考</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/04/fa51edd849b24f48b4d7fa8e27efef77/" title="分布式任务调度（NeoTask）配置说明"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small230155Wg8Hm1760194915.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">分布式任务调度（NeoTask）配置说明</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/04/243d5a536d064df59c2ec8668362b8b5/" title="分布式任务定时调度系统（NeoTask）"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small230936xI6rH1758467376.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-08</div><div class="info-item-2">分布式任务定时调度系统（NeoTask）</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/03/468d3a0ded1740dd802b912acf8bd757/" title="分布式任务调度（NeoTask）核心功能"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1704301678924170430167898.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-03-29</div><div class="info-item-2">分布式任务调度（NeoTask）核心功能</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/03/0ec8d887591a40c98be76645d33a2f23/" title="分布式任务调度（NeoTask）版本演进"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/171084628467171084628487.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-03-29</div><div class="info-item-2">分布式任务调度（NeoTask）版本演进</div></div><div class="info-2"><div class="info-item-1">从零构建通用分布式任务池的完整架构演进历程，涵盖单机版本、监控能力、分布式核心、高可用保障到企业级五个阶段。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">NeoTask 架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E6%A6%82%E8%BF%B0"><span class="toc-number">1.1.</span> <span class="toc-text">一、概述</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%BE%E8%AE%A1%E7%9B%AE%E6%A0%87"><span class="toc-number">1.1.1.</span> <span class="toc-text">设计目标</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E7%89%B9%E6%80%A7"><span class="toc-number">1.1.2.</span> <span class="toc-text">核心特性</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E7%B3%BB%E7%BB%9F%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.</span> <span class="toc-text">二、系统架构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E5%9B%BE"><span class="toc-number">1.2.1.</span> <span class="toc-text">整体架构图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E5%B1%82%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E"><span class="toc-number">1.2.2.</span> <span class="toc-text">分层架构说明</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A8%A1%E5%9D%97%E8%81%8C%E8%B4%A3%E7%9F%A9%E9%98%B5"><span class="toc-number">1.2.3.</span> <span class="toc-text">模块职责矩阵</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E6%A0%B8%E5%BF%83%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.</span> <span class="toc-text">三、核心数据流</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8D%B3%E6%97%B6%E4%BB%BB%E5%8A%A1%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.1.</span> <span class="toc-text">即时任务数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.2.</span> <span class="toc-text">定时任务数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%BC%96%E6%8E%92%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.3.</span> <span class="toc-text">工作流编排数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%BB%E5%8A%A1%E7%8A%B6%E6%80%81%E6%B5%81%E8%BD%AC%E5%9B%BE"><span class="toc-number">1.3.4.</span> <span class="toc-text">任务状态流转图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%8A%B6%E6%80%81%E6%B5%81%E8%BD%AC%E5%9B%BE"><span class="toc-number">1.3.5.</span> <span class="toc-text">工作流状态流转图</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.4.</span> <span class="toc-text">七、相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/03/468d3a0ded1740dd802b912acf8bd757">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/03/0ec8d887591a40c98be76645d33a2f23/">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/3aafd2e52ad348ce823486c6389b3c26">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/4f970d9d3f124cc9ac6a2c78301b6e6b">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/03fa0ff8120344519e3d063985a118cc">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/6d6cb3f1903249b0b41332a87a565e03">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/a9ce9bf3877546b898042064e6081d37">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/35b92d7b0e3e4434a4d58a233061f534">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/c8baafcd7743452ca3da7849e497e25a">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://task.pengline.cn">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/">https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E6%B1%A0/">任务池</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">任务调度</a><a class="post-meta__tags" href="/tags/%E8%B5%84%E6%BA%90%E8%B0%83%E5%BA%A6/">资源调度</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">分布式任务调度</a><a class="post-meta__tags" href="/tags/%E7%B3%BB%E7%BB%9F%E6%9E%B6%E6%9E%84/">系统架构</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small225718E2h9r1757257038.webp" data-sites="wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/" title="剧本分镜智能体（PenShot）开发指南"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small204025vlPNF1760100025.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）开发指南</div></div><div class="info-2"><div class="info-item-1">基于多智能体协作的剧本分镜系统，将自然语言剧本自动转换为AI视频生成提示词。支持剧本解析、镜头分割、智能裁剪、双语提示词生成及质量审查，提供REST API、Python SDK、LangGraph节点、A2A/MCP协议等集成方式。</div></div></div></a><a class="pagination-related" href="/2026/04/a9ce9bf3877546b898042064e6081d37/" title="分布式任务调度（NeoTask）持久化"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1658044897410165804489720.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">分布式任务调度（NeoTask）持久化</div></div><div class="info-2"><div class="info-item-1">详解 NeoTask 的多层次持久化架构，涵盖存储抽象接口、内存/SQLite/Redis 三种存储实现、工厂模式设计以及数据清理策略，实现从单机开发到分布式部署的平滑演进。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/04/a9ce9bf3877546b898042064e6081d37/" title="分布式任务调度（NeoTask）持久化"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1658044897410165804489720.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-21</div><div class="info-item-2">分布式任务调度（NeoTask）持久化</div></div><div class="info-2"><div class="info-item-1">详解 NeoTask 的多层次持久化架构，涵盖存储抽象接口、内存/SQLite/Redis 三种存储实现、工厂模式设计以及数据清理策略，实现从单机开发到分布式部署的平滑演进。</div></div></div></a><a class="pagination-related" href="/2026/05/3aafd2e52ad348ce823486c6389b3c26/" title="分布式任务调度（NeoTask）去中心化"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-02</div><div class="info-item-2">分布式任务调度（NeoTask）去中心化</div></div><div class="info-2"><div class="info-item-1">阐述 NeoTask 去中心化架构的设计原理，包括对等节点模型、抢占式任务消费机制、本地队列预取、节点生命周期管理和水平扩展能力，通过无主架构实现高可用与线性扩展。</div></div></div></a><a class="pagination-related" href="/2026/04/118be805273f47408bc580c4bd1203d8/" title="分布式任务调度（NeoTask）快速上手"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small073833O6Jvi1754869113.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">分布式任务调度（NeoTask）快速上手</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/04/650ac5bb41c74e26bc4effcec88bf26c/" title="分布式任务调度（NeoTask） API 参考"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small204025vlPNF1760100025.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">分布式任务调度（NeoTask） API 参考</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/05/c8baafcd7743452ca3da7849e497e25a/" title="分布式任务调度（NeoTask）节点监控"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1755143910372175514391020.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-02</div><div class="info-item-2">分布式任务调度（NeoTask）节点监控</div></div><div class="info-2"><div class="info-item-1">详解 NeoTask 节点监控体系的架构设计，涵盖节点状态监控、任务指标收集、系统资源监控、健康检查机制和 Prometheus 集成，实现分布式任务调度的全方位可观测性。</div></div></div></a><a class="pagination-related" href="/2026/04/fa51edd849b24f48b4d7fa8e27efef77/" title="分布式任务调度（NeoTask）配置说明"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1745746689748174574668963.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">分布式任务调度（NeoTask）配置说明</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">NeoTask 架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A6%82%E8%BF%B0"><span class="toc-number">1.1.</span> <span class="toc-text">概述</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%BE%E8%AE%A1%E7%9B%AE%E6%A0%87"><span class="toc-number">1.1.1.</span> <span class="toc-text">设计目标</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E7%89%B9%E6%80%A7"><span class="toc-number">1.1.2.</span> <span class="toc-text">核心特性</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B3%BB%E7%BB%9F%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.</span> <span class="toc-text">系统架构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E5%9B%BE"><span class="toc-number">1.2.1.</span> <span class="toc-text">整体架构图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E5%B1%82%E6%9E%B6%E6%9E%84%E8%AF%B4%E6%98%8E"><span class="toc-number">1.2.2.</span> <span class="toc-text">分层架构说明</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A8%A1%E5%9D%97%E8%81%8C%E8%B4%A3%E7%9F%A9%E9%98%B5"><span class="toc-number">1.2.3.</span> <span class="toc-text">模块职责矩阵</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.</span> <span class="toc-text">核心数据流</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8D%B3%E6%97%B6%E4%BB%BB%E5%8A%A1%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.1.</span> <span class="toc-text">即时任务数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8D%B3%E6%97%B6%E4%BB%BB%E5%8A%A1%E6%95%B0%E6%8D%AE%E6%B5%81-2"><span class="toc-number">1.3.2.</span> <span class="toc-text">即时任务数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%8A%82%E7%82%B9%E7%AE%A1%E7%90%86%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.3.</span> <span class="toc-text">节点管理数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A2%84%E5%8F%96%E6%9C%BA%E5%88%B6%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.4.</span> <span class="toc-text">预取机制数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%BC%96%E6%8E%92%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.3.5.</span> <span class="toc-text">工作流编排数据流</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%BB%E5%8A%A1%E7%8A%B6%E6%80%81%E6%B5%81%E8%BD%AC%E5%9B%BE"><span class="toc-number">1.3.6.</span> <span class="toc-text">任务状态流转图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%8A%82%E7%82%B9%E7%8A%B6%E6%80%81%E6%B5%81%E8%BD%AC%E5%9B%BE"><span class="toc-number">1.3.7.</span> <span class="toc-text">节点状态流转图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%8A%B6%E6%80%81%E6%B5%81%E8%BD%AC%E5%9B%BE"><span class="toc-number">1.3.8.</span> <span class="toc-text">工作流状态流转图</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.4.</span> <span class="toc-text">分布式架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8E%BB%E4%B8%AD%E5%BF%83%E5%8C%96%E5%AF%B9%E7%AD%89%E6%9E%B6%E6%9E%84"><span class="toc-number">1.4.1.</span> <span class="toc-text">去中心化对等架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8A%A2%E5%8D%A0%E5%BC%8F%E6%B6%88%E8%B4%B9%E6%9C%BA%E5%88%B6"><span class="toc-number">1.4.2.</span> <span class="toc-text">抢占式消费机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A2%84%E5%8F%96%E6%9C%BA%E5%88%B6"><span class="toc-number">1.4.3.</span> <span class="toc-text">预取机制</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%AB%98%E5%8F%AF%E7%94%A8%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.5.</span> <span class="toc-text">高可用设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%8A%82%E7%82%B9%E6%95%85%E9%9A%9C%E6%A3%80%E6%B5%8B"><span class="toc-number">1.5.1.</span> <span class="toc-text">节点故障检测</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AD%A4%E5%84%BF%E4%BB%BB%E5%8A%A1%E5%9B%9E%E6%94%B6"><span class="toc-number">1.5.2.</span> <span class="toc-text">孤儿任务回收</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%BB%E5%8A%A1%E9%87%8D%E8%AF%95%E4%B8%8E%E6%AD%BB%E4%BF%A1"><span class="toc-number">1.5.3.</span> <span class="toc-text">任务重试与死信</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%91%E6%8E%A7%E4%B8%8E%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7"><span class="toc-number">1.6.</span> <span class="toc-text">监控与可观测性</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%87%E6%A0%87%E6%94%B6%E9%9B%86%E4%BD%93%E7%B3%BB"><span class="toc-number">1.6.1.</span> <span class="toc-text">指标收集体系</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5"><span class="toc-number">1.6.2.</span> <span class="toc-text">健康检查</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AD%98%E5%82%A8%E5%90%8E%E7%AB%AF"><span class="toc-number">1.7.</span> <span class="toc-text">存储后端</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AD%98%E5%82%A8%E6%8A%BD%E8%B1%A1"><span class="toc-number">1.7.1.</span> <span class="toc-text">存储抽象</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AD%98%E5%82%A8%E9%80%89%E5%9E%8B%E5%BB%BA%E8%AE%AE"><span class="toc-number">1.7.2.</span> <span class="toc-text">存储选型建议</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.8.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
