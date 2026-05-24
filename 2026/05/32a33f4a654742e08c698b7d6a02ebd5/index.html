@@ -1,25 +1,29 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>剧本分镜智能体（PenShot）检查点 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="PenShot 检查点 相关链接：GitHub | 官网 | 文档  （架构设计 · 召回策略 · MCP Server ·  一致性策略 · RAG 增强）   相关链接 核心文档   技术架构与设计   集成使用指南   核心实现详解   版本功能演进   技术专题   工作流节点详解   全局一致性策略   MCP 协议详解   RAG 知识库增强   召回策略方案   开发者指南   外部">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>剧本分镜智能体（PenShot）检查点 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="深入探讨 PenShot 剧本分镜智能体中工作流检查点的设计原理与实现演进，从 MemorySaver 到 SqliteSaver 的技术选型，展示生产级检查点管理器的核心设计与最佳实践。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="剧本分镜智能体（PenShot）检查点">
 <meta property="og:url" content="https://pengline.cn/2026/05/32a33f4a654742e08c698b7d6a02ebd5/index.html">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="PenShot 检查点 相关链接：GitHub | 官网 | 文档  （架构设计 · 召回策略 · MCP Server ·  一致性策略 · RAG 增强）   相关链接 核心文档   技术架构与设计   集成使用指南   核心实现详解   版本功能演进   技术专题   工作流节点详解   全局一致性策略   MCP 协议详解   RAG 知识库增强   召回策略方案   开发者指南   外部">
+<meta property="og:description" content="深入探讨 PenShot 剧本分镜智能体中工作流检查点的设计原理与实现演进，从 MemorySaver 到 SqliteSaver 的技术选型，展示生产级检查点管理器的核心设计与最佳实践。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp">
 <meta property="article:published_time" content="2026-05-14T14:18:03.573Z">
-<meta property="article:modified_time" content="2026-05-15T10:56:35.997Z">
+<meta property="article:modified_time" content="2026-05-21T03:06:10.911Z">
 <meta property="article:author" content="余一叶知秋尽">
-<meta property="article:tag" content="长剧本分镜">
-<meta property="article:tag" content="长剧本拆分">
+<meta property="article:tag" content="LangGraph">
+<meta property="article:tag" content="工作流检查点">
+<meta property="article:tag" content="状态持久化">
+<meta property="article:tag" content="SqliteSaver">
+<meta property="article:tag" content="断点续传">
+<meta property="article:tag" content="PenShot检查点">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp"><script type="application/ld+json">{
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp"><script type="application/ld+json">{
   "@context": "https://schema.org",
   "@type": "BlogPosting",
   "headline": "剧本分镜智能体（PenShot）检查点",
   "url": "https://pengline.cn/2026/05/32a33f4a654742e08c698b7d6a02ebd5/",
-  "image": "https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp",
+  "image": "https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp",
   "datePublished": "2026-05-14T14:18:03.573Z",
-  "dateModified": "2026-05-15T10:56:35.997Z",
+  "dateModified": "2026-05-21T03:06:10.911Z",
   "author": [
     {
       "@type": "Person",
@@ -160,31 +164,366 @@
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
-}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">88</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">425</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">46</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/download/media"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://remind.helpoke.com"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体（PenShot）检查点</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/download/media"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://remind.helpoke.com"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体（PenShot）检查点</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-05-14T14:18:03.573Z" title="发表于 2026-05-14 22:18:03">2026-05-14</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-05-15T10:56:35.997Z" title="更新于 2026-05-15 18:56:35">2026-05-15</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot 检查点</h1>
+}</script><meta name="google-adsense-account" content="ca-pub-0000000000000000"><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">92</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">442</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">47</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/download/media"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://remind.helpoke.com"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体（PenShot）检查点</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/download/media"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://remind.helpoke.com"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体（PenShot）检查点</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-05-14T14:18:03.573Z" title="发表于 2026-05-14 22:18:03">2026-05-14</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-05-21T03:06:10.911Z" title="更新于 2026-05-21 11:06:10">2026-05-21</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/PenShot/">PenShot</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot 工作流检查点</h1>
+<p>在构建基于 LangGraph 的多智能体工作流系统时，状态持久化是一个容易被忽视但至关重要的基础设施问题。本文将深入探讨 PenShot 项目中工作流检查点的设计演进、技术选型和最佳实践。</p>
 <p>相关链接：<a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">GitHub</a> | <a target="_blank" rel="noopener" href="https://shot.helpenx.com/">官网</a> | <a href="https://pengline.cn/2026/02/7e6cd67dd5ee45248f2276ac145555f5">文档</a>  （<a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">架构设计</a> · <a href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90">召回策略</a> · <a href="https://pengline.cn/2026/02/b027d930c0b84ba6abd24bbef7d78afc">MCP Server</a> ·  <a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">一致性策略</a> · <a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027">RAG 增强</a>）</p>
 <hr>
-<hr>
-<h2 id="相关链接">相关链接</h2>
-<h3 id="核心文档">核心文档</h3>
+<h2 id="检查点的本质与价值">检查点的本质与价值</h2>
+<p>工作流检查点（Checkpoint）的核心作用是在工作流执行的特定时刻保存完整的运行状态，以便在系统故障、任务中断或需要回溯时能够精确恢复。对于 PenShot 这样的剧本分镜系统，一个任务通常需要处理数万字的剧本，经过剧本解析、镜头拆分、视频分割、提示词转换、质量审查等多个阶段，整个流程可能耗时数十秒甚至数分钟。</p>
+<pre class="mermaid">flowchart LR
+    direction LR %% 强制全局从左到右
+    subgraph Without["无检查点的工作流"]
+        direction LR %% 强制子图内部从左到右
+        A1[开始] --> B1[阶段1] --> C1[阶段2] --> D1[阶段3] --> E1[阶段4] --> F1[完成]
+        C1 -.->|故障| X1[从头开始]
+        X1 -.-> A1
+    end
+
+    subgraph With["有检查点的工作流"]
+        direction LR %% 强制子图内部从左到右
+        A2[开始] --> B2[阶段1] --> C2[阶段2] --> D2[阶段3] --> E2[阶段4] --> F2[完成]
+        C2 -.->|故障| R2[从最近检查点恢复]
+        R2 -.-> D2
+    end</pre>
+<p>在没有检查点机制的情况下，任何阶段的失败都意味着整个任务需要从头执行，这对于长剧本处理场景是不可接受的。检查点机制的价值体现在三个维度：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">技术架构与设计</a></p>
+<p><strong>断点续传</strong>：当工作流执行到某个阶段时发生异常，可以从最近保存的检查点恢复，避免重复计算。这对于依赖外部 LLM API 的场景尤为重要，因为网络波动或 API 限流是常见问题。</p>
 </li>
 <li class="lvl-2">
-<p><a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">集成使用指南</a></p>
+<p><strong>状态调试</strong>：开发人员可以保存工作流在不同阶段的快照，用于问题复现和调试。当某个片段生成质量不佳时，可以回溯到该片段生成前的状态进行分析。</p>
 </li>
 <li class="lvl-2">
-<p><a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">核心实现详解</a></p>
-</li>
-<li class="lvl-2">
-<p><a href="https://pengline.cn/2026/04/b2fdbe6ef0044bbb9e12b2c3ce9b3e06">版本功能演进</a></p>
+<p><strong>任务迁移</strong>：在分布式部署场景下，检查点允许任务在不同节点间迁移，实现负载均衡和故障转移。</p>
 </li>
 </ul>
-<h3 id="技术专题">技术专题</h3>
+<hr>
+<h2 id="LangGraph-检查点机制原理">LangGraph 检查点机制原理</h2>
+<p>LangGraph 是构建状态化多智能体工作流的核心框架，其检查点机制基于以下核心概念：</p>
+<pre class="mermaid">flowchart TB
+    subgraph CheckpointArchitecture["检查点架构"]
+        direction TB
+        
+        subgraph GraphLayer["工作流层"]
+            G[LangGraph 工作流]
+            N1[节点A] --> N2[节点B] --> N3[节点C]
+        end
+        
+        subgraph CheckpointLayer["检查点层"]
+            C[Checkpointer 接口]
+            M[MemorySaver]
+            S[SqliteSaver]
+            P[PostgresSaver]
+        end
+        
+        subgraph StorageLayer["存储层"]
+            RAM[内存]
+            DB[(SQLite/PostgreSQL)]
+        end
+        
+        G --> C
+        C --> M --> RAM
+        C --> S --> DB
+        C --> P --> DB
+    end</pre>
+<h3 id="状态快照机制">状态快照机制</h3>
+<p>LangGraph 的检查点核心是 <code>BaseCheckpointSaver</code> 抽象类，它定义了保存和恢复工作流状态的标准接口。当工作流执行到某个节点时，LangGraph 会自动触发检查点保存，将当前的状态快照持久化到配置的存储后端。</p>
+<pre class="mermaid">sequenceDiagram
+    participant User as 用户
+    participant Workflow as LangGraph工作流
+    participant Saver as CheckpointSaver
+    participant Storage as 存储后端
+    
+    User->>Workflow: 启动任务 (thread_id)
+    Workflow->>Saver: 检查是否存在历史检查点
+    Saver->>Storage: 查询 thread_id 对应的状态
+    
+    alt 存在检查点
+        Storage-->>Saver: 返回保存的状态
+        Saver-->>Workflow: 恢复状态
+        Workflow-->>User: 从断点继续执行
+    else 不存在检查点
+        Workflow->>Workflow: 从头执行
+    end
+    
+    loop 每个节点执行后
+        Workflow->>Saver: 保存状态快照
+        Saver->>Storage: 持久化存储
+    end
+    
+    Workflow-->>User: 任务完成</pre>
+<h3 id="Thread-ID-隔离机制">Thread ID 隔离机制</h3>
+<p>LangGraph 使用 <code>thread_id</code> 作为不同任务状态的隔离标识。每个独立的任务（如不同的剧本处理请求）都拥有唯一的 <code>thread_id</code>，确保检查点不会相互覆盖。这一设计使得系统能够同时管理数千个并发任务的状态。</p>
+<hr>
+<h2 id="PenShot-检查点的设计演进">PenShot 检查点的设计演进</h2>
+<p>PenShot 项目的检查点实现经历了三个主要版本的演进，每个版本都解决了特定的技术挑战。</p>
+<pre class="mermaid">flowchart TB
+    subgraph ActualArchitecture["PenShot 实际检查点架构"]
+        direction TB
+        
+        subgraph WorkflowLayer["工作流层"]
+            WF[LangGraph 工作流]
+            WF -->|invoke 同步调用| N1[节点1] --> N2[节点2] --> N3[节点3]
+        end
+        
+        subgraph CheckpointLayer["检查点层"]
+            CP[WorkflowCheckpointer]
+            CP -->|get_saver| MS[MemorySaver]
+            CP -->|get_saver| SS[SqliteSaver]
+        end
+        
+        subgraph StorageLayer["存储层"]
+            RAM[进程内存]
+            DB[(SQLite .db文件)]
+        end
+        
+        MS --> RAM
+        SS --> DB
+    end</pre>
+<h3 id="第一版：MemorySaver-快速验证">第一版：MemorySaver 快速验证</h3>
+<p>在项目初期，为了快速验证工作流逻辑，采用了 LangGraph 内置的 <code>MemorySaver</code>。这是最简单的检查点实现，所有状态保存在进程内存中。</p>
+<pre class="mermaid">flowchart LR
+    subgraph MemoryMode["MemorySaver 模式"]
+        Worker[PenShot Worker] --> RAM[进程内存]
+        RAM -->|存储| CP1[检查点1]
+        RAM -->|存储| CP2[检查点2]
+        RAM -->|存储| CP3[检查点3]
+        
+        Worker -.->|进程重启| X[所有检查点丢失]
+    end</pre>
+<blockquote>
+<p>这种方式的优点是零配置、零依赖、性能最高，但致命缺陷是进程重启后所有检查点丢失，无法实现真正的断点续传。仅适合本地开发和单元测试场景。</p>
+</blockquote>
+<h3 id="第二版：SqliteSaver-持久化存储">第二版：SqliteSaver 持久化存储</h3>
+<p>为了解决状态持久化问题，引入了 <code>SqliteSaver</code>，使用 SQLite 文件作为检查点存储后端。这是 LangGraph 官方提供的同步版本 SQLite 检查点实现。</p>
+<pre class="mermaid">flowchart TB
+    subgraph SQLiteMode["SqliteSaver 模式"]
+        direction TB
+        
+        Worker[PenShot Worker] --> Conn[SQLite连接]
+        Conn --> DB[(task_xxx.db)]
+        
+        subgraph Storage["数据库结构"]
+            T1[(checkpoints表<br/>thread_id, checkpoint_id, data)]
+            T2[(checkpoint_metadata表<br/>script_id, task_id, metadata)]
+        end
+        
+        DB --> Storage
+    end</pre>
+<blockquote>
+<p>每个任务独立的数据库文件实现了数据隔离，SQLite 的 WAL（Write-Ahead Logging）模式保证了并发读写的性能。这一版本解决了持久化问题，但很快遇到了新的挑战。</p>
+</blockquote>
+<h3 id="第三版：SqliteSaver-同步持久化">第三版：SqliteSaver 同步持久化</h3>
+<p>在使用 <code>ainvoke</code> 异步执行工作流时，遇到了 <code>SqliteSaver does not support async methods</code> 错误。这是因为 <code>SqliteSaver</code> 是同步实现，而 LangGraph 的异步 API 需要异步检查点存储器。</p>
+<pre class="mermaid">flowchart LR
+    direction LR %% 强制主画布从左到右
+    subgraph SyncSaver["同步 Saver 问题"]
+        direction LR %% 强制子图1内部从左到右
+        A[async def run] -->|ainvoke| W[异步工作流]
+        W -->|调用| S[SqliteSaver]
+        S -.->|不支持异步方法| E[NotImplementedError]
+    end
+
+    subgraph AsyncSaver["异步 Saver 方案"]
+        direction LR %% 强制子图2内部从左到右
+        A2[async def run] -->|ainvoke| W2[异步工作流]
+        W2 -->|调用| AS[AsyncSqliteSaver]
+        AS -->|await| DB2[(SQLite)]
+    end</pre>
+<blockquote>
+<p>在 PenShot 的实际实现中，工作流采用<strong>同步执行模式</strong>（<code>graph.invoke</code>），因此使用 LangGraph 官方提供的同步版本 <code>SqliteSaver</code> 即可满足需求，无需引入异步版本的复杂性。</p>
+</blockquote>
+<p><strong>为什么选择同步而非异步</strong>？</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">考量因素</th>
+<th style="text-align:left">同步模式</th>
+<th style="text-align:left">异步模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">代码复杂度</td>
+<td style="text-align:left">低</td>
+<td style="text-align:left">高（需要 aiosqlite）</td>
+</tr>
+<tr>
+<td style="text-align:left">依赖数量</td>
+<td style="text-align:left">仅 sqlite3</td>
+<td style="text-align:left">需要额外安装 aiosqlite</td>
+</tr>
+<tr>
+<td style="text-align:left">调试难度</td>
+<td style="text-align:left">简单</td>
+<td style="text-align:left">复杂（事件循环问题）</td>
+</tr>
+<tr>
+<td style="text-align:left">并发处理</td>
+<td style="text-align:left">线程池</td>
+<td style="text-align:left">原生协程</td>
+</tr>
+<tr>
+<td style="text-align:left">适用场景</td>
+<td style="text-align:left">单机顺序处理</td>
+<td style="text-align:left">高并发 Web 服务</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>对于 PenShot 的剧本分镜场景，任务通常是顺序执行的，同步模式完全够用，且代码更简洁易维护。</p>
+</blockquote>
+<hr>
+<h2 id="生产级检查点管理器实现">生产级检查点管理器实现</h2>
+<p>PenShot 最终实现的 <code>WorkflowCheckpointer</code> 核心设计如下：</p>
+<pre class="mermaid">flowchart TB
+    subgraph CheckpointerDesign["WorkflowCheckpointer 实际设计"]
+        direction TB
+        
+        subgraph PublicAPI["公共接口"]
+            get_saver[get_saver 获取原生Saver]
+            get_config[get_config 获取运行配置]
+            cleanup[cleanup_old_checkpoints 清理旧文件]
+            get_stats[get_stats 获取统计信息]
+            close[close 关闭资源]
+        end
+        
+        subgraph Internal["内部组件"]
+            mode_detect[_determine_mode 模式自动检测]
+            storage_setup[_setup_storage 存储路径管理]
+        end
+        
+        subgraph StorageModes["支持的存储模式"]
+            memory[MemorySaver<br/>开发测试]
+            sqlite[SqliteSaver<br/>本地生产]
+        end
+        
+        PublicAPI --> Internal
+        Internal --> StorageModes
+    end</pre>
+<h3 id="自动模式选择">自动模式选择</h3>
+<p><code>WorkflowCheckpointer</code> 支持三种存储模式，并可以根据环境自动选择最合适的模式：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><a href="https://pengline.cn/2026/02/5b98fed4753340aa91fd9f8ecc4d87e1">工作流节点详解</a></p>
+<p><strong>memory模式</strong>：所有状态存储在内存中，适合单元测试和快速验证</p>
+</li>
+<li class="lvl-2">
+<p><strong>sqlite模式</strong>：使用 SQLite 文件持久化，适合单机生产部署</p>
+</li>
+<li class="lvl-2">
+<p><strong>postgres模式</strong>：使用 PostgreSQL 数据库，适合分布式部署场景</p>
+</li>
+</ul>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">_determine_mode</span>(<span class="params">self</span>) -&gt; CheckpointMode:</span><br><span class="line">    mode = <span class="built_in">getattr</span>(<span class="variable language_">self</span>.config, <span class="string">&#x27;checkpoint_mode&#x27;</span>, <span class="string">&#x27;auto&#x27;</span>)</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">if</span> mode == <span class="string">&#x27;memory&#x27;</span>:</span><br><span class="line">        <span class="keyword">return</span> CheckpointMode.MEMORY</span><br><span class="line">    <span class="keyword">elif</span> mode == <span class="string">&#x27;sqlite&#x27;</span>:</span><br><span class="line">        <span class="keyword">return</span> CheckpointMode.SQLITE</span><br><span class="line">    <span class="keyword">else</span>:  <span class="comment"># auto 模式</span></span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">            <span class="comment"># 检查 SQLite 是否可写</span></span><br><span class="line">            checkpoint_dir = <span class="built_in">getattr</span>(<span class="variable language_">self</span>.config, <span class="string">&#x27;checkpoint_dir&#x27;</span>, <span class="string">&#x27;data/checkpoints&#x27;</span>)</span><br><span class="line">            os.makedirs(checkpoint_dir, exist_ok=<span class="literal">True</span>)</span><br><span class="line">            test_path = os.path.join(checkpoint_dir, <span class="string">&#x27;.write_test&#x27;</span>)</span><br><span class="line">            <span class="keyword">with</span> <span class="built_in">open</span>(test_path, <span class="string">&#x27;w&#x27;</span>) <span class="keyword">as</span> f:</span><br><span class="line">                f.write(<span class="string">&#x27;test&#x27;</span>)</span><br><span class="line">            os.remove(test_path)</span><br><span class="line">            <span class="keyword">return</span> CheckpointMode.SQLITE</span><br><span class="line">        <span class="keyword">except</span> Exception:</span><br><span class="line">            warning(<span class="string">&quot;SQLite 不可用，降级到内存模式&quot;</span>)</span><br><span class="line">            <span class="keyword">return</span> CheckpointMode.MEMORY</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>当配置为 <code>auto</code> 模式时，系统会检测 SQLite 是否可写，若不可用则自动降级到内存模式，保证系统在各种环境下都能正常运行。</p>
+</blockquote>
+<h3 id="任务数据隔离">任务数据隔离</h3>
+<p>每个剧本处理任务拥有独立的数据存储路径：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>按 <code>script_id</code> 创建子目录</p>
+</li>
+<li class="lvl-2">
+<p>按 <code>task_id</code> 创建独立的数据库文件</p>
+</li>
+<li class="lvl-2">
+<p>支持按剧本维度清理历史检查点</p>
+</li>
+</ul>
+</blockquote>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">data/checkpoints/</span><br><span class="line">├── script_001/           # 按剧本ID隔离</span><br><span class="line">│   ├── task_001.db       # 按任务ID隔离</span><br><span class="line">│   └── task_002.db</span><br><span class="line">└── script_002/</span><br><span class="line">    └── task_003.db</span><br></pre></td></tr></table></figure>
+<p>这种设计确保了多任务并发执行时数据不会相互干扰，同时也便于按剧本维度进行数据管理。</p>
+<h3 id="工厂模式管理实例">工厂模式管理实例</h3>
+<p>通过 <code>CheckpointerFactory</code> 避免重复创建相同任务的检查点实例：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">CheckpointerFactory</span>:</span><br><span class="line">    _instances: <span class="type">Dict</span>[<span class="built_in">str</span>, WorkflowCheckpointer] = &#123;&#125;</span><br><span class="line">    _lock = threading.RLock()</span><br><span class="line">    </span><br><span class="line"><span class="meta">    @classmethod</span></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_or_create</span>(<span class="params">cls, script_id: <span class="built_in">str</span>, task_id: <span class="built_in">str</span>, config: ShotConfig</span>):</span><br><span class="line">        key = <span class="string">f&quot;<span class="subst">&#123;script_id&#125;</span>_<span class="subst">&#123;task_id&#125;</span>&quot;</span></span><br><span class="line">        <span class="keyword">with</span> cls._lock:</span><br><span class="line">            <span class="keyword">if</span> key <span class="keyword">not</span> <span class="keyword">in</span> cls._instances:</span><br><span class="line">                cls._instances[key] = WorkflowCheckpointer(script_id, task_id, config)</span><br><span class="line">            <span class="keyword">return</span> cls._instances[key]</span><br></pre></td></tr></table></figure>
+<h3 id="旧检查点自动清理">旧检查点自动清理</h3>
+<p>为了防止磁盘空间无限增长，检查点管理器实现了自动清理机制：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>按文件修改时间排序，保留最近的 N 个检查点</p>
+</li>
+<li class="lvl-2">
+<p>清理前检测文件是否正在被使用，避免误删</p>
+</li>
+<li class="lvl-2">
+<p>支持异步清理，不阻塞主工作流</p>
+</li>
+</ul>
+<hr>
+<h2 id="集成方式">集成方式</h2>
+<h3 id="基础配置">基础配置</h3>
+<p>在 PenShot 的配置文件中，只需添加几行配置即可启用检查点功能：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">ShotConfig</span>():</span><br><span class="line">    checkpoint_mode: <span class="built_in">str</span> = <span class="string">&quot;auto&quot;</span>   <span class="comment"># 检查点模式: auto, memory, sqlite, postgres</span></span><br><span class="line">    checkpoint_dir: <span class="built_in">str</span> = <span class="string">&#x27;data_checkpoint&#x27;</span></span><br><span class="line">    postgres_uri: <span class="built_in">str</span> = <span class="literal">None</span>    <span class="comment"># PostgreSQL URI</span></span><br><span class="line">    max_checkpoints_per_script: <span class="built_in">int</span> = <span class="number">10</span>    <span class="comment"># 每脚本最多保存的检查点数量</span></span><br><span class="line">    checkpoint_max_connections: <span class="built_in">int</span> = <span class="number">5</span>     <span class="comment"># 检查点最大连接数</span></span><br><span class="line">    checkpoint_idle_timeout: <span class="built_in">int</span> = <span class="number">600</span>      <span class="comment"># 检查点空闲超时时间（秒）</span></span><br></pre></td></tr></table></figure>
+<h3 id="工作流集成">工作流集成</h3>
+<p>在工作流构建时，将检查点管理器创建的 saver 实例传递给 LangGraph：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 创建检查点管理器</span></span><br><span class="line">checkpointer = WorkflowCheckpointer(</span><br><span class="line">    script_id=script_id,</span><br><span class="line">    task_id=task_id,</span><br><span class="line">    config=config</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 获取原生 saver 用于工作流编译</span></span><br><span class="line">saver = checkpointer.get_saver()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 编译工作流时传入 saver</span></span><br><span class="line">workflow = builder.<span class="built_in">compile</span>(checkpointer=saver)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 执行时传入包含 thread_id 的配置</span></span><br><span class="line">result = <span class="keyword">await</span> workflow.ainvoke(</span><br><span class="line">    initial_state,</span><br><span class="line">    config=checkpointer.get_config()</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="效果与收益">效果与收益</h2>
+<p>引入完整的检查点机制后，PenShot 系统获得了以下收益：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>任务恢复能力</strong>：当 LLM API 限流或网络波动导致任务中断时，系统可以从最近的检查点自动恢复，无需从头开始。在实测中，一个包含 50 个片段的剧本处理任务，原本 30 秒的执行时间，在引入检查点后即使中间发生一次恢复，总耗时仅增加约 5 秒。</p>
+</li>
+<li class="lvl-2">
+<p><strong>调试效率提升</strong>：开发人员可以保存任意阶段的状态快照，用于问题复现。当质量审查发现某个片段异常时，可以直接加载该片段生成前的状态进行分析，大幅缩短了问题定位时间。</p>
+</li>
+<li class="lvl-2">
+<p><strong>资源利用率优化</strong>：对于长剧本处理任务，检查点机制避免了重复调用 LLM API 的开销。在 API 调用成本较高的场景下，这意味着显著的成本节约。</p>
+</li>
+</ul>
+<hr>
+<h2 id="最佳实践总结">最佳实践总结</h2>
+<p>基于 PenShot 的实践经验，以下是工作流检查点实施的几点建议：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>开发环境使用 MemorySaver</strong>：零配置、速度快，适合频繁迭代调试。</p>
+</li>
+<li class="lvl-2">
+<p><strong>生产环境使用 AsyncSqliteSaver</strong>：持久化可靠，配合 WAL 模式性能足够，部署简单无需额外依赖。</p>
+</li>
+<li class="lvl-2">
+<p><strong>为每个任务使用独立的 thread_id</strong>：确保任务状态隔离，避免相互覆盖。</p>
+</li>
+<li class="lvl-2">
+<p><strong>定期清理旧检查点</strong>：设置合理的保留策略（如保留最近 10 个），避免磁盘空间无限增长。</p>
+</li>
+<li class="lvl-2">
+<p><strong>异步环境必须使用异步 Saver</strong>：使用 <code>ainvoke</code> 时必须配合 <code>AsyncSqliteSaver</code> 或 <code>AsyncPostgresSaver</code>。</p>
+</li>
+<li class="lvl-2">
+<p><strong>配置自动降级</strong>：在 <code>auto</code> 模式下，当首选存储不可用时自动降级到内存模式，提高系统鲁棒性。</p>
+</li>
+</ul>
+<hr>
+<h2 id="扩展方向">扩展方向</h2>
+<p>检查点机制还有进一步优化的空间。分布式部署场景下，可以考虑使用 Redis 作为检查点存储，以获得更高的读写性能。此外，检查点压缩和增量检查点技术也可以探索，以减少存储空间占用和网络传输开销。</p>
+<hr>
+<h2 id="相关链接">相关链接</h2>
+<p><strong>核心文档</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">PenShot 技术架构与设计</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">PenShot 集成使用指南</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">PenShot 核心实现详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/b2fdbe6ef0044bbb9e12b2c3ce9b3e06">PenShot 版本功能演进</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5b98fed4753340aa91fd9f8ecc4d87e1">PenShot 工作流节点详解</a></p>
+</li>
+</ul>
+<p><strong>技术专题</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/32a33f4a654742e08c698b7d6a02ebd5">工作流检查点</a></p>
 </li>
 <li class="lvl-2">
 <p><a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">全局一致性策略</a></p>
@@ -199,22 +538,25 @@
 <p><a href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/">召回策略方案</a></p>
 </li>
 <li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/1c76b03cdafb48eb96ae6655f551f0e2">召回重排序</a></p>
+</li>
+<li class="lvl-2">
 <p><a href="https://pengline.cn/2026/04/6ddcf1cbfa17488e83c16d032d9814c7">开发者指南</a></p>
 </li>
 </ul>
-<h3 id="外部链接">外部链接</h3>
+<p><strong>外部链接</strong></p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">GitHub</a></p>
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">PenShot GitHub</a></p>
 </li>
 <li class="lvl-2">
-<p><a href="https://pengline.cn/7e6cd67dd5ee45248f2276ac145555f5">文档</a></p>
+<p><a href="https://pengline.cn/7e6cd67dd5ee45248f2276ac145555f5">PenShot 文档</a></p>
 </li>
 <li class="lvl-2">
-<p><a target="_blank" rel="noopener" href="https://shot.helpenx.com">官网</a></p>
+<p><a target="_blank" rel="noopener" href="https://shot.helpenx.com">PenShot 官网</a></p>
 </li>
 </ul>
-<!-- flag of hidden posts --></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/05/32a33f4a654742e08c698b7d6a02ebd5/">https://pengline.cn/2026/05/32a33f4a654742e08c698b7d6a02ebd5/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E9%95%BF%E5%89%A7%E6%9C%AC%E5%88%86%E9%95%9C/">长剧本分镜</a><a class="post-meta__tags" href="/tags/%E9%95%BF%E5%89%A7%E6%9C%AC%E6%8B%86%E5%88%86/">长剧本拆分</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><div class="ads-wrap"><ins class="adsbygoogle" style="display:block; text-align:center;" data-ad-layout="in-article" data-ad-format="fluid" data-ad-client="ca-pub-2048978820706528" data-ad-slot="2846057743"></ins>,<script>(adsbygoogle = window.adsbygoogle || []).push({});</script></div><nav class="pagination-post" id="pagination"></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/05/d8ad9e979cbc406ab0d56ef4e926f9c2/" title="剧本分镜智能体（PenShot）快速开始"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small211845B4zPN1756646325.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-14</div><div class="info-item-2">剧本分镜智能体（PenShot）快速开始</div></div><div class="info-2"><div class="info-item-1">本文档是PenShot的快速入门指南，涵盖环境准备、安装配置、异步API调用及完整运行示例。演示从原始输入到AI视频提示词生成的全流程，包含剧本解析、镜头分割、视频分割、提示词转换、质量审计五大核心阶段。</div></div></div></a><a class="pagination-related" href="/2026/02/7e6cd67dd5ee45248f2276ac145555f5/" title="NLP 剧本分镜智能体（PenShot）"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small160843rjlZC1759046923.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">NLP 剧本分镜智能体（PenShot）</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作连贯性。支持LangGraph多智能体协作、MCP协议、向量记忆检索、质量审查与自动修复。</div></div></div></a><a class="pagination-related" href="/2026/01/238b779a48294b85b77d8aed05eb31da/" title="如何利用 AIGC 技术生成超长视频"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small222033hPqw01758118833.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-01-27</div><div class="info-item-2">如何利用 AIGC 技术生成超长视频</div></div><div class="info-2"><div class="info-item-1">利用大语言模型+ 多模态模型将一段超长剧本转化为视频，主要有"一站式全自动生成"和"专业级分步制作"两种主流模式。</div></div></div></a><a class="pagination-related" href="/2026/04/b24c3c4272f842eb926ba32d6e164cd8/" title="多智能体如何保证 AI 视频分镜一致性"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1638860420693163886042042.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-21</div><div class="info-item-2">多智能体如何保证 AI 视频分镜一致性</div></div><div class="info-2"><div class="info-item-1">从角色三视图、连续性锚点、RAG 知识库、结构化提示词、快照机制、质量审计到连续性守护七大核心策略出发，延伸至色彩管理、光照锚点、情绪曲线、双向约束等十五个补充机制，全面展示了一个多层次、系统化的视频分镜一致性保证方案。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot 检查点</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.1.</span> <span class="toc-text">相关链接</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%96%87%E6%A1%A3"><span class="toc-number">1.1.1.</span> <span class="toc-text">核心文档</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8A%80%E6%9C%AF%E4%B8%93%E9%A2%98"><span class="toc-number">1.1.2.</span> <span class="toc-text">技术专题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%96%E9%83%A8%E9%93%BE%E6%8E%A5"><span class="toc-number">1.1.3.</span> <span class="toc-text">外部链接</span></a></li></ol></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/05/32a33f4a654742e08c698b7d6a02ebd5/">https://pengline.cn/2026/05/32a33f4a654742e08c698b7d6a02ebd5/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/LangGraph/">LangGraph</a><a class="post-meta__tags" href="/tags/%E5%B7%A5%E4%BD%9C%E6%B5%81%E6%A3%80%E6%9F%A5%E7%82%B9/">工作流检查点</a><a class="post-meta__tags" href="/tags/%E7%8A%B6%E6%80%81%E6%8C%81%E4%B9%85%E5%8C%96/">状态持久化</a><a class="post-meta__tags" href="/tags/SqliteSaver/">SqliteSaver</a><a class="post-meta__tags" href="/tags/%E6%96%AD%E7%82%B9%E7%BB%AD%E4%BC%A0/">断点续传</a><a class="post-meta__tags" href="/tags/PenShot%E6%A3%80%E6%9F%A5%E7%82%B9/">PenShot检查点</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><div class="ads-wrap"><ins class="adsbygoogle" style="display:block; text-align:center;" data-ad-layout="in-article" data-ad-format="fluid" data-ad-client="ca-pub-2048978820706528" data-ad-slot="2846057743"></ins>,<script>(adsbygoogle = window.adsbygoogle || []).push({});</script></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/05/364cee356025453da5bd09c818aaf126/" title="Helpoke 您身边的万能在线免费工具集"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small220310sh3iJ1756130590.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">Helpoke 您身边的万能在线免费工具集</div></div><div class="info-2"><div class="info-item-1">一款免费在线工具聚合平台，免安装注册、数据本地化、支持离线使用。涵盖图片/视频处理、开发辅助、日常效率等 30+ 工具，为开发者、设计师等提供「一点即用」的清爽体验，告别焦虑与隐私担忧。</div></div></div></a><a class="pagination-related" href="/2026/05/1c76b03cdafb48eb96ae6655f551f0e2/" title="PenShot 重排序如何提升召回质量"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1634204644701163420464439.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">PenShot 重排序如何提升召回质量</div></div><div class="info-2"><div class="info-item-1">深入讲解重排序在多路召回中的原理与应用，通过CrossEncoder实现查询与文档的细粒度交互，有效解决多源分数不可比和语义相似度局限，显著提升排序质量。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/09/92bb519d826e4443936d4cce27ceb524/" title="LangChain + RAG 构建医疗问答Agent"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small222033hPqw01758118833.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-04</div><div class="info-item-2">LangChain + RAG 构建医疗问答Agent</div></div><div class="info-2"><div class="info-item-1">该系统能够利用预设的医疗知识库和网络搜索功能，为用户提供专业、准确的医疗健康咨询服务。</div></div></div></a><a class="pagination-related" href="/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/" title="剧本分镜智能体（PenShot）开发指南"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small230936xI6rH1758467376.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-23</div><div class="info-item-2">剧本分镜智能体（PenShot）开发指南</div></div><div class="info-2"><div class="info-item-1">基于多智能体协作的剧本分镜系统，将自然语言剧本自动转换为AI视频生成提示词。支持剧本解析、镜头分割、智能裁剪、双语提示词生成及质量审查，提供REST API、Python SDK、LangGraph节点、A2A/MCP协议等集成方式。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot 工作流检查点</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A3%80%E6%9F%A5%E7%82%B9%E7%9A%84%E6%9C%AC%E8%B4%A8%E4%B8%8E%E4%BB%B7%E5%80%BC"><span class="toc-number">1.1.</span> <span class="toc-text">检查点的本质与价值</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#LangGraph-%E6%A3%80%E6%9F%A5%E7%82%B9%E6%9C%BA%E5%88%B6%E5%8E%9F%E7%90%86"><span class="toc-number">1.2.</span> <span class="toc-text">LangGraph 检查点机制原理</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%8A%B6%E6%80%81%E5%BF%AB%E7%85%A7%E6%9C%BA%E5%88%B6"><span class="toc-number">1.2.1.</span> <span class="toc-text">状态快照机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Thread-ID-%E9%9A%94%E7%A6%BB%E6%9C%BA%E5%88%B6"><span class="toc-number">1.2.2.</span> <span class="toc-text">Thread ID 隔离机制</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#PenShot-%E6%A3%80%E6%9F%A5%E7%82%B9%E7%9A%84%E8%AE%BE%E8%AE%A1%E6%BC%94%E8%BF%9B"><span class="toc-number">1.3.</span> <span class="toc-text">PenShot 检查点的设计演进</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AC%AC%E4%B8%80%E7%89%88%EF%BC%9AMemorySaver-%E5%BF%AB%E9%80%9F%E9%AA%8C%E8%AF%81"><span class="toc-number">1.3.1.</span> <span class="toc-text">第一版：MemorySaver 快速验证</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AC%AC%E4%BA%8C%E7%89%88%EF%BC%9ASqliteSaver-%E6%8C%81%E4%B9%85%E5%8C%96%E5%AD%98%E5%82%A8"><span class="toc-number">1.3.2.</span> <span class="toc-text">第二版：SqliteSaver 持久化存储</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AC%AC%E4%B8%89%E7%89%88%EF%BC%9ASqliteSaver-%E5%90%8C%E6%AD%A5%E6%8C%81%E4%B9%85%E5%8C%96"><span class="toc-number">1.3.3.</span> <span class="toc-text">第三版：SqliteSaver 同步持久化</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%94%9F%E4%BA%A7%E7%BA%A7%E6%A3%80%E6%9F%A5%E7%82%B9%E7%AE%A1%E7%90%86%E5%99%A8%E5%AE%9E%E7%8E%B0"><span class="toc-number">1.4.</span> <span class="toc-text">生产级检查点管理器实现</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E5%8A%A8%E6%A8%A1%E5%BC%8F%E9%80%89%E6%8B%A9"><span class="toc-number">1.4.1.</span> <span class="toc-text">自动模式选择</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%BB%E5%8A%A1%E6%95%B0%E6%8D%AE%E9%9A%94%E7%A6%BB"><span class="toc-number">1.4.2.</span> <span class="toc-text">任务数据隔离</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E5%8E%82%E6%A8%A1%E5%BC%8F%E7%AE%A1%E7%90%86%E5%AE%9E%E4%BE%8B"><span class="toc-number">1.4.3.</span> <span class="toc-text">工厂模式管理实例</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%97%A7%E6%A3%80%E6%9F%A5%E7%82%B9%E8%87%AA%E5%8A%A8%E6%B8%85%E7%90%86"><span class="toc-number">1.4.4.</span> <span class="toc-text">旧检查点自动清理</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%9B%86%E6%88%90%E6%96%B9%E5%BC%8F"><span class="toc-number">1.5.</span> <span class="toc-text">集成方式</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9F%BA%E7%A1%80%E9%85%8D%E7%BD%AE"><span class="toc-number">1.5.1.</span> <span class="toc-text">基础配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E9%9B%86%E6%88%90"><span class="toc-number">1.5.2.</span> <span class="toc-text">工作流集成</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%88%E6%9E%9C%E4%B8%8E%E6%94%B6%E7%9B%8A"><span class="toc-number">1.6.</span> <span class="toc-text">效果与收益</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E6%80%BB%E7%BB%93"><span class="toc-number">1.7.</span> <span class="toc-text">最佳实践总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E6%96%B9%E5%90%91"><span class="toc-number">1.8.</span> <span class="toc-text">扩展方向</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.9.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',

@@ -1,0 +1,691 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>剧本分镜智能体（PenShot）Token节省 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="PenShot在Token消耗优化方面的工程实践。从语义分块、分级质量审查、三层记忆压缩、检索增强生成、提示词模板复用等已实现策略，到长剧本智能分块、批量化调用、模型路由、增量处理等规划方向。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="剧本分镜智能体（PenShot）Token节省">
+<meta property="og:url" content="https://pengline.cn/2026/05/8f08520263b248ad889d70e7c011e57d/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="PenShot在Token消耗优化方面的工程实践。从语义分块、分级质量审查、三层记忆压缩、检索增强生成、提示词模板复用等已实现策略，到长剧本智能分块、批量化调用、模型路由、增量处理等规划方向。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/171084628467171084628487.webp">
+<meta property="article:published_time" content="2026-05-21T02:56:56.519Z">
+<meta property="article:modified_time" content="2026-05-21T11:04:14.234Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="记忆管理">
+<meta property="article:tag" content="Token优化">
+<meta property="article:tag" content="成本控制">
+<meta property="article:tag" content="上下文压缩">
+<meta property="article:tag" content="检索增强生成">
+<meta property="article:tag" content="模型路由">
+<meta property="article:tag" content="增量处理">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/171084628467171084628487.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "剧本分镜智能体（PenShot）Token节省",
+  "url": "https://pengline.cn/2026/05/8f08520263b248ad889d70e7c011e57d/",
+  "image": "https://tool.pengline.cn/imgs/blog/essay/171084628467171084628487.webp",
+  "datePublished": "2026-05-21T02:56:56.519Z",
+  "dateModified": "2026-05-21T11:04:14.234Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.cn"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/05/8f08520263b248ad889d70e7c011e57d/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '剧本分镜智能体（PenShot）Token节省',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><meta name="google-adsense-account" content="ca-pub-0000000000000000"><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">92</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">442</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">47</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/download/media"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://remind.helpoke.com"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/171084628467171084628487.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体（PenShot）Token节省</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/download/media"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://remind.helpoke.com"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体（PenShot）Token节省</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-05-21T02:56:56.519Z" title="发表于 2026-05-21 10:56:56">2026-05-21</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-05-21T11:04:14.234Z" title="更新于 2026-05-21 19:04:14">2026-05-21</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/PenShot/">PenShot</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>从百万Token到千Token的工程实践</h1>
+<p>在剧本分镜智能体PenShot的研发过程中，Token消耗是最敏感的成本指标之一。一个中等长度的电影剧本经过完整的剧本解析、镜头拆分、提示词转换流程，原始Token消耗可能高达数十万。本文系统梳理PenShot在各个层次上实施的Token节省策略，从已实现的核心机制到正在规划的优化方向，展示一个完整的成本控制体系。</p>
+<p>相关链接：<a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">GitHub</a> | <a target="_blank" rel="noopener" href="https://shot.helpenx.com/">官网</a> | <a href="https://pengline.cn/2026/02/7e6cd67dd5ee45248f2276ac145555f5">文档</a>  （<a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">架构设计</a> · <a href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90">召回策略</a> · <a href="https://pengline.cn/2026/02/b027d930c0b84ba6abd24bbef7d78afc">MCP Server</a> ·  <a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">一致性策略</a> · <a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027">RAG 增强</a>）</p>
+<hr>
+<h2 id="Token消耗的主要来源分析">Token消耗的主要来源分析</h2>
+<p>PenShot的Token消耗主要集中在三个环节。剧本解析阶段需要将原始剧本发送给LLM进行场景、角色、动作的识别，这是Token消耗的最大来源。提示词生成阶段需要为每个片段生成详细的视觉描述，片段数量与Token消耗线性相关。质量审查阶段涉及多次迭代修复，每次失败都会触发额外的LLM调用。</p>
+<pre class="mermaid">flowchart TD
+    subgraph Input["原始剧本输入"]
+        A[剧本文件]
+    end
+    
+    subgraph Process["PenShot 处理流程"]
+        direction TB
+        
+        P1[剧本解析节点]
+        P2[镜头拆分节点]
+        P3[AI分割节点]
+        P4[提示词转换节点]
+        P5[质量审查节点]
+        
+        P1 --> P2 --> P3 --> P4 --> P5
+        
+        subgraph Loop["重试循环"]
+            L1[问题检测]
+            L2[自动修复]
+            L3[人工决策]
+        end
+        
+        P5 -.->|问题| Loop
+        Loop -.->|重试| P4
+    end
+    
+    subgraph Output["输出结果"]
+        B[提示词序列]
+    end
+    
+    Process --> Output</pre>
+<hr>
+<h2 id="已实现的Token节省策略">已实现的Token节省策略</h2>
+<h3 id="语义分块与智能预处理">语义分块与智能预处理</h3>
+<p>剧本解析阶段采用了语义边界检测策略。系统首先识别剧本中的场景分隔符、角色名标记、对话标识符，在保持语义完整的前提下进行分块。每个场景作为一个独立的处理单元，场景内部的对话和动作描述保持在同一个处理块中。这种做法避免了在关键语义节点处切断文本，减少了后续LLM重新理解上下文所需的补全描述。</p>
+<p>同时，系统会滤除剧本中的无关元素。注释行、场记标记、版本修订痕迹等非叙事内容被自动识别并移除。仅保留场景标题、场景描述、角色名、对话内容和动作指示。经实际项目测试，这一预处理步骤可减少百分之十五到二十五的输入Token。</p>
+<pre class="mermaid">flowchart LR
+    subgraph Preprocess["智能预处理"]
+        A[原始剧本] --> B[格式标准化]
+        B --> C[语义边界检测]
+        C --> D{场景边界?}
+        D -->|是| E[场景独立存储]
+        D -->|否| F[合并到当前场景]
+        E --> G[元素过滤]
+        G --> H[压缩表示]
+    end
+    
+    subgraph Statistics["优化效果"]
+        I[Token压缩率: 15-25%]
+        J[语义完整性: 保持]
+    end
+    
+    H --> I
+    I --> J</pre>
+<h3 id="分级质量审查机制">分级质量审查机制</h3>
+<p>质量审计节点采用规则优先的混合审查策略。规则审查器独立于LLM运行，基于硬性规则检查场景数量、角色连续性、时长合规性等可量化指标。只有当规则审查发现问题或规则无法判定时，才会触发LLM深度审查。</p>
+<p>这种分级处理机制大幅减少了LLM调用频率。对于格式规范的剧本，规则审查可以覆盖百分之六十以上的检查项，仅需一次LLM调用即可完成整个审查流程。只有问题较多的复杂剧本才会进入多次LLM交互的重试循环。</p>
+<pre class="mermaid">flowchart TD
+    subgraph Audit["质量审查流程"]
+        A[片段序列] --> B[规则审查]
+        B --> C{问题检测}
+        C -->|无问题| D[通过]
+        C -->|轻微问题| E[自动修复]
+        C -->|严重问题| F[LLM深度审查]
+        
+        E --> G[规则二次验证]
+        G -->|通过| D
+        
+        F --> H{可修复?}
+        H -->|是| I[生成修复参数]
+        H -->|否| J[人工干预]
+        I --> K[阶段重试]
+    end
+    
+    subgraph Metrics["调用统计"]
+        L[规则审查: 100%覆盖]
+        M[LLM审查: <40%触发]
+    end</pre>
+<h3 id="三层记忆压缩架构">三层记忆压缩架构</h3>
+<p>记忆系统是Token节省的核心组件。三层记忆以不同粒度和生命周期管理历史信息。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>短期记忆使用滑动窗口机制，维护最近三轮对话的完整上下文。窗口大小可配置为五到十条消息，超出的记录自动丢弃。这种设计确保了当前任务的瞬时记忆不会无限膨胀。</p>
+</li>
+<li class="lvl-2">
+<p>中期记忆通过摘要压缩技术将多轮交互历史提炼为核心摘要。每当短期记忆达到容量阈值时，系统触发摘要生成，将过往对话压缩为二百到五百Token的摘要文本。摘要保留了关键决策参数、用户偏好、常见错误模式等长期价值信息，而丢弃了瞬时交互细节。</p>
+</li>
+<li class="lvl-2">
+<p>长期记忆采用向量化存储，将成功案例、失败模式、修复历史转换为七百六十八维的嵌入向量。检索时通过语义相似度召回最相关的三到五个案例，每个案例以摘要形式呈现，单条不超过三百Token。</p>
+</li>
+</ul>
+<p>记忆流转形成闭环。短期记忆积累到阈值后触发压缩进入中期，中期记忆中的成功模式定期归档到长期向量库。这种金字塔式管理使单次LLM调用的上下文长度从可能的上万Token压缩到两千Token以内。</p>
+<pre class="mermaid">flowchart TB
+    subgraph ShortTerm["短期记忆"]
+        S1[滑动窗口]
+        S2[原始消息]
+        S3[TTL: 1小时]
+    end
+    
+    subgraph MediumTerm["中期记忆"]
+        M1[摘要压缩]
+        M2[核心信息]
+        M3[TTL: 7天]
+    end
+    
+    subgraph LongTerm["长期记忆"]
+        L1[向量化存储]
+        L2[语义检索]
+        L3[持久化]
+    end
+    
+    subgraph Flow["记忆流转机制"]
+        F1[容量触发]
+        F2[LLM摘要生成]
+        F3[模式提取]
+        F4[向量入库]
+    end
+    
+    S1 -->|达到阈值| F1
+    F1 --> F2
+    F2 --> M1
+    M1 -->|周期性| F3
+    F3 --> F4
+    F4 --> L1
+    
+    subgraph Retrieval["检索流程"]
+        R1[查询向量化]
+        R2[相似度计算]
+        R3[Top-K筛选]
+        R4[重排序]
+    end
+    
+    L1 --> R1
+    R1 --> R2 --> R3 --> R4</pre>
+<h3 id="检索增强生成的混合策略">检索增强生成的混合策略</h3>
+<p>RAG模块应用了多阶段筛选机制以降低Token消耗。查询首先经过向量相似度检索，从向量库中召回十五到二十个候选片段。这些片段经过BGE重排序模型计算相关性分数，筛选出与查询最相关的三到五个片段。</p>
+<p>重排序阶段还融入了MMR策略以平衡相关性与多样性。避免返回内容高度相似的结果，确保召回的片段覆盖查询的多个语义维度。最终只有筛选后的片段被拼接到LLM上下文窗口中。</p>
+<p>知识库本身也实施了按剧本ID隔离的策略。每个剧本拥有独立的向量存储子目录，查询时仅检索当前剧本的知识库，避免了跨剧本的无关信息干扰。这进一步减少了上下文中的噪声Token。</p>
+<pre class="mermaid">flowchart LR
+    subgraph RetrievalPipeline["检索流水线"]
+        Q[查询文本] --> E[文本嵌入]
+        E --> V[向量检索]
+        V --> C1[候选集: 15-20]
+        C1 --> R[BGE重排序]
+        R --> C2[精选集: 3-5]
+        C2 --> M[MMR多样性优化]
+        M --> F[最终上下文]
+    end
+    
+    subgraph Storage["向量存储架构"]
+        S1[剧本A索引]
+        S2[剧本B索引]
+        S3[剧本C索引]
+        S4[提示词模板索引]
+    end
+    
+    subgraph Config["检索配置"]
+        T1[相似度阈值: 0.6]
+        T2[重排序Top-N: 3]
+        T3[MMR多样性系数: 0.8]
+    end
+    
+    V -.->|隔离检索| S1
+    V -.->|隔离检索| S2
+    V -.->|隔离检索| S3
+    V -.->|独立检索| S4</pre>
+<h3 id="提示词模板的知识复用">提示词模板的知识复用</h3>
+<p>成功的提示词会被保存到模板库中，供后续相似场景复用。模板库同样基于向量存储，通过语义相似度匹配历史成功的提示词模板。</p>
+<p>当新片段需要生成提示词时，系统首先在模板库中检索相似的成功案例。如果找到相似度高于阈值的高质量模板，则直接复用模板结构，仅替换角色名、场景等变量化元素。这种方式避免了从零生成提示词，单次可节省百分之五十到七十的生成Token。</p>
+<p>模板缓存机制进一步减少了向量检索的频率。高频使用的模板被缓存在内存中，检索命中率可达百分之七十以上。</p>
+<h3 id="工作流条件分支与早期退出">工作流条件分支与早期退出</h3>
+<p>LangGraph工作流引擎支持条件分支和早期退出。每个节点的决策函数判断后续流程走向，可以在满足条件时跳过后续节点直接进入输出阶段。</p>
+<p>例如，当质量审查评分达到优秀线时，系统跳过修复循环直接输出结果。当镜头时长都在模型限制范围内时，AI分割节点被完全跳过。这种条件执行机制避免了不必要的LLM调用。</p>
+<pre class="mermaid">stateDiagram-v2
+    [*] --> 剧本解析
+    剧本解析 --> 镜头拆分: 成功
+    剧本解析 --> 重试: 失败且可重试
+    剧本解析 --> 人工干预: 失败且超限
+    
+    镜头拆分 --> 时长检查
+    时长检查 --> AI分割: 存在超长镜头
+    时长检查 --> 直接转换: 所有镜头合规
+    
+    AI分割 --> 提示词转换
+    直接转换 --> 提示词转换
+    
+    提示词转换 --> 质量审查
+    质量审查 --> 输出: 评分 >= 85
+    质量审查 --> 轻量修复: 评分 60-85
+    质量审查 --> 深度修复: 评分 < 60
+    
+    轻量修复 --> 提示词转换
+    深度修复 --> 提示词转换
+    
+    输出 --> [*]</pre>
+<hr>
+<h2 id="待实现的Token节省策略">待实现的Token节省策略</h2>
+<h3 id="长剧本智能分块">长剧本智能分块</h3>
+<p>当前实现假设剧本可以一次性加载到LLM上下文中。对于超长剧本，需要引入主动分块机制。计划基于剧情弧线进行语义分块，每个块保持相对完整的叙事单元。块与块之间保留百分之十的重叠内容以确保连续性。分块后的各部分可以并行处理，大幅降低单次处理的Token峰值。</p>
+<pre class="mermaid">flowchart TB
+    subgraph Chunking["智能分块"]
+        A[完整剧本] --> B[剧情弧检测]
+        B --> C[高潮点识别]
+        C --> D[情感曲线分析]
+        D --> E[语义边界定位]
+        E --> F[生成分块序列]
+    end
+    
+    subgraph Parallel["并行处理"]
+        G[块1: 起] --> H[Worker 1]
+        I[块2: 承] --> J[Worker 2]
+        K[块3: 转] --> L[Worker 3]
+        M[块4: 合] --> N[Worker 4]
+    end
+    
+    subgraph Merge["结果融合"]
+        H --> O[状态传递]
+        J --> O
+        L --> O
+        N --> O
+        O --> P[一致性校验]
+        P --> Q[最终合并]
+    end
+    
+    F --> Parallel
+    Parallel --> Merge</pre>
+<h3 id="输出长度自适应控制">输出长度自适应控制</h3>
+<p>提示词生成节点将引入长度自适应机制。根据目标视频模型的输入限制，动态调整提示词的详细程度。对于Sora这类偏好详细描述的模型，生成八十到一百二十个单词的完整提示词。对于Pika这类偏好简洁的模型，生成三十到五十个单词的核心提示词。</p>
+<p>负面提示词也实施分级策略。默认负面提示词长度为二十到三十个单词，仅包含通用质量问题。场景特定负面提示词在检测到问题时才动态追加。</p>
+<h3 id="LLM调用批量化">LLM调用批量化</h3>
+<p>多个独立的LLM调用可以合并为单次批量请求。剧本解析和镜头拆分当前是串行执行，但它们的输入相互独立，理论上可以并行调用。质量审查中的多个审查项也可以合并为单次审查请求，由LLM一次性输出所有问题的分析结果。</p>
+<p>批量化改造预计可将LLM调用次数减少百分之三十到四十。</p>
+<pre class="mermaid">sequenceDiagram
+    participant P as 调用方
+    participant B as 批处理网关
+    participant L as LLM服务
+    
+    rect rgb(200, 230, 200)
+        Note over P,L: 当前模式：串行调用
+        P->>L: 请求1（剧本解析）
+        L-->>P: 响应1
+        P->>L: 请求2（镜头拆分）
+        L-->>P: 响应2
+        P->>L: 请求3（提示词生成）
+        L-->>P: 响应3
+    end
+    
+    rect rgb(230, 200, 200)
+        Note over P,L: 目标模式：批量调用
+        P->>B: 批量请求[任务1,任务2,任务3]
+        B->>L: 合并请求
+        L-->>B: 合并响应
+        B-->>P: 批量响应[结果1,结果2,结果3]
+    end</pre>
+<h3 id="缓存层级扩展">缓存层级扩展</h3>
+<p>当前缓存仅覆盖提示词模板。计划扩展缓存覆盖范围到剧本解析结果和镜头拆分结果。对于相同或高度相似的剧本，可以直接复用历史解析结果，完全跳过LLM处理。</p>
+<p>缓存键的设计需要兼顾唯一性和泛化能力。基于剧本哈希的精确匹配适用于完全相同输入，基于语义指纹的模糊匹配适用于相似输入。模糊匹配使用MinHash算法生成剧本的语义指纹，相似度高于百分之九十时判定为可复用。</p>
+<h3 id="模型路由与大小自适应">模型路由与大小自适应</h3>
+<p>不同任务对模型能力的需求差异显著。剧本解析和基础镜头拆分可以交由参数规模较小的模型处理，如DeepSeek-chat或Qwen-7B。提示词生成和质量审查这类需要更强创造力和理解能力的任务，则路由到参数规模较大的模型如GPT-4o。</p>
+<p>系统将维护一个任务-模型路由表，根据任务类型、复杂度、历史成功率动态选择最优模型。预期将高成本模型的使用量降低百分之五十以上。</p>
+<pre class="mermaid">flowchart TD
+    subgraph Router["智能模型路由"]
+        T[输入任务] --> C{任务分类}
+        
+        C -->|简单任务| S1[小模型池]
+        C -->|中等任务| S2[中模型池]
+        C -->|复杂任务| S3[大模型池]
+        
+        subgraph Small["小模型"]
+            M1[DeepSeek-chat]
+            M2[Qwen-7B]
+            M3[Llama-3-8B]
+        end
+        
+        subgraph Medium["中模型"]
+            M4[GPT-3.5]
+            M5[Claude-3-Haiku]
+        end
+        
+        subgraph Large["大模型"]
+            M6[GPT-4o]
+            M7[Claude-3.5-Sonnet]
+        end
+    end
+    
+    subgraph Metrics["路由依据"]
+        R1[任务复杂度评分]
+        R2[历史成功率]
+        R3[Token预算]
+        R4[响应时间要求]
+    end
+    
+    S1 --> Small
+    S2 --> Medium
+    S3 --> Large</pre>
+<h3 id="增量处理模式">增量处理模式</h3>
+<p>对于迭代式剧本修改场景，引入增量处理模式。系统首先对比新旧版本，识别变更的场景和片段。仅对变更部分重新处理，未变更部分复用缓存结果。</p>
+<p>变更检测基于AST级别的剧本结构对比，能够精确到场景级别和对话级别。增量处理模式可将重复任务的Token消耗降低百分之八十以上。</p>
+<pre class="mermaid">flowchart LR
+    subgraph VersionControl["版本管理"]
+        V1[剧本v1] --> D[差异检测]
+        V2[剧本v2] --> D
+    end
+    
+    subgraph Diff["变更分析"]
+        D --> S{变更类型}
+        S -->|新增场景| A[处理新场景]
+        S -->|修改场景| B[重新处理]
+        S -->|删除场景| C[移除结果]
+        S -->|无变更| E[复用缓存]
+    end
+    
+    subgraph Cache["缓存复用"]
+        A --> M[合并结果]
+        B --> M
+        C --> M
+        E --> M
+    end
+    
+    subgraph Output["最终输出"]
+        M --> O[完整结果v2]
+    end</pre>
+<hr>
+<h2 id="策略效果评估与未来展望">策略效果评估与未来展望</h2>
+<p>当前已实现的Token节省策略在实际项目中取得了显著效果。语义分块与智能预处理减少了百分之十五到二十五的输入Token。分级质量审查机制将LLM调用频率降低了约百分之四十。三层记忆压缩架构使单次LLM调用的上下文长度从可能的上万Token压缩到两千Token以内。提示词模板复用避免了百分之五十到七十的重复生成Token。综合评估显示，已实现策略使整体Token消耗降低约百分之六十。</p>
+<p>待实现策略将进一步强化成本控制能力。智能分块与并行处理使系统能够处理任意长度的剧本而无Token溢出风险。批量化调用预计可减少百分之三十到四十的LLM调用次数。模型路由策略将高成本模型的使用量降低百分之五十以上。增量处理模式可在迭代场景中实现百分之八十的Token节省。</p>
+<hr>
+<h2 id="相关链接">相关链接</h2>
+<p><strong>核心文档</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">PenShot 技术架构与设计</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">PenShot 集成使用指南</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5e65b005e2954eef95faf3b43ba7e6fd">PenShot 核心实现详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/b2fdbe6ef0044bbb9e12b2c3ce9b3e06">PenShot 版本功能演进</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/5b98fed4753340aa91fd9f8ecc4d87e1">PenShot 工作流节点详解</a></p>
+</li>
+</ul>
+<p><strong>技术专题</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/32a33f4a654742e08c698b7d6a02ebd5">工作流检查点</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">全局一致性策略</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/02/b027d930c0b84ba6abd24bbef7d78afc">MCP 协议详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027">RAG 知识库增强</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/">召回策略方案</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/1c76b03cdafb48eb96ae6655f551f0e2">召回重排序</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/6ddcf1cbfa17488e83c16d032d9814c7">开发者指南</a></p>
+</li>
+</ul>
+<p><strong>外部链接</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">PenShot GitHub</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/7e6cd67dd5ee45248f2276ac145555f5">PenShot 文档</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://shot.helpenx.com">PenShot 官网</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/05/8f08520263b248ad889d70e7c011e57d/">https://pengline.cn/2026/05/8f08520263b248ad889d70e7c011e57d/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E8%AE%B0%E5%BF%86%E7%AE%A1%E7%90%86/">记忆管理</a><a class="post-meta__tags" href="/tags/Token%E4%BC%98%E5%8C%96/">Token优化</a><a class="post-meta__tags" href="/tags/%E6%88%90%E6%9C%AC%E6%8E%A7%E5%88%B6/">成本控制</a><a class="post-meta__tags" href="/tags/%E4%B8%8A%E4%B8%8B%E6%96%87%E5%8E%8B%E7%BC%A9/">上下文压缩</a><a class="post-meta__tags" href="/tags/%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90/">检索增强生成</a><a class="post-meta__tags" href="/tags/%E6%A8%A1%E5%9E%8B%E8%B7%AF%E7%94%B1/">模型路由</a><a class="post-meta__tags" href="/tags/%E5%A2%9E%E9%87%8F%E5%A4%84%E7%90%86/">增量处理</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/171084628467171084628487.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><div class="ads-wrap"><ins class="adsbygoogle" style="display:block; text-align:center;" data-ad-layout="in-article" data-ad-format="fluid" data-ad-client="ca-pub-2048978820706528" data-ad-slot="2846057743"></ins>,<script>(adsbygoogle = window.adsbygoogle || []).push({});</script></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/05/f6bdb468a82d411c970148a7fd1de52c/" title="剧本分镜智能体（PenShot）向量检索"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small2223110PsEx1754317391.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）向量检索</div></div><div class="info-2"><div class="info-item-1">深入解析 PenShot 剧本分镜智能体的向量检索原理与实现，涵盖余弦相似度计算、索引存储结构、重排序优化等核心技术，并提供完整的问题排查指南和最佳实践。</div></div></div></a><a class="pagination-related" href="/2026/05/364cee356025453da5bd09c818aaf126/" title="Helpoke 您身边的万能在线免费工具集"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small220310sh3iJ1756130590.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">Helpoke 您身边的万能在线免费工具集</div></div><div class="info-2"><div class="info-item-1">一款免费在线工具聚合平台，免安装注册、数据本地化、支持离线使用。涵盖图片/视频处理、开发辅助、日常效率等 30+ 工具，为开发者、设计师等提供「一点即用」的清爽体验，告别焦虑与隐私担忧。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e/" title="剧本分镜智能体（PenShot）一致性策略"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small221437yj1D11756131277.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）一致性策略</div></div><div class="info-2"><div class="info-item-1">PenShot 全局一致性保障策略。涵盖角色/场景/道具/动作连续性检查、向量数据库语义检索、记忆管理（短期/中期/长期）、状态快照机制、连续性锚点传递、修复参数反馈闭环。</div></div></div></a><a class="pagination-related" href="/2026/02/7e6cd67dd5ee45248f2276ac145555f5/" title="NLP 剧本分镜智能体（PenShot）"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">NLP 剧本分镜智能体（PenShot）</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作连贯性。支持LangGraph多智能体协作、MCP协议、向量记忆检索、质量审查与自动修复。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">从百万Token到千Token的工程实践</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#Token%E6%B6%88%E8%80%97%E7%9A%84%E4%B8%BB%E8%A6%81%E6%9D%A5%E6%BA%90%E5%88%86%E6%9E%90"><span class="toc-number">1.1.</span> <span class="toc-text">Token消耗的主要来源分析</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%B2%E5%AE%9E%E7%8E%B0%E7%9A%84Token%E8%8A%82%E7%9C%81%E7%AD%96%E7%95%A5"><span class="toc-number">1.2.</span> <span class="toc-text">已实现的Token节省策略</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AF%AD%E4%B9%89%E5%88%86%E5%9D%97%E4%B8%8E%E6%99%BA%E8%83%BD%E9%A2%84%E5%A4%84%E7%90%86"><span class="toc-number">1.2.1.</span> <span class="toc-text">语义分块与智能预处理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E7%BA%A7%E8%B4%A8%E9%87%8F%E5%AE%A1%E6%9F%A5%E6%9C%BA%E5%88%B6"><span class="toc-number">1.2.2.</span> <span class="toc-text">分级质量审查机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%89%E5%B1%82%E8%AE%B0%E5%BF%86%E5%8E%8B%E7%BC%A9%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.3.</span> <span class="toc-text">三层记忆压缩架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A3%80%E7%B4%A2%E5%A2%9E%E5%BC%BA%E7%94%9F%E6%88%90%E7%9A%84%E6%B7%B7%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.2.4.</span> <span class="toc-text">检索增强生成的混合策略</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%A8%A1%E6%9D%BF%E7%9A%84%E7%9F%A5%E8%AF%86%E5%A4%8D%E7%94%A8"><span class="toc-number">1.2.5.</span> <span class="toc-text">提示词模板的知识复用</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E6%B5%81%E6%9D%A1%E4%BB%B6%E5%88%86%E6%94%AF%E4%B8%8E%E6%97%A9%E6%9C%9F%E9%80%80%E5%87%BA"><span class="toc-number">1.2.6.</span> <span class="toc-text">工作流条件分支与早期退出</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BE%85%E5%AE%9E%E7%8E%B0%E7%9A%84Token%E8%8A%82%E7%9C%81%E7%AD%96%E7%95%A5"><span class="toc-number">1.3.</span> <span class="toc-text">待实现的Token节省策略</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%95%BF%E5%89%A7%E6%9C%AC%E6%99%BA%E8%83%BD%E5%88%86%E5%9D%97"><span class="toc-number">1.3.1.</span> <span class="toc-text">长剧本智能分块</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BE%93%E5%87%BA%E9%95%BF%E5%BA%A6%E8%87%AA%E9%80%82%E5%BA%94%E6%8E%A7%E5%88%B6"><span class="toc-number">1.3.2.</span> <span class="toc-text">输出长度自适应控制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#LLM%E8%B0%83%E7%94%A8%E6%89%B9%E9%87%8F%E5%8C%96"><span class="toc-number">1.3.3.</span> <span class="toc-text">LLM调用批量化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E5%B1%82%E7%BA%A7%E6%89%A9%E5%B1%95"><span class="toc-number">1.3.4.</span> <span class="toc-text">缓存层级扩展</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A8%A1%E5%9E%8B%E8%B7%AF%E7%94%B1%E4%B8%8E%E5%A4%A7%E5%B0%8F%E8%87%AA%E9%80%82%E5%BA%94"><span class="toc-number">1.3.5.</span> <span class="toc-text">模型路由与大小自适应</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A2%9E%E9%87%8F%E5%A4%84%E7%90%86%E6%A8%A1%E5%BC%8F"><span class="toc-number">1.3.6.</span> <span class="toc-text">增量处理模式</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AD%96%E7%95%A5%E6%95%88%E6%9E%9C%E8%AF%84%E4%BC%B0%E4%B8%8E%E6%9C%AA%E6%9D%A5%E5%B1%95%E6%9C%9B"><span class="toc-number">1.4.</span> <span class="toc-text">策略效果评估与未来展望</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.5.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px"target="_blank"href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Hosted-Github-brightgreen?style=flat&logo=GitHub"title="本站项目由Gtihub托管"></a><a style="margin-inline:5px"target="_blank"href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Frame-Hexo-blue?style=flat&logo=hexo"title="博客框架为Hexo"></a><a style="margin-inline:5px"target="_blank"href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Theme-Butterfly-6513df?logoColor=white&style=flat&logo=buefy"title="主题采用butterfly"></a><a style="margin-inline:5px"target="_blank"href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Comment-Giscus-2873df?logoColor=white&style=flat&logo=git"title="评论系统为Giscus"></a><a style="margin-inline:5px"target="_blank"href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://img.shields.io/badge/Copyright-BY--NC--SA%204.0-d42328?style=flat&logo=Claris"title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
