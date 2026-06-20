@@ -1,0 +1,1285 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>基于 OpenSearch + 多模态的推荐系统 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="基于OpenSearch构建多模态娱乐视频推荐系统，涵盖视觉&#x2F;音频&#x2F;文本三模态特征提取、独立存储与动态权重融合、混合检索与RRF融合、多路召回升级及推理服务扩展，适合推荐系统架构师参考。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="基于 OpenSearch + 多模态的推荐系统">
+<meta property="og:url" content="https://pengline.cn/2026/06/9509f9a6b42748bab6acf320d3419eeb/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="基于OpenSearch构建多模态娱乐视频推荐系统，涵盖视觉&#x2F;音频&#x2F;文本三模态特征提取、独立存储与动态权重融合、混合检索与RRF融合、多路召回升级及推理服务扩展，适合推荐系统架构师参考。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1712590388795171259038894.webp">
+<meta property="article:published_time" content="2026-06-18T09:24:00.600Z">
+<meta property="article:modified_time" content="2026-06-20T07:47:29.861Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="架构设计">
+<meta property="article:tag" content="向量检索">
+<meta property="article:tag" content="混合检索">
+<meta property="article:tag" content="RRF融合">
+<meta property="article:tag" content="多路召回">
+<meta property="article:tag" content="推荐系统">
+<meta property="article:tag" content="OpenSearch">
+<meta property="article:tag" content="I2I召回">
+<meta property="article:tag" content="U2I召回">
+<meta property="article:tag" content="视频推荐">
+<meta property="article:tag" content="多模态">
+<meta property="article:tag" content="视觉特征">
+<meta property="article:tag" content="音频特征">
+<meta property="article:tag" content="动态权重">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1712590388795171259038894.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "基于 OpenSearch + 多模态的推荐系统",
+  "url": "https://pengline.cn/2026/06/9509f9a6b42748bab6acf320d3419eeb/",
+  "image": "https://tool.pengline.cn/imgs/blog/essay/1712590388795171259038894.webp",
+  "datePublished": "2026-06-18T09:24:00.600Z",
+  "dateModified": "2026-06-20T07:47:29.861Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.cn"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/06/9509f9a6b42748bab6acf320d3419eeb/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '基于 OpenSearch + 多模态的推荐系统',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><meta name="generator" content="Hexo 7.3.0"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">95</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">457</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/download/media"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://remind.helpoke.com"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1712590388795171259038894.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">基于 OpenSearch + 多模态的推荐系统</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/ai/aigc/"><i class="fa-fw fas fa-cubes"></i><span> AIGC 创意工坊</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜Agent</span></a></li><li><a class="site-page child" href="/ai/agent/video/"><i class="fa-fw fas fa-cut"></i><span> 视频混剪Agent</span></a></li><li><a class="site-page child" href="/ai/agent/medical/"><i class="fa-fw fas fa-medkit"></i><span> 医疗问答Agent</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://github.com/neopen/ai-stocks-agent"><i class="fa-fw fas fa-line-chart"></i><span> 股票分析Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/watermark/"><i class="fa-fw fas fa-image"></i><span> 图像批量添加水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/convert/"><i class="fa-fw fas fa-file-image"></i><span> 图像格式编码转换</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/cropping/"><i class="fa-fw fas fa-cut"></i><span> 视频时长范围裁剪</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/video/watermark/"><i class="fa-fw fas fa-video"></i><span> 视频加水印马赛克</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/download/media"><i class="fa-fw fas fa-cloud-download"></i><span> 批量下载视频图片</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://remind.helpoke.com"><i class="fa-fw fas fa-clock"></i><span> 定时提醒防止久坐</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">基于 OpenSearch + 多模态的推荐系统</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-06-18T09:24:00.600Z" title="发表于 2026-06-18 17:24:00">2026-06-18</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-06-20T07:47:29.861Z" title="更新于 2026-06-20 15:47:29">2026-06-20</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/">架构</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/%E6%8E%A8%E8%8D%90%E7%B3%BB%E7%BB%9F/">推荐系统</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>OpenSearch + 多模态</h1>
+<h2 id="定位与目标">定位与目标</h2>
+<h3 id="从文本到多模态的演进">从文本到多模态的演进</h3>
+<p>阶段一完成了文本向量召回的基础能力验证，系统能够基于标题、描述、标签进行I2I和U2I双路召回。然而，娱乐视频的内容理解仅靠文本是远远不够的——一段搞笑视频的&quot;笑点&quot;可能在画面（夸张的表情）和声音（魔性的笑声）里，标题可能仅仅是&quot;太搞笑了&quot;这种泛泛之词。</p>
+<p>阶段二的核心任务是将内容理解从<strong>单一文本模态</strong>升级为<strong>视觉+音频+文本三模态融合</strong>。多模态学习的目标是学习不同模态数据的联合表征，将文本、图像、视频映射到同一个向量空间中，使得语义相似的内容在向量空间中距离更近。这种共享表征空间的设计，使得跨模态检索成为可能——例如，用户可以用&quot;一段欢快的海边舞蹈&quot;这样的自然语言描述，直接检索到匹配的视频内容。</p>
+<pre class="mermaid">flowchart LR
+    subgraph "阶段一"
+        A1[文本向量] --> A2[单模态召回]
+        A2 --> A3[基础推荐]
+    end
+    
+    subgraph "阶段二"
+        B1[视觉向量] --> B4[多模态融合]
+        B2[音频向量] --> B4
+        B3[文本向量优化] --> B4
+        B4 --> B5[多路召回+混合检索]
+        B5 --> B6[精准推荐]
+    end
+    
+    A3 --> B1
+    A3 --> B2
+    A3 --> B3</pre>
+<h3 id="核心目标">核心目标</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">目标维度</th>
+<th style="text-align:left">具体指标</th>
+<th style="text-align:left">验收标准</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">模态覆盖</td>
+<td style="text-align:left">三模态独立存储与检索</td>
+<td style="text-align:left">视觉/音频/文本向量均可独立查询</td>
+</tr>
+<tr>
+<td style="text-align:left">融合能力</td>
+<td style="text-align:left">动态权重融合</td>
+<td style="text-align:left">支持查询时按场景调整各模态权重</td>
+</tr>
+<tr>
+<td style="text-align:left">召回效果</td>
+<td style="text-align:left">相关性提升</td>
+<td style="text-align:left">点击率相对阶段一提升10-20%</td>
+</tr>
+<tr>
+<td style="text-align:left">混合检索</td>
+<td style="text-align:left">向量+关键词</td>
+<td style="text-align:left">热点内容召回延迟不增加</td>
+</tr>
+<tr>
+<td style="text-align:left">索引容量</td>
+<td style="text-align:left">多向量字段</td>
+<td style="text-align:left">支持千万级视频×3向量</td>
+</tr>
+</tbody>
+</table>
+<h3 id="技术挑战">技术挑战</h3>
+<p>阶段二面临的核心技术挑战包括：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>异构数据对齐</strong>：视觉、音频、文本三种模态的数据结构和语义空间完全不同，如何将它们映射到统一的向量空间是一个核心难题</p>
+</li>
+<li class="lvl-2">
+<p><strong>计算资源消耗</strong>：视频抽帧、CV模型推理、ASR识别都是计算密集型任务，需要在成本和效果之间取得平衡</p>
+</li>
+<li class="lvl-2">
+<p><strong>实时性要求</strong>：多模态推理链路变长，需要设计高效的离线批处理Pipeline，避免影响在线服务延迟</p>
+</li>
+<li class="lvl-2">
+<p><strong>权重动态调整</strong>：不同用户、不同场景下各模态的重要性不同，需要设计灵活的权重决策机制</p>
+</li>
+</ul>
+<hr>
+<h2 id="多模态架构设计">多模态架构设计</h2>
+<p>多模态融合的核心在于解决<strong>模态鸿沟</strong>问题——不同模态的数据分布和语义表达方式完全不同。阶段二采用<strong>联合表征学习</strong>方法，通过将各模态独立编码后映射到共享向量空间，实现跨模态的语义对齐。</p>
+<p><strong>共享空间映射</strong>的核心思想是：训练一个多模态模型，使得语义相似的视频（无论从视觉、音频还是文本角度看）在共享空间中的向量距离更近。这种映射通过对比学习的方式实现——正样本对（同一视频的不同模态）在空间中被拉近，负样本对（不同视频的模态）被推远。</p>
+<p>在实际工程中，阶段二采用相对轻量的方案：各模态独立使用预训练模型生成向量，查询时通过动态加权融合。这种方案虽然不如端到端的联合训练模型理论上最优，但工程实现更稳健，便于各模态独立迭代升级。</p>
+<h3 id="整体架构">整体架构</h3>
+<pre class="mermaid">graph TB
+    subgraph "数据源层"
+        A1[视频文件]
+        A2[视频元数据]
+        A3[用户行为日志]
+    end
+    
+    subgraph "多模态处理层"
+        B1[视觉特征提取<br/>CV模型]
+        B2[音频特征提取<br/>ASR+BGM]
+        B3[文本特征提取<br/>BERT优化]
+        B4[多模态融合引擎]
+    end
+    
+    subgraph "存储层"
+        C1[(OpenSearch<br/>三向量字段)]
+        C2[(Redis<br/>多模态用户向量)]
+        C3[(特征缓存<br/>推理结果复用)]
+    end
+    
+    subgraph "召回层"
+        D1[I2I多模态召回]
+        D2[U2I多模态召回]
+        D3[热搜召回]
+        D4[探索召回]
+    end
+    
+    subgraph "查询层"
+        E1[混合检索<br/>向量+关键词]
+        E2[动态权重调整]
+        E3[RRF融合]
+    end
+    
+    A1 --> B1
+    A1 --> B2
+    A2 --> B3
+    A3 --> B4
+    
+    B1 --> C1
+    B2 --> C1
+    B3 --> C1
+    B4 --> C2
+    
+    C1 --> D1
+    C1 --> D2
+    C2 --> D2
+    
+    D1 --> E1
+    D2 --> E1
+    D3 --> E1
+    D4 --> E1
+    E1 --> E2
+    E2 --> E3</pre>
+<h3 id="多模态数据流向">多模态数据流向</h3>
+<pre class="mermaid">sequenceDiagram
+    participant Video as 视频上传
+    participant CV as CV推理服务
+    participant ASR as ASR服务
+    participant BERT as BERT服务
+    participant OS as OpenSearch
+    participant Cache as 特征缓存
+    
+    Video->>Video: 视频转码/分片
+    
+    par 并行特征提取
+        Video->>CV: 抽帧+视觉推理
+        CV->>CV: ResNet/VideoMAE
+        CV-->>Cache: 视觉向量(512维)
+        
+        Video->>ASR: 音频分离+识别
+        ASR->>ASR: Whisper/VGGish
+        ASR-->>Cache: 音频向量(256维)
+        
+        Video->>BERT: 文本向量化
+        BERT->>BERT: BERT-base
+        BERT-->>Cache: 文本向量(768维)
+    end
+    
+    Cache->>OS: 批量写入三向量
+    OS-->>Video: 索引完成</pre>
+<hr>
+<h2 id="多模态向量化详解">多模态向量化详解</h2>
+<h3 id="视觉模态">视觉模态</h3>
+<p><strong>处理流程</strong></p>
+<pre class="mermaid">flowchart TB
+    subgraph "输入"
+        V[视频文件]
+    end
+    
+    subgraph "抽帧策略"
+        F1[均匀抽帧<br/>每秒1帧]
+        F2[关键帧提取<br/>场景切换处]
+        F3[动态抽帧<br/>运动剧烈时加密]
+    end
+    
+    subgraph "模型推理"
+        M1[场景分类<br/>ResNet50]
+        M2[动作识别<br/>VideoMAE]
+        M3[物体检测<br/>YOLOv8]
+        M4[人脸识别<br/>ArcFace]
+    end
+    
+    subgraph "特征聚合"
+        A1[帧级特征] --> A2[时序池化]
+        A2 --> A3[视觉向量<br/>512维]
+    end
+    
+    V --> F1
+    V --> F2
+    V --> F3
+    F1 --> M1
+    F1 --> M2
+    F1 --> M3
+    F1 --> M4
+    M1 --> A1
+    M2 --> A1
+    M3 --> A1
+    M4 --> A1
+    A3 --> O[(visual_vector)]</pre>
+<h4 id="抽帧策略深度解析">抽帧策略深度解析</h4>
+<p>抽帧策略直接影响视觉特征的质量和计算成本。阶段二采用<strong>三级抽帧策略</strong>，在不同场景下平衡精度和效率。</p>
+<p><strong>均匀抽帧</strong>是最基础的方案，每秒抽取1帧。对于时长60秒的视频，产生60帧。这种策略保证了对视频内容的均匀覆盖，但缺点是可能错过关键瞬间（如一个转瞬即逝的笑点表情）。</p>
+<p><strong>关键帧提取</strong>通过计算帧间差异，在场景切换处额外抽取关键帧。算法原理是比较相邻帧的直方图差异，当差异超过阈值时判定为场景切换。这种方法能够捕捉视频的结构变化，但对突变场景（如快速剪辑的搞笑视频）效果有限。</p>
+<p><strong>动态抽帧</strong>根据运动剧烈程度自适应调整采样率。通过计算光流或帧间像素差异，在运动剧烈的片段加密采样（如舞蹈视频的动作段落），在静态场景降低采样率（如访谈类视频）。这种方法在保证信息覆盖的同时，有效控制了总帧数。</p>
+<p>实际工程中，三种策略组合使用：均匀抽帧作为基础，关键帧提取作为补充，动态抽帧在运动场景中发挥作用。对于1分钟的视频，最终抽取的帧数控制在30-60帧之间。</p>
+<p><strong>场景分类</strong>是视觉理解的基础层。阶段二使用ConvNeXt模型对每一帧进行分类，输出场景标签（如&quot;海边&quot;、“演唱会”、“城市街景”、&quot;室内&quot;等）。这些标签一方面作为可解释的特征用于业务规则，另一方面通过模型中间层输出作为视觉向量的组成部分。</p>
+<p><strong>动作识别</strong>是娱乐视频推荐的关键能力。用户看跳舞视频、游戏视频、运动视频，核心吸引力在于&quot;动作&quot;。VideoMAE模型通过掩码自编码的方式学习视频的时序表征，能够有效识别&quot;跳舞&quot;、“跑步”、“游泳”、“烹饪”、&quot;游戏操作&quot;等动作类别。与单帧图像模型不同，VideoMAE建模了帧间时序关系，能够区分&quot;走路&quot;和&quot;跑步&quot;这种依赖速度判断的动作。</p>
+<p><strong>物体检测和人脸识别</strong>提供了细粒度的视觉信号。YOLOv8检测出视频中出现的关键物体（如吉他、篮球、宠物），ArcFace识别出人脸身份（特别是明星艺人）。这些信息一方面用于向量编码，另一方面也作为独立的标签字段存储在OpenSearch中，支持精确筛选（如&quot;只推荐有周杰伦的视频&quot;）。</p>
+<h4 id="特征聚合策略">特征聚合策略</h4>
+<p>多帧特征聚合成单一视频向量是视觉模态处理的关键环节。阶段二采用<strong>注意力池化</strong>方案：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">frame_importance = softmax(W × frame_feature + b)</span><br><span class="line">video_vector = Σ(frame_importance × frame_feature)</span><br></pre></td></tr></table></figure>
+<p>注意力机制让模型自动学习哪些帧对整体内容表征更重要——精彩瞬间（如舞蹈的高潮动作）获得更高的权重，平淡过渡帧获得较低的权重。这比简单的平均池化更能抓住视频的精髓。</p>
+<h4 id="模型选型">模型选型</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">任务</th>
+<th style="text-align:left">模型</th>
+<th style="text-align:left">输出维度</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">场景识别</td>
+<td style="text-align:left">ResNet50/ConvNeXt</td>
+<td style="text-align:left">2048→512</td>
+<td style="text-align:left">识别海边、城市、室内等</td>
+</tr>
+<tr>
+<td style="text-align:left">动作识别</td>
+<td style="text-align:left">VideoMAE</td>
+<td style="text-align:left">768→512</td>
+<td style="text-align:left">识别跳舞、跑步、游戏等</td>
+</tr>
+<tr>
+<td style="text-align:left">物体检测</td>
+<td style="text-align:left">YOLOv8</td>
+<td style="text-align:left">边界框+标签</td>
+<td style="text-align:left">检测明星、物品、Logo</td>
+</tr>
+<tr>
+<td style="text-align:left">人脸识别</td>
+<td style="text-align:left">ArcFace</td>
+<td style="text-align:left">512</td>
+<td style="text-align:left">识别艺人身份</td>
+</tr>
+</tbody>
+</table>
+<h4 id="关键技术点">关键技术点</h4>
+<p><strong>多模态融合架构</strong>：不同模态使用独立的编码器生成各自模态的向量表示，再通过融合层将多个模态投射到共享表征空间。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>抽帧策略</strong>：均匀抽帧（每秒1帧）保证基础覆盖，关键帧提取捕捉场景变化，动态抽帧在运动剧烈时加密采样</p>
+</li>
+<li class="lvl-2">
+<p><strong>时序建模</strong>：视频的动作信息对娱乐推荐至关重要，VideoMAE等模型能有效捕捉帧间时序关系</p>
+</li>
+<li class="lvl-2">
+<p><strong>特征聚合</strong>：多帧特征通过平均池化或注意力机制聚合成单一视频向量</p>
+</li>
+</ul>
+<h3 id="音频模态">音频模态</h3>
+<p>视频中的音频信号是混合的——人声、背景音乐、环境音效叠加在一起。音频分离的目标是将这些信号源分开，以便分别处理。</p>
+<p>阶段二采用<strong>Spleeter</strong>作为音频分离工具。Spleeter基于U-Net架构的深度神经网络，通过频谱图分割实现人声和伴奏的分离。其原理是：训练一个模型，输入混合音频的频谱图，输出人声和伴奏的掩码（mask），通过掩码重建出分离后的音频信号。</p>
+<p>在实际工程中，人声分离的质量直接影响ASR识别的准确率。如果人声中混入过多伴奏，ASR会产生大量错误识别结果。阶段二的解决方案是：对分离后的人声轨进行噪声抑制，使用谱减法进一步去除残留的伴奏信号。</p>
+<p><strong>人声分离的挑战</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>音乐视频中，人声与伴奏高度重叠（歌手唱歌），分离难度最大</p>
+</li>
+<li class="lvl-2">
+<p>嘈杂环境音（如演唱会现场）会降低分离质量</p>
+</li>
+<li class="lvl-2">
+<p>分离算法计算密集，需要GPU加速</p>
+</li>
+</ul>
+<pre class="mermaid">flowchart TB
+    subgraph "输入"
+        A[视频文件]
+    end
+    
+    subgraph "音频分离"
+        S1[FFmpeg提取] --> S2[人声分离<br/>Spleeter]
+        S2 --> S3[纯人声轨]
+        S2 --> S4[背景音乐轨]
+    end
+    
+    subgraph "语音理解"
+        V1[ASR识别<br/>Whisper] --> V2[台词文本]
+        V2 --> V3[文本向量化]
+    end
+    
+    subgraph "音乐理解"
+        M1[BGM识别] --> M2[音乐风格]
+        M1 --> M3[情绪标签]
+        M1 --> M4[节奏BPM]
+    end
+    
+    subgraph "融合"
+        F1[人声向量] --> F3[音频向量<br/>256维]
+        F2[音乐特征] --> F3
+    end
+    
+    A --> S1
+    S3 --> V1
+    S4 --> M1
+    V2 --> V3
+    V3 --> F1
+    M2 --> F2
+    M3 --> F2
+    M4 --> F2
+    F3 --> O[(audio_vector)]</pre>
+<h4 id="ASR语音识别技术深度解析">ASR语音识别技术深度解析</h4>
+<p>Whisper是当前开源ASR领域效果最好的模型之一，支持多语言识别、标点恢复和词级时间戳。阶段二使用Whisper-large-v3模型对分离后的人声轨进行识别，输出带标点的文本。</p>
+<p><strong>Whisper的核心技术</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>编码器-解码器Transformer架构，输入是音频频谱图，输出是文本序列</p>
+</li>
+<li class="lvl-2">
+<p>多语言联合训练，支持99种语言的识别和翻译</p>
+</li>
+<li class="lvl-2">
+<p>强噪声鲁棒性，即使在低信噪比环境下仍能保持较高准确率</p>
+</li>
+</ul>
+<p><strong>ASR在娱乐视频中的特殊挑战</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>网络用语和流行语（“yyds”、“绝绝子”）的识别准确率较低</p>
+</li>
+<li class="lvl-2">
+<p>方言和口音（如川普、粤普）需要额外的模型适配</p>
+</li>
+<li class="lvl-2">
+<p>背景音乐音量过大会干扰人声识别</p>
+</li>
+</ul>
+<p><strong>应对策略</strong>：阶段二在ASR识别后增加了文本后处理模块，包括：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>流行语词典</strong>：维护网络流行语和梗的映射表，将错误识别修正为标准表达</p>
+</li>
+<li class="lvl-2">
+<p><strong>语义纠错</strong>：使用BERT模型对ASR输出进行语义级别的纠错，修正因同音字导致的错误</p>
+</li>
+<li class="lvl-2">
+<p><strong>置信度过滤</strong>：对低置信度的识别结果进行标记，不作为主要特征使用</p>
+</li>
+</ul>
+<h4 id="BGM识别与音乐特征提取">BGM识别与音乐特征提取</h4>
+<p>背景音乐是娱乐视频的重要组成部分——搞笑视频的配乐、舞蹈视频的节拍、治愈视频的轻音乐，都直接影响用户的观看体验。</p>
+<p><strong>BGM识别</strong>的核心是音乐风格分类和情绪识别。阶段二使用MvTagger模型，输出多标签的音乐风格（“摇滚”、“电子”、“古典”、&quot;爵士&quot;等）和情绪标签（“欢快”、“悲伤”、“激昂”、&quot;舒缓&quot;等）。</p>
+<p><strong>节奏分析</strong>通过Librosa库提取BPM（节拍数/分钟）和节拍强度。对于舞蹈视频，BPM是核心特征——用户偏好快节奏还是慢节奏的舞蹈，可以通过BPM来衡量。</p>
+<p><strong>音乐特征向量的生成</strong>：将音乐风格标签、情绪标签和节奏特征拼接为一个特征向量，再通过一个全连接层压缩到256维，与ASR文本向量融合，形成最终的音频向量。</p>
+<h4 id="模型选型-2">模型选型</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">任务</th>
+<th style="text-align:left">模型</th>
+<th style="text-align:left">输出维度</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">人声分离</td>
+<td style="text-align:left">Spleeter/Demucs</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">分离人声/伴奏</td>
+</tr>
+<tr>
+<td style="text-align:left">ASR识别</td>
+<td style="text-align:left">Whisper/Paraformer</td>
+<td style="text-align:left">文本</td>
+<td style="text-align:left">中英文台词识别</td>
+</tr>
+<tr>
+<td style="text-align:left">BGM识别</td>
+<td style="text-align:left">MvTagger/CLMR</td>
+<td style="text-align:left">256</td>
+<td style="text-align:left">音乐风格与情绪</td>
+</tr>
+<tr>
+<td style="text-align:left">节奏分析</td>
+<td style="text-align:left">Librosa</td>
+<td style="text-align:left">BPM</td>
+<td style="text-align:left">节拍检测</td>
+</tr>
+</tbody>
+</table>
+<h3 id="文本模态">文本模态</h3>
+<p>阶段二的文本模态在阶段一基础上进行了优化升级，核心变化是引入了ASR台词文本作为新的文本来源，并使用更强的预训练模型。</p>
+<pre class="mermaid">flowchart TB
+    subgraph "文本来源"
+        T1[标题]
+        T2[描述/标签]
+        T3[ASR台词]
+        T4[OCR画面文字]
+    end
+    
+    subgraph "预处理"
+        P1[分词+清洗]
+        P2[实体识别]
+        P3[去重+拼接]
+    end
+    
+    subgraph "向量化"
+        V1[BERT-base]
+        V2[Sentence-BERT]
+    end
+    
+    subgraph "融合"
+        R1[平均池化]
+        R2[向量归一化]
+    end
+    
+    T1 --> P1
+    T2 --> P1
+    T3 --> P1
+    T4 --> P1
+    P1 --> P2
+    P2 --> P3
+    P3 --> V1
+    P3 --> V2
+    V1 --> R1
+    V2 --> R1
+    R1 --> R2
+    R2 --> O[(text_vector<br/>768维)]</pre>
+<h4 id="文本来源与权重设计">文本来源与权重设计</h4>
+<p>不同来源的文本对内容表征的贡献不同。阶段二采用<strong>分层权重策略</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">文本来源</th>
+<th style="text-align:left">权重</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">标题</td>
+<td style="text-align:left">1.0</td>
+<td style="text-align:left">最核心的信号，通常概括视频主题</td>
+</tr>
+<tr>
+<td style="text-align:left">标签</td>
+<td style="text-align:left">0.8</td>
+<td style="text-align:left">用户和创作者共同标注，噪声较大</td>
+</tr>
+<tr>
+<td style="text-align:left">ASR台词</td>
+<td style="text-align:left">0.6</td>
+<td style="text-align:left">反映视频内容，但存在识别错误</td>
+</tr>
+<tr>
+<td style="text-align:left">描述</td>
+<td style="text-align:left">0.5</td>
+<td style="text-align:left">补充信息，但可能包含无关内容</td>
+</tr>
+<tr>
+<td style="text-align:left">OCR文字</td>
+<td style="text-align:left">0.3</td>
+<td style="text-align:left">画面上出现的文字，辅助信号</td>
+</tr>
+</tbody>
+</table>
+<h4 id="ASR台词的增量价值">ASR台词的增量价值</h4>
+<p>ASR台词是阶段二文本模态最重要的增量。它的价值体现在三个方面：</p>
+<p><strong>第一，捕捉标题无法覆盖的内容</strong>。许多搞笑视频的标题是&quot;太搞笑了&quot;这种泛泛之词，但台词中包含了具体的梗和笑点。通过ASR，系统能理解视频&quot;讲了什么&quot;，而不只是&quot;主题是什么&quot;。</p>
+<p><strong>第二，支持话题关联推荐</strong>。如果用户观看了多个包含&quot;ChatGPT&quot;台词的科技类视频，系统可以推荐更多讨论AI话题的内容。这在纯文本（标题+标签）阶段是无法做到的，因为标题通常不会写&quot;ChatGPT&quot;。</p>
+<p><strong>第三，增强语义理解深度</strong>。ASR台词提供了更丰富的语义上下文，让文本向量能够捕捉更细粒度的内容特征。</p>
+<h4 id="模型选型升级">模型选型升级</h4>
+<p>阶段二的文本模型从BERT-base-chinese升级为<strong>RoBERTa-wwm-ext</strong>。RoBERTa-wwm-ext在BERT的基础上做了三处关键优化：</p>
+<p><strong>动态掩码</strong>：BERT的掩码在预处理时确定，RoBERTa在每次训练时重新生成掩码，使模型看到更多样化的训练样本，提升了泛化能力。</p>
+<p><strong>整词掩码（WWM）</strong>：中文BERT按字掩码，RoBERTa-wwm按词掩码。例如，“人工智能&quot;在BERT中可能被掩码为&quot;人[掩码]智能”，而RoBERTa-wwm会整体掩码为&quot;[掩码][掩码][掩码][掩码]&quot;。这迫使模型学习词级别的语义，更符合中文的语言特性。</p>
+<p><strong>更大训练数据</strong>：RoBERTa-wwm-ext在更多的中文语料上进行了预训练，覆盖了更丰富的领域知识。</p>
+<h4 id="文本向量化策略">文本向量化策略</h4>
+<p>阶段二同时使用两个模型生成文本向量，然后进行融合：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>RoBERTa-wwm-ext</strong>：取[CLS] token的输出作为句向量，维度768</p>
+</li>
+<li class="lvl-2">
+<p><strong>Sentence-BERT</strong>：对句子级别进行池化，生成更适合相似度计算的句向量</p>
+</li>
+</ul>
+<p>两者的融合通过加权平均实现，RoBERTa权重0.6，Sentence-BERT权重0.4。这种融合既保留了RoBERTa的深层语义理解能力，又利用了Sentence-BERT在句子相似度任务上的优势。</p>
+<hr>
+<h2 id="多模态向量存储">多模态向量存储</h2>
+<h3 id="OpenSearch索引设计">OpenSearch索引设计</h3>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;mappings&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;properties&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;video_id&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;keyword&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;title&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;text&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;analyzer&quot;</span><span class="punctuation">:</span> <span class="string">&quot;ik_max_word&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;category&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;keyword&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;tags&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;keyword&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;publish_time&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;date&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;duration&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;integer&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      </span><br><span class="line">      <span class="attr">&quot;visual_vector&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;knn_vector&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;dimension&quot;</span><span class="punctuation">:</span> <span class="number">512</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;method&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;engine&quot;</span><span class="punctuation">:</span> <span class="string">&quot;nmslib&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;space_type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cosinesimil&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;hnsw&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;parameters&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;ef_construction&quot;</span><span class="punctuation">:</span> <span class="number">512</span><span class="punctuation">,</span> <span class="attr">&quot;m&quot;</span><span class="punctuation">:</span> <span class="number">16</span> <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;audio_vector&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;knn_vector&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;dimension&quot;</span><span class="punctuation">:</span> <span class="number">256</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;method&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;engine&quot;</span><span class="punctuation">:</span> <span class="string">&quot;nmslib&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;space_type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cosinesimil&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;hnsw&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;parameters&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;ef_construction&quot;</span><span class="punctuation">:</span> <span class="number">256</span><span class="punctuation">,</span> <span class="attr">&quot;m&quot;</span><span class="punctuation">:</span> <span class="number">16</span> <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;text_vector&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;knn_vector&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;dimension&quot;</span><span class="punctuation">:</span> <span class="number">768</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;method&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;engine&quot;</span><span class="punctuation">:</span> <span class="string">&quot;faiss&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;space_type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;cosinesimil&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;hnsw&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;parameters&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;ef_construction&quot;</span><span class="punctuation">:</span> <span class="number">512</span><span class="punctuation">,</span> <span class="attr">&quot;m&quot;</span><span class="punctuation">:</span> <span class="number">32</span> <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;settings&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;index&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;knn&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;knn.algo_param.ef_search&quot;</span><span class="punctuation">:</span> <span class="number">256</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;refresh_interval&quot;</span><span class="punctuation">:</span> <span class="string">&quot;10s&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;number_of_shards&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;number_of_replicas&quot;</span><span class="punctuation">:</span> <span class="number">1</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="存储架构深度解析">存储架构深度解析</h3>
+<p><strong>为什么采用独立存储而非预融合？</strong></p>
+<p>预融合方案是在离线阶段将三模态向量加权平均为一个向量存储，查询时只需一次k-NN检索。优点是查询简单、性能好，缺点是失去了灵活性——一旦融合权重确定，就无法调整。</p>
+<p>独立存储方案将三模态分别存储为独立字段，查询时根据需要选择使用哪个向量或组合使用。阶段二选择独立存储，基于以下考虑：</p>
+<p><strong>场景多样性</strong>：不同场景下各模态的重要性不同。音乐偏好场景下音频权重应更高，舞蹈偏好场景下视觉权重应更高，文本搜索场景下文本权重应更高。预融合无法满足这种动态需求。</p>
+<p><strong>多模态检索能力</strong>：独立存储支持&quot;用视觉向量找相似场景&quot;、“用音频向量找相同BGM”、&quot;用文本向量找同话题&quot;三种独立检索模式，为后续功能扩展（如BGM匹配推荐、场景聚合）预留了空间。</p>
+<p><strong>模型迭代灵活性</strong>：各模态的模型可以独立升级。如果视觉模型升级后向量分布发生变化，只需重新索引视觉向量字段，不影响音频和文本字段。</p>
+<p><strong>存储成本权衡</strong>：独立存储使存储空间变为原来的三倍，但阶段二的视频量级（1000万）和三向量维度（512+256+768）对应的存储增量在可控范围内（约300GB）。</p>
+<h3 id="向量索引性能优化">向量索引性能优化</h3>
+<p><strong>HNSW参数调优</strong>：HNSW算法有两个关键参数——<code>ef_construction</code>控制索引构建时的搜索范围，值越大索引质量越高但构建越慢；<code>m</code>控制每个节点的最大连接数，值越大检索精度越高但内存开销越大。阶段二的配置（ef_construction=512，m=16-32）是在精度和资源之间的平衡选择。</p>
+<p><strong>分片策略</strong>：每个向量字段独立分配分片，避免不同向量字段相互干扰。总分片数 = 数据节点数 × 2，确保分片均匀分布在各节点上。</p>
+<p><strong>内存管理</strong>：OpenSearch的k-NN索引将向量数据加载到内存中。阶段二的配置确保热数据节点有足够内存容纳全部向量索引，避免频繁的磁盘IO。</p>
+<h3 id="三种存储方案对比">三种存储方案对比</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">方案</th>
+<th style="text-align:left">说明</th>
+<th style="text-align:left">优点</th>
+<th style="text-align:left">缺点</th>
+<th style="text-align:left">阶段二选择</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">预融合存储</td>
+<td style="text-align:left">离线融合为单一向量</td>
+<td style="text-align:left">查询简单，性能好</td>
+<td style="text-align:left">灵活性差</td>
+<td style="text-align:left">不可</td>
+</tr>
+<tr>
+<td style="text-align:left">可独立存储</td>
+<td style="text-align:left">三个独立向量字段</td>
+<td style="text-align:left">动态调权，支持多场景</td>
+<td style="text-align:left">查询略复杂</td>
+<td style="text-align:left">可选</td>
+</tr>
+<tr>
+<td style="text-align:left">混合方案</td>
+<td style="text-align:left">预融合+独立并存</td>
+<td style="text-align:left">兼顾性能和灵活性</td>
+<td style="text-align:left">存储翻倍</td>
+<td style="text-align:left">可选</td>
+</tr>
+</tbody>
+</table>
+<p><strong>阶段二选择独立存储方案</strong>，原因在于娱乐视频场景下用户兴趣变化快，不同场景下各模态权重需要动态调整。</p>
+<hr>
+<h2 id="多模态查询与融合">多模态查询与融合</h2>
+<h3 id="多模态查询流程">多模态查询流程</h3>
+<p>OpenSearch 2.11及以上版本支持多模态搜索配置，可以通过<code>text_image_embedding</code>处理器在索引时自动生成多模态向量<a target="_blank" rel="noopener" href="https://docs.opensearch.org/3.2/vector-search/ai-search/multimodal-search/">-2</a>。</p>
+<pre class="mermaid">sequenceDiagram
+    participant User as 用户
+    participant Engine as 推荐引擎
+    participant Router as 权重路由器
+    participant OS as OpenSearch
+    
+    User->>Engine: 推荐请求
+    Engine->>Router: 获取场景权重
+    
+    alt 音乐偏好用户
+        Router->>Engine: audio权重0.6
+    else 视觉偏好用户
+        Router->>Engine: visual权重0.5
+    else 文本搜索场景
+        Router->>Engine: text权重0.7
+    end
+    
+    Engine->>Engine: 构建三路k-NN查询
+    
+    par 三路并发
+        Engine->>OS: visual_vector查询(k=50)
+        Engine->>OS: audio_vector查询(k=50)
+        Engine->>OS: text_vector查询(k=50)
+    end
+    
+    OS-->>Engine: 各路返回结果
+    Engine->>Engine: 加权融合+去重
+    Engine-->>User: 返回推荐</pre>
+<h3 id="权重决策引擎">权重决策引擎</h3>
+<p>动态权重融合是多模态推荐的核心算法。其目标是：根据用户当前状态和场景，自动调整各模态在查询中的权重，使得推荐结果更符合用户当前的兴趣偏好。</p>
+<pre class="mermaid">graph TB
+    subgraph "输入信号"
+        S1[用户历史行为]
+        S2[当前上下文]
+        S3[查询类型]
+    end
+    
+    subgraph "权重计算"
+        S1 --> W1[音乐偏好分]
+        S1 --> W2[视觉偏好分]
+        S2 --> W3[设备/时间]
+        S3 --> W4[搜索/浏览]
+    end
+    
+    subgraph "权重输出"
+        W1 --> WV[visual权重]
+        W2 --> WA[audio权重]
+        W3 --> WT[text权重]
+        W4 --> WV
+        W4 --> WA
+        W4 --> WT
+    end
+    
+    subgraph "归一化"
+        WV --> Norm[Softmax归一化]
+        WA --> Norm
+        WT --> Norm
+        Norm --> Final[最终权重]
+    end</pre>
+<p><strong>权重决策因子的计算方式</strong>：</p>
+<p><strong>用户音乐偏好分</strong>通过分析用户历史行为中与音乐相关的内容占比计算：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">music_preference = (点赞音乐视频数 + 完播音乐视频数 × 0.8) / 总有效观看数</span><br></pre></td></tr></table></figure>
+<p>如果音乐偏好分超过0.3，系统判定该用户为音乐偏好型，audio_vector的权重提升0.15。</p>
+<p><strong>用户视觉偏好分</strong>通过分析用户历史行为中舞蹈、运动、风景等强视觉内容占比计算：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">visual_preference = (完播舞蹈视频数 + 完播运动视频数 + 完播风景视频数) / 总有效观看数</span><br></pre></td></tr></table></figure>
+<p><strong>上下文信号</strong>包括设备类型（手机用户更倾向于短平快内容，TV用户更倾向于长视频）、时间段（深夜可能更偏好情感内容）、网络环境（WiFi环境下可以加载高质量视频）。</p>
+<p><strong>权重归一化</strong>确保各模态权重之和为1。阶段二采用Softmax归一化，在保留权重比例关系的同时，将权重映射到合理的分布范围。</p>
+<p><strong>权重决策示例</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">visual</th>
+<th style="text-align:left">audio</th>
+<th style="text-align:left">text</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">音乐偏好用户</td>
+<td style="text-align:left">0.25</td>
+<td style="text-align:left">0.55</td>
+<td style="text-align:left">0.20</td>
+<td style="text-align:left">侧重音频匹配</td>
+</tr>
+<tr>
+<td style="text-align:left">舞蹈偏好用户</td>
+<td style="text-align:left">0.50</td>
+<td style="text-align:left">0.30</td>
+<td style="text-align:left">0.20</td>
+<td style="text-align:left">侧重视觉动作</td>
+</tr>
+<tr>
+<td style="text-align:left">文本搜索</td>
+<td style="text-align:left">0.20</td>
+<td style="text-align:left">0.10</td>
+<td style="text-align:left">0.70</td>
+<td style="text-align:left">侧重文本匹配</td>
+</tr>
+<tr>
+<td style="text-align:left">Vlog观看</td>
+<td style="text-align:left">0.55</td>
+<td style="text-align:left">0.15</td>
+<td style="text-align:left">0.30</td>
+<td style="text-align:left">侧重画面</td>
+</tr>
+<tr>
+<td style="text-align:left">默认</td>
+<td style="text-align:left">0.35</td>
+<td style="text-align:left">0.25</td>
+<td style="text-align:left">0.40</td>
+<td style="text-align:left">均衡分配</td>
+</tr>
+</tbody>
+</table>
+<h3 id="混合检索与RRF融合">混合检索与RRF融合</h3>
+<p>阶段二在向量检索基础上增加关键词检索能力，形成混合检索。</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;hybrid&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;queries&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">        <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;knn&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;text_vector&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">              <span class="attr">&quot;vector&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span>...<span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">              <span class="attr">&quot;k&quot;</span><span class="punctuation">:</span> <span class="number">100</span><span class="punctuation">,</span></span><br><span class="line">              <span class="attr">&quot;filter&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;range&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;publish_time&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;gte&quot;</span><span class="punctuation">:</span> <span class="string">&quot;now-7d&quot;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span></span><br><span class="line">            <span class="punctuation">&#125;</span></span><br><span class="line">          <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;bool&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;should&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">              <span class="punctuation">&#123;</span> <span class="attr">&quot;match&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;title&quot;</span><span class="punctuation">:</span> <span class="string">&quot;周杰伦 新歌&quot;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">              <span class="punctuation">&#123;</span> <span class="attr">&quot;match&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;tags&quot;</span><span class="punctuation">:</span> <span class="string">&quot;演唱会&quot;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span></span><br><span class="line">            <span class="punctuation">]</span></span><br><span class="line">          <span class="punctuation">&#125;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">]</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;rank&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;rrf&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;window_size&quot;</span><span class="punctuation">:</span> <span class="number">100</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;rank_constant&quot;</span><span class="punctuation">:</span> <span class="number">60</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p><strong>RRF融合原理</strong>：</p>
+<p>RRF（倒数排名融合）是一种不依赖分数尺度的融合算法。其核心公式为：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">score = Σ 1 / (rank_i + rank_constant)</span><br></pre></td></tr></table></figure>
+<p>其中<code>rank_i</code>是该文档在第i路召回中的排名位置（从1开始），<code>rank_constant</code>是平滑参数（通常取60）。</p>
+<p><strong>RRF的优势</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>不依赖绝对分数值，避免了不同召回源的分数尺度不一致问题</p>
+</li>
+<li class="lvl-2">
+<p>对异常值不敏感，单个召回路中的异常高分不会主导融合结果</p>
+</li>
+<li class="lvl-2">
+<p>计算简单，适合在线实时融合</p>
+</li>
+</ul>
+<p><strong>混合检索的价值</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>向量检索保语义泛化：即使用户没有精确匹配关键词，也能召回语义相似的内容</p>
+</li>
+<li class="lvl-2">
+<p>关键词检索保精确匹配：确保&quot;周杰伦新歌&quot;这样的热点查询能精确召回最新内容</p>
+</li>
+<li class="lvl-2">
+<p>RRF融合自动平衡两者：既不会让关键词完全压倒向量，也不会让向量淹没关键词</p>
+</li>
+</ul>
+<hr>
+<h2 id="多路召回升级">多路召回升级</h2>
+<p>阶段二的召回在I2I和U2I基础上，增加对多模态向量的支持。</p>
+<h3 id="I2I多模态召回">I2I多模态召回</h3>
+<pre class="mermaid">flowchart LR
+    subgraph "用户当前观看"
+        V[视频V]
+    end
+    
+    subgraph "三路相似检索"
+        V --> VV[visual_vector]
+        V --> AV[audio_vector]
+        V --> TV[text_vector]
+    end
+    
+    subgraph "OpenSearch并发查询"
+        VV --> OS1[(k-NN<br/>视觉相似)]
+        AV --> OS2[(k-NN<br/>音频相似)]
+        TV --> OS3[(k-NN<br/>文本相似)]
+    end
+    
+    subgraph "融合"
+        OS1 --> Merge[加权融合]
+        OS2 --> Merge
+        OS3 --> Merge
+        Merge --> Result[Top 100]
+    end</pre>
+<p><strong>I2I多模态召回的创新点</strong>：</p>
+<p>传统的I2I召回只使用单一向量（通常是文本向量），判断两个视频是否相似。但娱乐视频的&quot;相似&quot;是多维度的——两个视频可能在视觉上相似（都是海边场景），但在音频上完全不同（一个是海浪声，一个是演唱会）。</p>
+<p>多模态I2I召回通过三路并发查询，从三个维度分别计算相似度，然后加权融合。这使得相似判断更加全面，能够捕捉&quot;场景相似但BGM不同&quot;、&quot;BGM相同但场景不同&quot;等复杂情况。</p>
+<p><strong>查询配额分配</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">模态</th>
+<th style="text-align:left">查询条数</th>
+<th style="text-align:left">融合权重</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">visual</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">0.35</td>
+<td style="text-align:left">场景和动作相似</td>
+</tr>
+<tr>
+<td style="text-align:left">audio</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">0.25</td>
+<td style="text-align:left">BGM和情绪相似</td>
+</tr>
+<tr>
+<td style="text-align:left">text</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">0.40</td>
+<td style="text-align:left">话题和语义相似</td>
+</tr>
+</tbody>
+</table>
+<h3 id="U2I多模态召回">U2I多模态召回</h3>
+<pre class="mermaid">flowchart LR
+    subgraph "用户多模态向量"
+        UV[用户视觉向量]
+        UA[用户音频向量]
+        UT[用户文本向量]
+    end
+    
+    subgraph "OpenSearch查询"
+        UV --> OS1[(k-NN)]
+        UA --> OS2[(k-NN)]
+        UT --> OS3[(k-NN)]
+    end
+    
+    subgraph "融合"
+        OS1 --> Merge[加权融合]
+        OS2 --> Merge
+        OS3 --> Merge
+        Merge --> Result[Top 100]
+    end</pre>
+<p><strong>用户多模态向量的构建</strong>：</p>
+<p>用户的多模态向量不是简单的三向量独立存储，而是通过历史行为动态计算：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>用户视觉向量</strong>：用户观看过的视频的visual_vector的加权平均，反映用户对场景、动作的偏好</p>
+</li>
+<li class="lvl-2">
+<p><strong>用户音频向量</strong>：用户观看过的视频的audio_vector的加权平均，反映用户对BGM、情绪的偏好</p>
+</li>
+<li class="lvl-2">
+<p><strong>用户文本向量</strong>：用户观看过的视频的text_vector的加权平均，反映用户对话题的偏好</p>
+</li>
+</ul>
+<p>三个向量分别独立计算、独立存储（在Redis中），查询时分别进行k-NN检索，最后融合结果。</p>
+<p>这种设计的优势在于：系统可以回答&quot;用户喜欢什么场景&quot;、“用户喜欢什么BGM”、&quot;用户喜欢什么话题&quot;三个独立的问题，组合起来形成全面的用户理解。</p>
+<h2 id="推理模型扩展">推理模型扩展</h2>
+<p><strong>多模态模型选型</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">模态</th>
+<th style="text-align:left">阶段一模型</th>
+<th style="text-align:left">阶段二模型</th>
+<th style="text-align:left">升级原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">文本</td>
+<td style="text-align:left">BERT-base-chinese</td>
+<td style="text-align:left">RoBERTa-wwm-ext</td>
+<td style="text-align:left">中文效果更优</td>
+</tr>
+<tr>
+<td style="text-align:left">视觉</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">ResNet50/VideoMAE</td>
+<td style="text-align:left">场景+动作识别</td>
+</tr>
+<tr>
+<td style="text-align:left">音频</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">Whisper/VGGish</td>
+<td style="text-align:left">ASR+音乐特征</td>
+</tr>
+<tr>
+<td style="text-align:left">多模态融合</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">加权平均/注意力</td>
+<td style="text-align:left">动态权重融合</td>
+</tr>
+</tbody>
+</table>
+<h3 id="多模态推理服务架构">多模态推理服务架构</h3>
+<pre class="mermaid">graph TB
+    subgraph "推理服务集群"
+        LB[负载均衡]
+        
+        subgraph "GPU节点池"
+            G1[BERT Worker<br/>T4 GPU]
+            G2[CV Worker<br/>T4 GPU]
+            G3[Audio Worker<br/>T4 GPU]
+        end
+        
+        subgraph "模型版本"
+            BERT[BERT-base<br/>RoBERTa]
+            CV[ResNet50<br/>VideoMAE]
+            Audio[Whisper<br/>VGGish]
+        end
+    end
+    
+    subgraph "调用方"
+        S[离线Spark任务]
+        K[实时Kafka消费者]
+    end
+    
+    S --> LB
+    K --> LB
+    LB --> G1
+    LB --> G2
+    LB --> G3</pre>
+<h3 id="多模态推理成本估算">多模态推理成本估算</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">模态</th>
+<th style="text-align:left">模型</th>
+<th style="text-align:left">推理成本</th>
+<th style="text-align:left">阶段二量级</th>
+<th style="text-align:left">月成本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">视觉</td>
+<td style="text-align:left">ResNet50+VideoMAE</td>
+<td style="text-align:left">GPU密集</td>
+<td style="text-align:left">100万视频/月</td>
+<td style="text-align:left">~$800</td>
+</tr>
+<tr>
+<td style="text-align:left">音频</td>
+<td style="text-align:left">Whisper+VGGish</td>
+<td style="text-align:left">GPU中等</td>
+<td style="text-align:left">100万视频/月</td>
+<td style="text-align:left">~$500</td>
+</tr>
+<tr>
+<td style="text-align:left">文本</td>
+<td style="text-align:left">RoBERTa</td>
+<td style="text-align:left">GPU中等</td>
+<td style="text-align:left">100万视频/月</td>
+<td style="text-align:left">~$300</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>合计</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left"><strong>~$1,600</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="推理服务配置">推理服务配置</h3>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># CV推理服务配置</span></span><br><span class="line"><span class="attr">visual:</span></span><br><span class="line">  <span class="attr">scene_model:</span> <span class="string">convnext_tiny</span></span><br><span class="line">  <span class="attr">action_model:</span> <span class="string">videomae_small</span></span><br><span class="line">  <span class="attr">frame_interval:</span> <span class="number">1</span>  <span class="comment"># 每秒1帧</span></span><br><span class="line">  <span class="attr">max_frames:</span> <span class="number">60</span></span><br><span class="line">  <span class="attr">batch_size:</span> <span class="number">16</span></span><br><span class="line">  <span class="attr">device:</span> <span class="string">cuda</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 音频推理服务配置</span></span><br><span class="line"><span class="attr">audio:</span></span><br><span class="line">  <span class="attr">asr_model:</span> <span class="string">whisper-large-v3</span></span><br><span class="line">  <span class="attr">music_model:</span> <span class="string">mvtaggers</span></span><br><span class="line">  <span class="attr">sample_rate:</span> <span class="number">16000</span></span><br><span class="line">  <span class="attr">max_duration:</span> <span class="number">300</span>  <span class="comment"># 最长处理5分钟</span></span><br><span class="line">  <span class="attr">batch_size:</span> <span class="number">8</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 文本推理服务配置</span></span><br><span class="line"><span class="attr">text:</span></span><br><span class="line">  <span class="attr">model:</span> <span class="string">roberta-wwm-ext</span></span><br><span class="line">  <span class="attr">max_length:</span> <span class="number">512</span></span><br><span class="line">  <span class="attr">batch_size:</span> <span class="number">32</span></span><br><span class="line">  <span class="attr">device:</span> <span class="string">cuda</span></span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="版本演进对比">版本演进对比</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">能力维度</th>
+<th style="text-align:left">阶段一（文本）</th>
+<th style="text-align:left">阶段二（多模态）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">文本向量</td>
+<td style="text-align:left">BERT-base</td>
+<td style="text-align:left">RoBERTa优化</td>
+</tr>
+<tr>
+<td style="text-align:left">视觉向量</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">ResNet50+VideoMAE</td>
+</tr>
+<tr>
+<td style="text-align:left">音频向量</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">Whisper+VGGish</td>
+</tr>
+<tr>
+<td style="text-align:left">多模态融合</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">动态权重融合</td>
+</tr>
+<tr>
+<td style="text-align:left">混合检索</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">向量+关键词+RRF</td>
+</tr>
+<tr>
+<td style="text-align:left">召回通路</td>
+<td style="text-align:left">I2I+U2I</td>
+<td style="text-align:left">I2I+U2I+热搜+探索</td>
+</tr>
+<tr>
+<td style="text-align:left">召回配额</td>
+<td style="text-align:left">各100条</td>
+<td style="text-align:left">各50条（三路并发150条）</td>
+</tr>
+<tr>
+<td style="text-align:left">精排模型</td>
+<td style="text-align:left">规则排序</td>
+<td style="text-align:left">LR/GBDT</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="总结">总结</h2>
+<p>阶段二将推荐系统从&quot;文本理解&quot;升级为&quot;多模态理解&quot;，核心设计原则：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>独立存储，动态融合</strong>：三模态分别存储为独立向量字段，查询时根据用户场景动态调整权重，灵活性远优于预融合方案。</p>
+</li>
+<li class="lvl-3">
+<p><strong>多路并行召回</strong>：I2I和U2I分别支持三模态并发查询，各路返回结果加权融合，提升召回覆盖率和准确性。</p>
+</li>
+<li class="lvl-3">
+<p><strong>混合检索</strong>：向量检索保语义理解，关键词检索保热点穿透，RRF融合算法避免了传统加权融合的调参困境。</p>
+</li>
+<li class="lvl-3">
+<p><strong>推理服务扩展</strong>：新增CV和ASR推理服务，与BERT服务共同构成多模态推理集群，支持离线批处理和在线实时向量化。</p>
+</li>
+<li class="lvl-3">
+<p><strong>权重决策引擎</strong>：根据用户音乐偏好、视觉偏好、设备上下文等信号动态调整各模态权重，实现场景自适应的多模态融合。</p>
+</li>
+</ol>
+<p>阶段二完成后，系统具备了完整的多模态内容理解能力，为阶段三（实时个性化、滑动窗口用户向量、E&amp;E探索机制）奠定了坚实的数据基础。</p>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/06/9509f9a6b42748bab6acf320d3419eeb/">https://pengline.cn/2026/06/9509f9a6b42748bab6acf320d3419eeb/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2/">混合检索</a><a class="post-meta__tags" href="/tags/RRF%E8%9E%8D%E5%90%88/">RRF融合</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E/">多路召回</a><a class="post-meta__tags" href="/tags/%E6%8E%A8%E8%8D%90%E7%B3%BB%E7%BB%9F/">推荐系统</a><a class="post-meta__tags" href="/tags/OpenSearch/">OpenSearch</a><a class="post-meta__tags" href="/tags/I2I%E5%8F%AC%E5%9B%9E/">I2I召回</a><a class="post-meta__tags" href="/tags/U2I%E5%8F%AC%E5%9B%9E/">U2I召回</a><a class="post-meta__tags" href="/tags/%E8%A7%86%E9%A2%91%E6%8E%A8%E8%8D%90/">视频推荐</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E6%A8%A1%E6%80%81/">多模态</a><a class="post-meta__tags" href="/tags/%E8%A7%86%E8%A7%89%E7%89%B9%E5%BE%81/">视觉特征</a><a class="post-meta__tags" href="/tags/%E9%9F%B3%E9%A2%91%E7%89%B9%E5%BE%81/">音频特征</a><a class="post-meta__tags" href="/tags/%E5%8A%A8%E6%80%81%E6%9D%83%E9%87%8D/">动态权重</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1712590388795171259038894.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related full-width" href="/2026/06/198954be50c24c0483353bb975e882d3/" title="基于 OpenSearch + 文本向量的推荐系统"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">基于 OpenSearch + 文本向量的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建文本向量推荐系统，涵盖系统架构设计、离线数据处理Pipeline、OpenSearch/Redis/HBase多级存储架构、BERT推理服务部署、双路召回（I2I/U2I）实现、简单精排策略。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/06/1726f4eec04b4cdf873479019b5c604a/" title="基于 OpenSearch 构建视频推荐系统"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small221427alvR01759155267.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-09</div><div class="info-item-2">基于 OpenSearch 构建视频推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建推荐系统的完整架构与实践方案，涵盖系统架构、三模态（视觉/音频/文本）特征提取与融合、四路召回（I2I/U2I/热搜/探索）实现原理、混合检索与RRF融合、滑动窗口用户向量、E&E探索机制、MMR多样性重排等技术。</div></div></div></a><a class="pagination-related" href="/2026/06/198954be50c24c0483353bb975e882d3/" title="基于 OpenSearch + 文本向量的推荐系统"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-09</div><div class="info-item-2">基于 OpenSearch + 文本向量的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建文本向量推荐系统，涵盖系统架构设计、离线数据处理Pipeline、OpenSearch/Redis/HBase多级存储架构、BERT推理服务部署、双路召回（I2I/U2I）实现、简单精排策略。</div></div></div></a><a class="pagination-related" href="/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/" title="剧本分镜智能体（PenShot）召回策略"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small102614pbz4m1758680774.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-01</div><div class="info-item-2">剧本分镜智能体（PenShot）召回策略</div></div><div class="info-2"><div class="info-item-1">深入解析多维度召回体系：GraphRAG知识图谱、三层记忆系统、混合检索策略（BM25+向量+图谱）、自迭代优化闭环及多智能体协作架构，通过“记忆中枢”实现高精度、高召回率的剧本分镜智能检索。</div></div></div></a><a class="pagination-related" href="/2026/05/1c76b03cdafb48eb96ae6655f551f0e2/" title="PenShot 重排序如何提升召回质量"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-14</div><div class="info-item-2">PenShot 重排序如何提升召回质量</div></div><div class="info-2"><div class="info-item-1">深入讲解重排序在多路召回中的原理与应用，通过CrossEncoder实现查询与文档的细粒度交互，有效解决多源分数不可比和语义相似度局限，显著提升排序质量。</div></div></div></a><a class="pagination-related" href="/2025/08/6efb20fcd51b42c4a7a358edeb242cf6/" title="DDD 领域模型在订单系统中的应用案例"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small194032xRveA1759578032.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-27</div><div class="info-item-2">DDD 领域模型在订单系统中的应用案例</div></div><div class="info-2"><div class="info-item-1">如何在系统中使用 DDD 领域模型，以订单模块为例，充分展示该模型的设计和魅力。</div></div></div></a><a class="pagination-related" href="/2025/10/7c537a595a0f4075b5c7ed3bb8389716/" title="系统架构技术选型之 DB 篇"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small194032xRveA1759578032.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-10-15</div><div class="info-item-2">系统架构技术选型之 DB 篇</div></div><div class="info-2"><div class="info-item-1">在进行数据库选型时，需结合数据模型、一致性要求、吞吐延迟、扩展性、运维复杂度、生态兼容性等多维度综合判断。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">OpenSearch + 多模态</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9A%E4%BD%8D%E4%B8%8E%E7%9B%AE%E6%A0%87"><span class="toc-number">1.1.</span> <span class="toc-text">定位与目标</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%8E%E6%96%87%E6%9C%AC%E5%88%B0%E5%A4%9A%E6%A8%A1%E6%80%81%E7%9A%84%E6%BC%94%E8%BF%9B"><span class="toc-number">1.1.1.</span> <span class="toc-text">从文本到多模态的演进</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E7%9B%AE%E6%A0%87"><span class="toc-number">1.1.2.</span> <span class="toc-text">核心目标</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8A%80%E6%9C%AF%E6%8C%91%E6%88%98"><span class="toc-number">1.1.3.</span> <span class="toc-text">技术挑战</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.2.</span> <span class="toc-text">多模态架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.1.</span> <span class="toc-text">整体架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E6%95%B0%E6%8D%AE%E6%B5%81%E5%90%91"><span class="toc-number">1.2.2.</span> <span class="toc-text">多模态数据流向</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E5%90%91%E9%87%8F%E5%8C%96%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.3.</span> <span class="toc-text">多模态向量化详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%86%E8%A7%89%E6%A8%A1%E6%80%81"><span class="toc-number">1.3.1.</span> <span class="toc-text">视觉模态</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8A%BD%E5%B8%A7%E7%AD%96%E7%95%A5%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90"><span class="toc-number">1.3.1.1.</span> <span class="toc-text">抽帧策略深度解析</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%89%B9%E5%BE%81%E8%81%9A%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.3.1.2.</span> <span class="toc-text">特征聚合策略</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%A8%A1%E5%9E%8B%E9%80%89%E5%9E%8B"><span class="toc-number">1.3.1.3.</span> <span class="toc-text">模型选型</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E6%8A%80%E6%9C%AF%E7%82%B9"><span class="toc-number">1.3.1.4.</span> <span class="toc-text">关键技术点</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9F%B3%E9%A2%91%E6%A8%A1%E6%80%81"><span class="toc-number">1.3.2.</span> <span class="toc-text">音频模态</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#ASR%E8%AF%AD%E9%9F%B3%E8%AF%86%E5%88%AB%E6%8A%80%E6%9C%AF%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90"><span class="toc-number">1.3.2.1.</span> <span class="toc-text">ASR语音识别技术深度解析</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#BGM%E8%AF%86%E5%88%AB%E4%B8%8E%E9%9F%B3%E4%B9%90%E7%89%B9%E5%BE%81%E6%8F%90%E5%8F%96"><span class="toc-number">1.3.2.2.</span> <span class="toc-text">BGM识别与音乐特征提取</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%A8%A1%E5%9E%8B%E9%80%89%E5%9E%8B-2"><span class="toc-number">1.3.2.3.</span> <span class="toc-text">模型选型</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%87%E6%9C%AC%E6%A8%A1%E6%80%81"><span class="toc-number">1.3.3.</span> <span class="toc-text">文本模态</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%96%87%E6%9C%AC%E6%9D%A5%E6%BA%90%E4%B8%8E%E6%9D%83%E9%87%8D%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.3.3.1.</span> <span class="toc-text">文本来源与权重设计</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#ASR%E5%8F%B0%E8%AF%8D%E7%9A%84%E5%A2%9E%E9%87%8F%E4%BB%B7%E5%80%BC"><span class="toc-number">1.3.3.2.</span> <span class="toc-text">ASR台词的增量价值</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%A8%A1%E5%9E%8B%E9%80%89%E5%9E%8B%E5%8D%87%E7%BA%A7"><span class="toc-number">1.3.3.3.</span> <span class="toc-text">模型选型升级</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%96%87%E6%9C%AC%E5%90%91%E9%87%8F%E5%8C%96%E7%AD%96%E7%95%A5"><span class="toc-number">1.3.3.4.</span> <span class="toc-text">文本向量化策略</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E5%90%91%E9%87%8F%E5%AD%98%E5%82%A8"><span class="toc-number">1.4.</span> <span class="toc-text">多模态向量存储</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#OpenSearch%E7%B4%A2%E5%BC%95%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.4.1.</span> <span class="toc-text">OpenSearch索引设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AD%98%E5%82%A8%E6%9E%B6%E6%9E%84%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90"><span class="toc-number">1.4.2.</span> <span class="toc-text">存储架构深度解析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%91%E9%87%8F%E7%B4%A2%E5%BC%95%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96"><span class="toc-number">1.4.3.</span> <span class="toc-text">向量索引性能优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%89%E7%A7%8D%E5%AD%98%E5%82%A8%E6%96%B9%E6%A1%88%E5%AF%B9%E6%AF%94"><span class="toc-number">1.4.4.</span> <span class="toc-text">三种存储方案对比</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E6%9F%A5%E8%AF%A2%E4%B8%8E%E8%9E%8D%E5%90%88"><span class="toc-number">1.5.</span> <span class="toc-text">多模态查询与融合</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E6%9F%A5%E8%AF%A2%E6%B5%81%E7%A8%8B"><span class="toc-number">1.5.1.</span> <span class="toc-text">多模态查询流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9D%83%E9%87%8D%E5%86%B3%E7%AD%96%E5%BC%95%E6%93%8E"><span class="toc-number">1.5.2.</span> <span class="toc-text">权重决策引擎</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2%E4%B8%8ERRF%E8%9E%8D%E5%90%88"><span class="toc-number">1.5.3.</span> <span class="toc-text">混合检索与RRF融合</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E5%8D%87%E7%BA%A7"><span class="toc-number">1.6.</span> <span class="toc-text">多路召回升级</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#I2I%E5%A4%9A%E6%A8%A1%E6%80%81%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.6.1.</span> <span class="toc-text">I2I多模态召回</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#U2I%E5%A4%9A%E6%A8%A1%E6%80%81%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.6.2.</span> <span class="toc-text">U2I多模态召回</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8E%A8%E7%90%86%E6%A8%A1%E5%9E%8B%E6%89%A9%E5%B1%95"><span class="toc-number">1.7.</span> <span class="toc-text">推理模型扩展</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E6%8E%A8%E7%90%86%E6%9C%8D%E5%8A%A1%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.1.</span> <span class="toc-text">多模态推理服务架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E6%8E%A8%E7%90%86%E6%88%90%E6%9C%AC%E4%BC%B0%E7%AE%97"><span class="toc-number">1.7.2.</span> <span class="toc-text">多模态推理成本估算</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8E%A8%E7%90%86%E6%9C%8D%E5%8A%A1%E9%85%8D%E7%BD%AE"><span class="toc-number">1.7.3.</span> <span class="toc-text">推理服务配置</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%89%88%E6%9C%AC%E6%BC%94%E8%BF%9B%E5%AF%B9%E6%AF%94"><span class="toc-number">1.8.</span> <span class="toc-text">版本演进对比</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">1.9.</span> <span class="toc-text">总结</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 7.3.0</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" target="_blank" href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Hosted-Github-brightgreen.svg?style=flat&logo=GitHub" title="本站项目由Gtihub托管"></a><a style="margin-inline:5px" target="_blank" href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Frame-Hexo-blue.svg?style=flat&logo=hexo" title="博客框架为Hexo"></a><a style="margin-inline:5px" target="_blank"  href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Theme-Butterfly-6513df.svg?logoColor=white&style=flat&logo=buefy" title="主题采用butterfly"></a><a  style="margin-inline:5px" target="_blank" href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Comment-Giscus-2873df.svg?logoColor=white&style=flat&logo=git" title="评论系统为Giscus"></a><a style="margin-inline:5px" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img  src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Copyright-BY--NC--SA4.svg?style=flat&logo=Claris" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
