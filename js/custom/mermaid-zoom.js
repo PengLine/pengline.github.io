@@ -31,7 +31,6 @@ document.addEventListener('DOMContentLoaded', function () {
       height: 100%;
     `;
 
-    // 右上角退出按钮
     const closeBtn = document.createElement('div');
     closeBtn.id = 'mermaid-viewer-close';
     closeBtn.innerHTML = '&times;';
@@ -74,12 +73,10 @@ document.addEventListener('DOMContentLoaded', function () {
     overlay.appendChild(closeBtn);
     document.body.appendChild(overlay);
 
-    // 点击背景关闭
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) closeViewer();
     });
 
-    // ESC 键关闭
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && overlay.style.display === 'flex') closeViewer();
     });
@@ -95,7 +92,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   };
 
-  // 2. 核心交互逻辑：滚轮缩放 + 鼠标拖拽
+  // 2. 核心交互逻辑
   const initInteractions = () => {
     const overlay = document.getElementById('mermaid-viewer-overlay');
     const container = document.getElementById('mermaid-viewer-container');
@@ -109,7 +106,6 @@ document.addEventListener('DOMContentLoaded', function () {
       container.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
     };
 
-    // 滚轮缩放
     overlay.addEventListener('wheel', (e) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -117,7 +113,6 @@ document.addEventListener('DOMContentLoaded', function () {
       updateTransform();
     }, { passive: false });
 
-    // 鼠标拖拽
     overlay.addEventListener('mousedown', (e) => {
       if (e.target.id === 'mermaid-viewer-close' || e.target.closest('#mermaid-viewer-close')) return;
       e.preventDefault();
@@ -141,7 +136,6 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
 
-    // 双击重置
     overlay.addEventListener('dblclick', (e) => {
       if (e.target.id === 'mermaid-viewer-close' || e.target.closest('#mermaid-viewer-close')) return;
       scale = 1;
@@ -150,7 +144,6 @@ document.addEventListener('DOMContentLoaded', function () {
       updateTransform();
     });
 
-    // 触摸支持（移动端）
     let touchStartX = 0, touchStartY = 0;
     let lastTouchDist = 0;
 
@@ -193,7 +186,37 @@ document.addEventListener('DOMContentLoaded', function () {
     }, { passive: true });
   };
 
-  // 3. 绑定点击事件
+  // 3. 获取 SVG 尺寸
+  const getSvgSize = (svg) => {
+    let viewBox = svg.getAttribute('viewBox');
+    let width = svg.getAttribute('width');
+    let height = svg.getAttribute('height');
+
+    if (viewBox) {
+      const parts = viewBox.split(' ').map(Number);
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+        return { width: parts[2], height: parts[3] };
+      }
+    }
+
+    if (width && height) {
+      return {
+        width: parseFloat(width),
+        height: parseFloat(height)
+      };
+    }
+
+    try {
+      const bbox = svg.getBBox?.();
+      if (bbox && bbox.width > 0 && bbox.height > 0) {
+        return { width: bbox.width, height: bbox.height };
+      }
+    } catch (e) { }
+
+    return { width: 800, height: 600 };
+  };
+
+  // 4. 绑定点击事件
   const bindClick = () => {
     if (!document.getElementById('mermaid-viewer-overlay')) {
       createViewer();
@@ -213,110 +236,110 @@ document.addEventListener('DOMContentLoaded', function () {
           const container = document.getElementById('mermaid-viewer-container');
           container.innerHTML = '';
 
-          // 克隆 SVG
           const clonedSvg = svg.cloneNode(true);
 
-          // 获取原始 SVG 的 viewBox 或尺寸
-          let viewBox = clonedSvg.getAttribute('viewBox');
-          let width = clonedSvg.getAttribute('width');
-          let height = clonedSvg.getAttribute('height');
+          // 获取原始尺寸
+          const svgSize = getSvgSize(clonedSvg);
 
-          // 如果没有 viewBox，根据宽高创建
-          if (!viewBox && width && height) {
-            viewBox = `0 0 ${parseFloat(width)} ${parseFloat(height)}`;
+          // 计算可用视口尺寸（留出边距）
+          const padding = 20;
+          const maxWidth = window.innerWidth - padding * 2 - 20; // 额外留出关闭按钮空间
+          const maxHeight = window.innerHeight - padding * 2 - 80; // 顶部留出关闭按钮空间
+
+          // 【核心修复】分别计算宽高比例，取较小值确保完整显示
+          const scaleX = maxWidth / svgSize.width;
+          const scaleY = maxHeight / svgSize.height;
+          const fitScale = Math.min(scaleX, scaleY, 2); // 最大放大到2倍
+
+          // 计算实际显示尺寸
+          let displayWidth = svgSize.width * fitScale;
+          let displayHeight = svgSize.height * fitScale;
+
+          // 【关键修复】如果图片是竖图（高>宽），限制高度，让宽度自然适应
+          if (svgSize.height > svgSize.width) {
+            // 竖图：以高度为基准
+            displayHeight = Math.min(maxHeight, svgSize.height * 1.2);
+            displayWidth = displayHeight * (svgSize.width / svgSize.height);
+          } else {
+            // 横图或方图：以宽度为基准
+            displayWidth = Math.min(maxWidth, svgSize.width * 1.2);
+            displayHeight = displayWidth * (svgSize.height / svgSize.width);
           }
 
-          // 构建包装器 - 使用自适应尺寸
+          // 再次确保不超过最大尺寸
+          if (displayWidth > maxWidth) {
+            displayWidth = maxWidth;
+            displayHeight = displayWidth * (svgSize.height / svgSize.width);
+          }
+          if (displayHeight > maxHeight) {
+            displayHeight = maxHeight;
+            displayWidth = displayHeight * (svgSize.width / svgSize.height);
+          }
+
+          // 创建 wrapper - 使用内容自适应
           const wrapper = document.createElement('div');
           wrapper.style.cssText = `
-            width: 90vw;
-            max-width: 1200px;
-            height: 85vh;
-            max-height: 900px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            display: inline-block;
             background: #ffffff;
-            border-radius: 16px;
+            border-radius: 12px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-            padding: 30px;
+            padding: 15px;
             box-sizing: border-box;
-            position: relative;
-            overflow: auto;
+            line-height: 0;
           `;
 
-          // SVG 容器
-          const svgWrapper = document.createElement('div');
-          svgWrapper.style.cssText = `
-            width: 100%;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          `;
-
-          // 设置 SVG 样式
+          // 【修复】SVG 使用精确的像素尺寸，而不是百分比
           clonedSvg.style.cssText = `
-            width: 100%;
-            height: 100%;
-            max-width: 100%;
-            max-height: 100%;
+            display: block;
+            width: ${displayWidth}px;
+            height: ${displayHeight}px;
+            flex-shrink: 0;
           `;
 
-          // 确保 viewBox 正确
-          if (viewBox) {
-            clonedSvg.setAttribute('viewBox', viewBox);
+          // 确保 viewBox 存在
+          if (!clonedSvg.getAttribute('viewBox')) {
+            clonedSvg.setAttribute('viewBox', `0 0 ${svgSize.width} ${svgSize.height}`);
           }
           clonedSvg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
 
-          // 【重要】移除可能存在的固定宽高，让 SVG 自适应
+          // 移除可能冲突的属性
           clonedSvg.removeAttribute('width');
           clonedSvg.removeAttribute('height');
 
-          // 【修复文字颜色】确保所有文字在白色背景下可见
-          // 遍历所有 text 元素，确保颜色正确
+          // 修复文字颜色
           const allTexts = clonedSvg.querySelectorAll('text');
           allTexts.forEach(text => {
-            // 如果文本颜色是黑色或深色，保持不变
-            // 如果颜色是白色或浅色，改为深色
             const fill = text.getAttribute('fill');
             if (fill && ['white', '#fff', '#ffffff', 'rgb(255,255,255)'].includes(fill.toLowerCase())) {
               text.setAttribute('fill', '#333333');
             }
-            // 确保没有 fill 的 text 有默认颜色
-            if (!fill) {
+            if (!fill || fill === 'none') {
               text.setAttribute('fill', '#333333');
             }
           });
 
-          // 修复节点的背景色（如果是浅色背景上的浅色节点）
-          const allNodes = clonedSvg.querySelectorAll('.node, .cluster, .label');
-          allNodes.forEach(node => {
-            const rect = node.querySelector('rect');
-            if (rect) {
-              const fill = rect.getAttribute('fill');
-              // 如果矩形填充是白色或透明，设置一个柔和的颜色
-              if (!fill || ['white', '#fff', '#ffffff', 'transparent', 'none'].includes(fill.toLowerCase())) {
-                rect.setAttribute('fill', '#f0f4ff');
-              }
+          // 修复节点背景
+          const allNodes = clonedSvg.querySelectorAll('.node > rect, .cluster > rect, .label > rect');
+          allNodes.forEach(rect => {
+            const fill = rect.getAttribute('fill');
+            if (!fill || ['white', '#fff', '#ffffff', 'transparent', 'none'].includes(fill.toLowerCase())) {
+              rect.setAttribute('fill', '#f5f7fa');
             }
           });
 
-          svgWrapper.appendChild(clonedSvg);
-          wrapper.appendChild(svgWrapper);
+          wrapper.appendChild(clonedSvg);
           container.appendChild(wrapper);
 
           // 重置变换
           container.style.transform = 'translate(0px, 0px) scale(1)';
 
-          // 重置缩放和位置变量
+          // 重置状态
           if (window._mermaidViewerState) {
             window._mermaidViewerState.scale = 1;
             window._mermaidViewerState.posX = 0;
             window._mermaidViewerState.posY = 0;
           }
 
-          // 显示 overlay
           const overlay = document.getElementById('mermaid-viewer-overlay');
           overlay.style.display = 'flex';
         });
@@ -325,20 +348,15 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   };
 
-  // 初始化状态存储
   window._mermaidViewerState = {
     scale: 1,
     posX: 0,
     posY: 0
   };
 
-  // 延迟执行确保 Mermaid 已渲染
   setTimeout(bindClick, 1000);
-
-  // 支持 PJAX/动态内容
   document.addEventListener('pjax:complete', () => setTimeout(bindClick, 1000));
 
-  // 支持 MutationObserver 监听动态添加的 Mermaid 图表
   const observer = new MutationObserver(() => {
     setTimeout(bindClick, 500);
   });
