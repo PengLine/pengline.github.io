@@ -1,0 +1,2393 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>短视频推荐系统之多路并行召回策略 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="短视频推荐系统中的多路并行召回策略：I2I召回、U2I召回、热搜召回、探索召回的设计原理、实现机制与适用场景，多模态向量融合、滑动窗口用户画像、自适应探索强度及结果融合排序等。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="短视频推荐系统之多路并行召回策略">
+<meta property="og:url" content="https://pengline.cn/2026/07/1253d04858e94ba2a6856cc795b01c8b/index.html">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="短视频推荐系统中的多路并行召回策略：I2I召回、U2I召回、热搜召回、探索召回的设计原理、实现机制与适用场景，多模态向量融合、滑动窗口用户画像、自适应探索强度及结果融合排序等。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp">
+<meta property="article:published_time" content="2026-07-09T09:53:32.966Z">
+<meta property="article:modified_time" content="2026-07-12T15:12:00.764Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="I2I召回">
+<meta property="article:tag" content="U2I召回">
+<meta property="article:tag" content="协同过滤">
+<meta property="article:tag" content="召回策略">
+<meta property="article:tag" content="向量检索">
+<meta property="article:tag" content="多模态融合">
+<meta property="article:tag" content="多路召回">
+<meta property="article:tag" content="探索召回">
+<meta property="article:tag" content="推荐系统">
+<meta property="article:tag" content="热搜召回">
+<meta property="article:tag" content="视频推荐">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "短视频推荐系统之多路并行召回策略",
+  "url": "https://pengline.cn/2026/07/1253d04858e94ba2a6856cc795b01c8b/",
+  "image": "https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp",
+  "datePublished": "2026-07-09T09:53:32.966Z",
+  "dateModified": "2026-07-12T15:12:00.764Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "余一叶知秋尽",
+      "url": "https://pengline.cn"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/07/1253d04858e94ba2a6856cc795b01c8b/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: true,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '短视频推荐系统之多路并行召回策略',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous" async></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewBox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"></path><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"></path><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"></path><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"></path></symbol><symbol id="icon-moon" viewBox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"></path><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"></path></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">100</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">558</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">56</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></div><div class="menus_item"><a class="site-page" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/logo.png" alt="Logo"><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">短视频推荐系统之多路并行召回策略</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></div><div class="menus_item"><a class="site-page" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">短视频推荐系统之多路并行召回策略</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-07-09T09:53:32.966Z" title="发表于 2026-07-09 17:53:32">2026-07-09</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-07-12T15:12:00.764Z" title="更新于 2026-07-12 23:12:00">2026-07-12</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/">架构</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/%E6%8E%A8%E8%8D%90%E7%B3%BB%E7%BB%9F/">推荐系统</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>多路并行召回策略</h1>
+<ul>
+    <li><a href="https://pengline.cn/2026/06/1726f4eec04b4cdf873479019b5c604a">推荐系统架构总览（系统总体架构、多路召回、混合检索、多模态融合、重排策略）</a></li>
+    <li><a href="https://pengline.cn/2026/06/198954be50c24c0483353bb975e882d3">阶段一：基于文本向量（文本向量化、BERT推理、双路召回、规则排序、存储架构）</a></li>
+    <li><a href="https://pengline.cn/2026/06/9509f9a6b42748bab6acf320d3419eeb">阶段二：基于多模态融合（三模态特征提取、动态权重融合、粗排层、GBDT精排）</a></li>
+    <li><a href="https://pengline.cn/2026/06/fdf378a9c224457d9486acd099a34db7">阶段三：基于个性化精排（实时行为流、滑动窗口向量、DIN模型、自适应E&E）</a></li>
+    <li><a href="https://pengline.cn/2026/06/b014b5e8d1b24b4ab945634f08ddce0f">各阶段算法策略（召回、粗排、精排、重排，协同过滤、向量双塔、热门召回、MMoE与PLE、线性加权、滑动窗口、MMR）</a></li>
+    <li><a href="https://pengline.cn/2026/07/af0a363a828649bbbbfc42583dbfb2a9">OpenSearch + Milvus（HNSW/IVF/PQ、量化压缩、标量过滤、混合查询、硬件加速）</a></li>
+    <li><a href="https://pengline.cn/2026/07/094031edb39c4505aefb6b0572381e03">用户画像构建（显式与隐式画像融合、标签画像与向量画像双轨构建、滑动窗口、行为序列建模）</a></li>
+</ul>
+<h2 id="多路召回架构">多路召回架构</h2>
+<p>召回层是推荐系统的第一道关卡，决定了后续所有环节能够看到哪些候选内容。在娱乐视频推荐场景中，单一路召回策略存在明显的盲区：I2I容易同质化，U2I对冷启动用户不友好，热搜缺乏个性化，探索则可能损伤短期点击率。多路并行召回的核心思想是：<strong>用多把尺子从不同维度衡量视频与用户的匹配程度，然后合并各路的结果，让精排层有更全面的候选集可供选择。</strong></p>
+<h3 id="召回层的定位">召回层的定位</h3>
+<p>采用漏斗式分层架构，每一层承担不同的筛选职责，在数据规模和计算精度之间取得平衡：</p>
+<pre class="mermaid">flowchart TB
+    subgraph "全量候选池"
+        Pool[亿级视频库]
+    end
+    
+    subgraph "召回层<br/>50-80ms"
+        Pool --> R1[多路并行召回]
+        R1 --> R2[候选集 300-500条]
+    end
+    
+    subgraph "粗排层<br/>10-15ms"
+        R2 --> P1[轻量级模型过滤]
+        P1 --> P2[候选集 80-100条]
+    end
+    
+    subgraph "精排层<br/>30-40ms"
+        P2 --> Rk1[复杂模型精准打分]
+        Rk1 --> Rk2[候选集 20-30条]
+    end
+    
+    subgraph "重排层<br/>5-10ms"
+        Rk2 --> Re1[多样性/业务规则调整]
+        Re1 --> Re2[最终推荐 10-20条]
+    end</pre>
+<p>各层级的核心职责划分如下：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">层级</th>
+<th style="text-align:left">输入规模</th>
+<th style="text-align:left">输出规模</th>
+<th style="text-align:left">压缩比</th>
+<th style="text-align:left">核心目标</th>
+<th style="text-align:left">时间预算</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">召回</td>
+<td style="text-align:left">亿级</td>
+<td style="text-align:left">百级</td>
+<td style="text-align:left">$10^6$:1</td>
+<td style="text-align:left">用多种策略穷举用户可能感兴趣的内容</td>
+<td style="text-align:left">50-80ms</td>
+</tr>
+<tr>
+<td style="text-align:left">粗排</td>
+<td style="text-align:left">百级</td>
+<td style="text-align:left">数十级</td>
+<td style="text-align:left">5:1</td>
+<td style="text-align:left">用轻量模型快速过滤明显不相关的候选</td>
+<td style="text-align:left">10-15ms</td>
+</tr>
+<tr>
+<td style="text-align:left">精排</td>
+<td style="text-align:left">数十级</td>
+<td style="text-align:left">十级</td>
+<td style="text-align:left">3:1</td>
+<td style="text-align:left">用复杂模型精准预估用户行为概率</td>
+<td style="text-align:left">30-40ms</td>
+</tr>
+<tr>
+<td style="text-align:left">重排</td>
+<td style="text-align:left">十级</td>
+<td style="text-align:left">十级</td>
+<td style="text-align:left">1:1</td>
+<td style="text-align:left">根据业务规则和多样性进行最终调整</td>
+<td style="text-align:left">5-10ms</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>召回层处于漏斗的最前端，它的核心职责是<strong>尽可能全面地召回用户可能感兴趣的内容</strong>，同时将候选集规模从亿级压缩到百级，以便后续层级能够进行更精细的计算。</p>
+</blockquote>
+<h3 id="单路召回的局限性">单路召回的局限性</h3>
+<p>任何单一的召回策略都存在天然的盲区。理解这些盲区是设计多路召回的基础：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">召回策略</th>
+<th style="text-align:left">核心假设</th>
+<th style="text-align:left">局限性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">I2I（基于内容相似）</td>
+<td style="text-align:left">相似的视频吸引相似的人</td>
+<td style="text-align:left">无法发现用户的跨品类兴趣，容易同质化</td>
+</tr>
+<tr>
+<td style="text-align:left">U2I（基于用户画像）</td>
+<td style="text-align:left">用户的兴趣是稳定可量化的</td>
+<td style="text-align:left">冷启动用户向量质量差，行为稀疏时效果差</td>
+</tr>
+<tr>
+<td style="text-align:left">协同过滤</td>
+<td style="text-align:left">相似的历史行为代表相似的兴趣</td>
+<td style="text-align:left">新物品/新用户无历史数据，冷启动问题严重</td>
+</tr>
+<tr>
+<td style="text-align:left">热门推荐</td>
+<td style="text-align:left">大多数人喜欢的也适合这个人</td>
+<td style="text-align:left">完全忽略个体差异，所有用户看到相同内容</td>
+</tr>
+<tr>
+<td style="text-align:left">随机探索</td>
+<td style="text-align:left">新内容需要通过随机曝光积累数据</td>
+<td style="text-align:left">短期点击率显著下降，用户体验受损</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>多路并行召回的核心思想正是通过<strong>多种策略的互补性</strong>来覆盖这些盲区：I2I保证相关性，U2I提供泛化能力，热搜兜底，探索打破茧房。四路召回的互补性使得候选集既有高质量内容，又有新鲜内容。</p>
+</blockquote>
+<h3 id="多路并行的并发模型">多路并行的并发模型</h3>
+<p>四条召回通路在推荐引擎中并发执行，而不是串行执行。这是保证召回层延迟在50-80ms以内的关键设计。</p>
+<pre class="mermaid">sequenceDiagram
+    participant Engine as 推荐引擎
+    participant Pool as 线程池
+    participant OS1 as OpenSearch-I2I
+    participant OS2 as OpenSearch-U2I
+    participant OS3 as OpenSearch-热搜
+    participant OS4 as OpenSearch-探索
+    
+    Engine->>Pool: 提交4个召回任务
+    
+    par 并发执行
+        Pool->>OS1: I2I查询
+        OS1-->>Pool: 100条结果
+    and
+        Pool->>OS2: U2I查询
+        OS2-->>Pool: 100条结果
+    and
+        Pool->>OS3: 热搜查询
+        OS3-->>Pool: 50条结果
+    and
+        Pool->>OS4: 探索查询
+        OS4-->>Pool: 50条结果
+    end
+    
+    Pool-->>Engine: 4路结果全部返回
+    Note over Engine,Pool: 总耗时 = max(各路耗时) ≈ 50-80ms
+    Engine->>Engine: 合并去重 → 300条</pre>
+<blockquote>
+<p><strong>并发执行的总耗时不是各路耗时的累加，而是最长一路的耗时加上合并开销</strong>。在理想的并发模型中，如果四路召回各需50ms，串行执行需要200ms，而并发执行只需要50ms+5ms合并开销≈55ms。</p>
+</blockquote>
+<p><strong>实际工程中的并发控制</strong>：</p>
+<pre class="mermaid">flowchart TB
+    Start[推荐请求到达] --> Submit[提交4路召回任务到线程池]
+    Submit --> Fork{并发执行}
+
+    Fork --> I2I[I2I召回任务]
+    Fork --> U2I[U2I召回任务]
+    Fork --> Hot[热搜召回任务]
+    Fork --> Explore[探索召回任务]
+
+    I2I --> I2I_Wait[等待结果 45ms]
+    U2I --> U2I_Wait[等待结果 62ms]
+    Hot --> Hot_Wait[等待结果 18ms]
+    Explore --> Explore_Wait[等待结果 38ms]
+
+    I2I_Wait --> Join[主线程等待所有任务完成]
+    U2I_Wait --> Join
+    Hot_Wait --> Join
+    Explore_Wait --> Join
+
+    Join --> Merge[合并去重 8ms]
+    Merge --> Result[返回300条候选]
+
+    Note1[总耗时 = max + 8 = 70ms]
+    Note1 --> Join</pre>
+<p>如果某一路召回超时（超过预设阈值），该路自动降级为返回空结果，不影响其他路的返回：</p>
+<pre class="mermaid">flowchart TB
+    Start[推荐请求到达] --> Submit[提交4路召回任务]
+
+    Submit --> Parallel{并发执行}
+
+    Parallel --> Task1[I2I召回 45ms]
+    Parallel --> Task2[U2I召回 200ms ⏱️]
+    Parallel --> Task3[热搜召回 18ms]
+    Parallel --> Task4[探索召回 38ms]
+
+    Task2 --> Timeout{超时检测<br/>阈值 150ms}
+    Timeout --> |是| Cancel[中断U2I任务]
+    Cancel --> Fallback[降级返回空结果]
+
+    Task1 --> Collect[收集所有已完成结果]
+    Task3 --> Collect
+    Task4 --> Collect
+    Fallback --> Collect
+
+    Collect --> Merge[合并去重]
+    Merge --> Result[返回候选集]
+
+    Note1[总耗时 = 45ms<br/>U2I超时被中断，不影响其他路]
+    Note1 --> Collect</pre>
+<h3 id="召回架构模型">召回架构模型</h3>
+<p>在完整的推荐漏斗中，召回层位于最底部，承接的数据量最大，对延迟的要求也最严苛。四路召回并发执行的设计目标是在50-80毫秒内从千万级视频库中筛选出300条左右的候选视频。</p>
+<pre class="mermaid">flowchart TB
+    subgraph "召回输入"
+        U[用户请求] --> Context[上下文信息]
+        U --> Profile[用户画像]
+        U --> History[观看历史]
+    end
+    
+    subgraph "四路召回引擎"
+        Context --> Hot[热搜召回]
+        Profile --> U2I[U2I召回]
+        History --> I2I[I2I召回]
+        Profile --> Explore[探索召回]
+    end
+    
+    subgraph "召回配置"
+        Hot --> |配额50条| Merge
+        U2I --> |配额100条| Merge
+        I2I --> |配额100条| Merge
+        Explore --> |配额50条| Merge
+    end
+    
+    subgraph "融合输出"
+        Merge[合并去重] --> Rank[送入粗排 300条]
+    end</pre>
+<blockquote>
+<p><strong>各路的配额分配</strong>不是固定不变的，需要根据用户类型和业务目标动态调整。高活跃用户有足够的行为数据支撑个性化召回，可以分配更多配额给U2I和I2I；新用户缺乏行为数据，需要更多热搜和探索内容来积累初始信号；探索友好型用户则可以适当放大探索配额，用于发现新兴趣。</p>
+</blockquote>
+<h3 id="超时中断机制">超时中断机制</h3>
+<pre class="mermaid">sequenceDiagram
+    participant Main as 主线程
+    participant Pool as 线程池
+    participant T1 as 线程1-I2I
+    participant T2 as 线程2-U2I
+    participant OS as OpenSearch
+
+    Main->>Pool: 提交4路召回任务
+    Pool->>T1: 分配I2I任务
+    Pool->>T2: 分配U2I任务
+
+    par 并发执行
+        T1->>OS: I2I查询
+        T2->>OS: U2I查询
+        OS-->>T1: 45ms返回结果
+    end
+
+    Note over Main: 启动超时计时器 150ms
+
+    alt U2I耗时 < 150ms
+        OS-->>T2: 返回结果
+        T2-->>Main: U2I结果
+    else U2I耗时 ≥ 150ms
+        Note over Main: 150ms超时到达
+        Main->>T2: 中断U2I任务
+        T2-->>Main: 返回空结果
+        Note over T2,OS: U2I查询被取消
+    end
+
+    Main->>Main: 合并I2I+热搜+探索结果
+    Note over Main: 总耗时 = 45ms（U2I超时不影响）</pre>
+<h3 id="降级决策流程">降级决策流程</h3>
+<pre class="mermaid">flowchart TB
+    Start[召回请求] --> Timer[启动超时计时器]
+
+    Timer --> Parallel[并发执行4路召回]
+
+    Parallel --> Check{检查各路状态}
+
+    Check --> |I2I成功| R1[保留I2I结果]
+    Check --> |U2I超时| R2[U2I降级为空]
+    Check --> |热搜成功| R3[保留热搜结果]
+    Check --> |探索成功| R4[保留探索结果]
+
+    R1 --> Count{有效路数统计}
+    R2 --> Count
+    R3 --> Count
+    R4 --> Count
+
+    Count --> |4路全部成功| Normal[正常融合 300条]
+    Count --> |3路成功| Degrade1[轻度降级 250条]
+    Count --> |2路成功| Degrade2[中度降级 150条]
+    Count --> |1路成功| Degrade3[重度降级 100条]
+    Count --> |0路成功| Fallback[兜底 返回热搜缓存]
+
+    Normal --> Log[记录降级日志]
+    Degrade1 --> Log
+    Degrade2 --> Log
+    Degrade3 --> Log
+    Fallback --> Log
+
+    Log --> Response[返回推荐结果]</pre>
+<h2 id="I2I召回：基于物品的协同过滤">I2I召回：基于物品的协同过滤</h2>
+<p>I2I召回的核心逻辑是：<strong>用户喜欢物品A，那么也应该喜欢与A相似的物品B</strong>。在娱乐视频场景中，用户刚看完一个搞笑视频，I2I负责找出“下一个最相似”的视频，实现连续观看的无缝体验。</p>
+<blockquote>
+<p>这里的“相似”基于内容向量计算。不同模态的视频向量从不同维度定义相似性。视觉向量捕捉场景和动作的相似，音频向量捕捉BGM和情绪的相似，文本向量捕捉话题和语义的相似。多模态I2I召回通过三路并发查询，从三个维度分别计算相似度，然后加权融合，使得相似判断更加全面。</p>
+</blockquote>
+<p><strong>I2I召回的数学本质</strong>是K近邻检索（欧氏距离）：给定查询视频向量 <em>q</em>，从向量索引中检索与其向量距离最小的K个视频：
+$$
+\text{TopK}(\mathbf{q}) = \arg\min_{\mathbf{v} \in V} |\mathbf{q} - \mathbf{v}|_2
+$$</p>
+<p>当使用余弦相似度时，检索目标变为（余弦相似度）：
+$$
+\text{TopK}(\mathbf{q}) = \arg\max_{\mathbf{v} \in V} \frac{\mathbf{q} \cdot \mathbf{v}}{|\mathbf{q}| \cdot |\mathbf{v}|}
+$$</p>
+<p>多模态I2I召回通过三路并发查询，从三个维度分别计算相似度，然后加权融合：
+$$
+\text{similarity}(\mathbf{q}, \mathbf{v}) = \sum_{m=1}^{3} w_m \cdot \text{cosine}(\mathbf{q}_m, \mathbf{v}_m)
+$$
+其中 $w_m$ 是模态 <em>m</em> 的权重，$q_m$ 是查询视频在模态 <em>m</em> 上的向量，$v_m$ 是候选视频在模态 <em>m</em> 上的向量。</p>
+<pre class="mermaid">flowchart LR
+    subgraph "用户当前观看"
+        V[视频V]
+    end
+    
+    subgraph "三路相似检索"
+        V --> VV[visual_vector]
+        V --> AV[audio_vector]
+        V --> TV[text_vector]
+    end
+    
+    subgraph "OpenSearch并发查询"
+        VV --> OS1[k-NN 视觉相似]
+        AV --> OS2[k-NN 音频相似]
+        TV --> OS3[k-NN 文本相似]
+    end
+    
+    subgraph "融合"
+        OS1 --> Merge[加权融合]
+        OS2 --> Merge
+        OS3 --> Merge
+        Merge --> Result[Top 100]
+    end</pre>
+<h3 id="相似度计算">相似度计算</h3>
+<p>在OpenSearch/Milvus中，I2I召回通过k-NN向量检索实现。向量检索的底层算法通常采用近似最近邻（ANN），在精度和性能之间取得平衡。</p>
+<p><strong>HNSW算法的基本原理</strong>：</p>
+<p>HNSW构建了一个多层图结构。顶层节点稀疏，用于快速导航；底层节点密集，用于精确定位。查询向量从顶层开始，逐层向下搜索，在对数时间内找到最近的K个节点。</p>
+<pre class="mermaid">graph TB
+    subgraph "HNSW多层图结构"
+        L0[Layer 0 最上层<br/>稀疏节点 导航用] --> L1[Layer 1]
+        L1 --> L2[Layer 2]
+        L2 --> L3[Layer 3 最下层<br/>密集节点 精确定位]
+    end
+    
+    subgraph "查询路径"
+        Q[查询向量] --> L0
+        L0 --> L1
+        L1 --> L2
+        L2 --> L3
+        L3 --> Result[Top-K结果]
+    end</pre>
+<p><strong>关键参数调优</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">推荐值</th>
+<th style="text-align:left">调优方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">ef_construction</td>
+<td style="text-align:left">构建时的动态列表大小</td>
+<td style="text-align:left">512</td>
+<td style="text-align:left">越大索引质量越好，但构建越慢</td>
+</tr>
+<tr>
+<td style="text-align:left">m</td>
+<td style="text-align:left">每个节点的最大连接数</td>
+<td style="text-align:left">16-32</td>
+<td style="text-align:left">越大召回率越高，但内存占用越大</td>
+</tr>
+<tr>
+<td style="text-align:left">ef_search</td>
+<td style="text-align:left">查询时的动态列表大小</td>
+<td style="text-align:left">256</td>
+<td style="text-align:left">越大召回率越高，但延迟越大</td>
+</tr>
+<tr>
+<td style="text-align:left">nprobe</td>
+<td style="text-align:left">IVF检索时扫描的聚类数</td>
+<td style="text-align:left">10</td>
+<td style="text-align:left">越大召回率越高，但延迟越大</td>
+</tr>
+</tbody>
+</table>
+<p>余弦相似度通用公式：
+$$
+\text{cosine}(\mathbf{u}, \mathbf{v}) = \frac{\mathbf{u} \cdot \mathbf{v}}{|\mathbf{u}|_2 \cdot |\mathbf{v}|_2}
+$$
+<strong>过滤条件对查询效率的影响</strong>：</p>
+<p>在实际推荐场景中，I2I召回通常需要排除用户已观看过的视频，以及应用其他业务过滤条件（如只推荐特定品类）。过滤条件的存在会改变查询的执行计划：</p>
+<pre class="mermaid">flowchart TB
+    subgraph "无过滤的k-NN查询"
+        A1[全库向量检索] --> A2[Top-K结果]
+    end
+    
+    subgraph "有过滤的k-NN查询"
+        B1[倒排索引过滤] --> B2[候选集缩小]
+        B2 --> B3[在候选集上执行k-NN]
+        B3 --> B4[Top-K结果]
+    end</pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">过滤条件</th>
+<th style="text-align:left">执行策略</th>
+<th style="text-align:left">性能影响</th>
+<th style="text-align:left">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">无过滤</td>
+<td style="text-align:left">全局k-NN检索</td>
+<td style="text-align:left">基准</td>
+<td style="text-align:left">纯向量相似度召回</td>
+</tr>
+<tr>
+<td style="text-align:left">排除已观看（少量）</td>
+<td style="text-align:left">k-NN后过滤</td>
+<td style="text-align:left">轻微</td>
+<td style="text-align:left">已观看列表较短</td>
+</tr>
+<tr>
+<td style="text-align:left">排除已观看（大量）</td>
+<td style="text-align:left">过滤后k-NN</td>
+<td style="text-align:left">中等</td>
+<td style="text-align:left">已观看列表较长</td>
+</tr>
+<tr>
+<td style="text-align:left">多字段组合过滤</td>
+<td style="text-align:left">倒排索引预过滤</td>
+<td style="text-align:left">显著</td>
+<td style="text-align:left">复杂业务筛选</td>
+</tr>
+</tbody>
+</table>
+<h3 id="用多模态向量而非传统协同过滤">用多模态向量而非传统协同过滤</h3>
+<p>传统的Item-based协同过滤基于用户行为矩阵计算物品相似度（“喜欢物品A的用户也喜欢物品B”）。但娱乐视频场景面临严重的<strong>冷启动问题</strong>——新视频没有任何用户行为数据，无法通过协同过滤计算相似度。多模态向量I2I不依赖历史行为，新视频上传后立即可被召回，这是选择多模态方案的根本原因。</p>
+<p><strong>两种方案的完整对比</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">对比维度</th>
+<th style="text-align:left">协同过滤I2I</th>
+<th style="text-align:left">多模态向量I2I</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">相似度依据</td>
+<td style="text-align:left">用户行为共现矩阵</td>
+<td style="text-align:left">内容特征向量</td>
+</tr>
+<tr>
+<td style="text-align:left">冷启动支持</td>
+<td style="text-align:left">新物品无法计算，需等待行为积累</td>
+<td style="text-align:left">上传即可用</td>
+</tr>
+<tr>
+<td style="text-align:left">可解释性</td>
+<td style="text-align:left">中（“因为喜欢A的人也喜欢B”）</td>
+<td style="text-align:left">高（“因为内容相似”）</td>
+</tr>
+<tr>
+<td style="text-align:left">计算复杂度</td>
+<td style="text-align:left">O(N²)，N为物品数，需离线预计算</td>
+<td style="text-align:left">O(log N)，在线实时检索</td>
+</tr>
+<tr>
+<td style="text-align:left">同质化风险</td>
+<td style="text-align:left">高，容易只推流行物品</td>
+<td style="text-align:left">中，内容多样性更好</td>
+</tr>
+<tr>
+<td style="text-align:left">更新频率</td>
+<td style="text-align:left">低，需要全量重算</td>
+<td style="text-align:left">高，新视频实时写入索引</td>
+</tr>
+<tr>
+<td style="text-align:left">内存占用</td>
+<td style="text-align:left">物品×物品矩阵，随物品数平方增长</td>
+<td style="text-align:left">物品数×向量维度，随物品数线性增长</td>
+</tr>
+</tbody>
+</table>
+<h3 id="多视频来源的I2I融合策略">多视频来源的I2I融合策略</h3>
+<p>用户最近观看的多个视频可能来自不同的兴趣方向（如用户刚刷了3个视频：搞笑、舞蹈、科技）。此时I2I召回需要处理多个来源的综合：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">策略</th>
+<th style="text-align:left">实现方式</th>
+<th style="text-align:left">效果</th>
+<th style="text-align:left">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">基于最近一个视频</td>
+<td style="text-align:left">只用最新观看的视频做I2I</td>
+<td style="text-align:left">响应最及时，易被单次行为干扰</td>
+<td style="text-align:left">用户行为一致性高</td>
+</tr>
+<tr>
+<td style="text-align:left">基于最近多个视频平均</td>
+<td style="text-align:left">取最近3个视频向量的平均</td>
+<td style="text-align:left">更稳定，能捕捉综合兴趣</td>
+<td style="text-align:left">推荐首页</td>
+</tr>
+<tr>
+<td style="text-align:left">基于加权平均</td>
+<td style="text-align:left">按时间加权，越新权重越高</td>
+<td style="text-align:left">兼顾稳定和响应</td>
+<td style="text-align:left">推荐场景，默认采用</td>
+</tr>
+<tr>
+<td style="text-align:left">基于注意力融合</td>
+<td style="text-align:left">用注意力模型计算各视频权重</td>
+<td style="text-align:left">效果最优，但计算复杂</td>
+<td style="text-align:left">精排中处理，召回层不采用</td>
+</tr>
+</tbody>
+</table>
+<p>在召回层，阶段三采用<strong>基于加权平均</strong>的方式：
+$$
+\mathbf{q}_{I2I} = \sum_i^3 e^{-\Delta t_i / \tau} \cdot \mathbf{v}_i
+$$</p>
+<blockquote>
+<p>其中 $\Delta t_i$ 是第 <em>i</em> 个视频的观看时间距当前时刻的时间差，<em>τ</em> 取 3600 秒（1 小时），$\mathbf{v}_i$ 是第 <em>i</em> 个视频的向量。</p>
+</blockquote>
+<h3 id="查询配额分配">查询配额分配</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">模态</th>
+<th style="text-align:left">查询条数</th>
+<th style="text-align:left">融合权重</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">visual</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">0.35</td>
+<td style="text-align:left">场景和动作相似</td>
+</tr>
+<tr>
+<td style="text-align:left">audio</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">0.25</td>
+<td style="text-align:left">BGM和情绪相似</td>
+</tr>
+<tr>
+<td style="text-align:left">text</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">0.40</td>
+<td style="text-align:left">话题和语义相似</td>
+</tr>
+</tbody>
+</table>
+<p>各模态的融合权重不是固定的，需要根据视频类型动态调整。音乐类视频可以提升audio权重，舞蹈类视频可以提升visual权重，资讯类视频可以提升text权重。这种动态权重策略使得I2I召回在不同内容品类上都能保持较好的效果。</p>
+<p><strong>动态权重的调整逻辑</strong>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> video.category == <span class="string">&quot;music&quot;</span>:</span><br><span class="line">    weights = &#123;<span class="string">&quot;visual&quot;</span>: <span class="number">0.20</span>, <span class="string">&quot;audio&quot;</span>: <span class="number">0.60</span>, <span class="string">&quot;text&quot;</span>: <span class="number">0.20</span>&#125;</span><br><span class="line"><span class="keyword">elif</span> video.category == <span class="string">&quot;dance&quot;</span>:</span><br><span class="line">    weights = &#123;<span class="string">&quot;visual&quot;</span>: <span class="number">0.55</span>, <span class="string">&quot;audio&quot;</span>: <span class="number">0.30</span>, <span class="string">&quot;text&quot;</span>: <span class="number">0.15</span>&#125;</span><br><span class="line"><span class="keyword">elif</span> video.category == <span class="string">&quot;news&quot;</span>:</span><br><span class="line">    weights = &#123;<span class="string">&quot;visual&quot;</span>: <span class="number">0.15</span>, <span class="string">&quot;audio&quot;</span>: <span class="number">0.10</span>, <span class="string">&quot;text&quot;</span>: <span class="number">0.75</span>&#125;</span><br><span class="line"><span class="keyword">else</span>:</span><br><span class="line">    weights = &#123;<span class="string">&quot;visual&quot;</span>: <span class="number">0.35</span>, <span class="string">&quot;audio&quot;</span>: <span class="number">0.25</span>, <span class="string">&quot;text&quot;</span>: <span class="number">0.40</span>&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="适用场景与优缺点">适用场景与优缺点</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">说明</th>
+<th style="text-align:left">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">连续观看</td>
+<td style="text-align:left">看完一个自动播放下一个相似内容</td>
+<td style="text-align:left">看完搞笑视频1，推搞笑视频2</td>
+</tr>
+<tr>
+<td style="text-align:left">详情页推荐</td>
+<td style="text-align:left">视频详情页的相关推荐</td>
+<td style="text-align:left">播放页下方推荐相似视频</td>
+</tr>
+<tr>
+<td style="text-align:left">追剧/追更</td>
+<td style="text-align:left">系列内容的连续推荐</td>
+<td style="text-align:left">看完第一集推第二集</td>
+</tr>
+</tbody>
+</table>
+<p><strong>优点</strong>：相关性高、用户接受度好、实现简单且可解释性强、冷启动友好。</p>
+<p><strong>缺点</strong>：容易陷入信息茧房、推荐结果高度同质化、无法发现用户的新兴趣、依赖向量质量。</p>
+<hr>
+<h2 id="U2I召回：基于用户的协同过滤">U2I召回：基于用户的协同过滤</h2>
+<p>U2I召回的核心逻辑是：<strong>构建用户兴趣向量，直接从全库中检索最匹配的视频</strong>。用户向量是用户历史行为的聚合表示，代表了用户的综合兴趣画像。这种方式不受限于用户已有的观看历史，能发现用户可能感兴趣的新内容。</p>
+<p><strong>U2I召回的数学本质</strong>：将用户表示为向量空间中的一个点，将视频表示为向量空间中的另一个点，通过计算向量距离来衡量用户与视频的匹配程度：
+$$
+\text{score}(u, v) = \text{cosine}(\mathbf{v}_u, \mathbf{v}_v) = \frac{\mathbf{v}_u \cdot \mathbf{v}_v}{|\mathbf{v}_u| \cdot |\mathbf{v}_v|}
+$$</p>
+<blockquote>
+<p>用户向量 $\mathbf{v}_u$ 是用户历史行为的聚合结果，视频向量 $\mathbf{v}_u$ 是视频内容的向量表征。</p>
+<p>U2I召回检索的正是使 $\text{score}(u, v)$ 最大的前K个视频。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">符号</th>
+<th style="text-align:left">含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">$\mathbf{v}_u$</td>
+<td style="text-align:left">用户 <em>u</em> 的兴趣向量</td>
+</tr>
+<tr>
+<td style="text-align:left">$\mathbf{v}_v$</td>
+<td style="text-align:left">视频 <em>v</em> 的内容向量</td>
+</tr>
+<tr>
+<td style="text-align:left">$\mathbf{v}_u \cdot \mathbf{v}_v$</td>
+<td style="text-align:left">两个向量的点积</td>
+</tr>
+<tr>
+<td style="text-align:left">$|\mathbf{v}_u|$</td>
+<td style="text-align:left">用户向量的 L2 范数</td>
+</tr>
+<tr>
+<td style="text-align:left">$|\mathbf{v}_v|$</td>
+<td style="text-align:left">视频向量的 L2 范数</td>
+</tr>
+</tbody>
+</table>
+<p>用户向量的构建依赖<strong>滑动窗口机制</strong>：维护用户最近20次有效观看记录的兴趣向量，每次新行为到达时重新计算加权平均。计算时采用时间衰减。越近的行为权重越高，越旧的行为权重越低。</p>
+<pre class="mermaid">flowchart LR
+    subgraph "用户多模态向量"
+        UV[用户视觉向量]
+        UA[用户音频向量]
+        UT[用户文本向量]
+    end
+    
+    subgraph "OpenSearch查询"
+        UV --> OS1[k-NN 视觉匹配]
+        UA --> OS2[k-NN 音频匹配]
+        UT --> OS3[k-NN 文本匹配]
+    end
+    
+    subgraph "融合"
+        OS1 --> Merge[加权融合]
+        OS2 --> Merge
+        OS3 --> Merge
+        Merge --> Result[Top 100]
+    end</pre>
+<h3 id="用户向量的构建方法">用户向量的构建方法</h3>
+<p>用户向量 $v_u$ 的构建是整个U2I召回的核心，其质量直接影响召回的准确性。</p>
+<h4 id="滑动窗口机制">滑动窗口机制</h4>
+<p>用户向量的构建依赖<strong>滑动窗口机制</strong>：维护用户最近N次有效观看记录的兴趣向量，每次新行为到达时重新计算加权平均。</p>
+<pre class="mermaid">flowchart TB
+    subgraph "滑动窗口（大小=20）"
+        direction LR
+        O1[最旧行为<br/>视频向量v1<br/>权重w1] --> O2[行为2<br/>视频向量v2<br/>权重w2] --> O3[...] --> On[最新行为<br/>视频向量vn<br/>权重wn]
+    end
+
+    subgraph "新行为到达"
+        New[新行为<br/>视频向量v_new<br/>权重w_new] --> Window[窗口滑动]
+        Window --> |加入| On
+        Window --> |移除| O1
+    end
+
+    subgraph "重算用户向量"
+        On --> Compute[加权平均 + 时间衰减 + L2归一化]
+        New --> Compute
+        Compute --> V[用户向量]
+    end</pre>
+<p><strong>窗口大小的选择</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">窗口大小</th>
+<th style="text-align:left">响应速度</th>
+<th style="text-align:left">稳定性</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">5</td>
+<td style="text-align:left">极快</td>
+<td style="text-align:left">极差，易受单次行为干扰</td>
+<td style="text-align:left">不推荐生产环境</td>
+</tr>
+<tr>
+<td style="text-align:left">10</td>
+<td style="text-align:left">快</td>
+<td style="text-align:left">较差</td>
+<td style="text-align:left">仅适合高活跃用户快速响应</td>
+</tr>
+<tr>
+<td style="text-align:left">20</td>
+<td style="text-align:left">适中</td>
+<td style="text-align:left">较好</td>
+<td style="text-align:left">推荐值，平衡响应与稳定性</td>
+</tr>
+<tr>
+<td style="text-align:left">30</td>
+<td style="text-align:left">慢</td>
+<td style="text-align:left">好</td>
+<td style="text-align:left">适合低活跃用户平滑画像</td>
+</tr>
+<tr>
+<td style="text-align:left">50</td>
+<td style="text-align:left">极慢</td>
+<td style="text-align:left">很好</td>
+<td style="text-align:left">适用于长期偏好分析</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么窗口大小选20？</strong></p>
+<p>窗口大小20是一个经过工业界验证的经验值。对于每天观看30-50个视频的典型用户，20个行为覆盖了约半天到一天的观看历史，既能快速响应兴趣变化，又能过滤掉单次偶然行为。统计研究表明，用户兴趣在20个行为窗口内的变化能够平滑地反映兴趣迁移，同时不会被个别的“误点击”所干扰。</p>
+<h4 id="行为权重配置">行为权重配置</h4>
+<p>不同行为类型对兴趣表征的贡献度不同。行为权重的设计需要基于业务数据和A/B测试结果持续优化：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">行为类型</th>
+<th style="text-align:left">权重</th>
+<th style="text-align:left">原理说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">完播（≥80%）</td>
+<td style="text-align:left">1.0</td>
+<td style="text-align:left">用户完整观看了整个视频，投入了完整的时间成本，是最高质量的兴趣信号</td>
+</tr>
+<tr>
+<td style="text-align:left">点赞</td>
+<td style="text-align:left">0.9</td>
+<td style="text-align:left">用户主动点击了点赞按钮，表达了明确的正面态度，信号强度高</td>
+</tr>
+<tr>
+<td style="text-align:left">分享</td>
+<td style="text-align:left">1.2</td>
+<td style="text-align:left">用户主动将内容传播给他人，意味着强烈的情感共鸣和推荐意愿</td>
+</tr>
+<tr>
+<td style="text-align:left">关注作者</td>
+<td style="text-align:left">1.1</td>
+<td style="text-align:left">用户认可创作者的价值，具有持续性，会延伸到该创作者的其他内容</td>
+</tr>
+<tr>
+<td style="text-align:left">评论</td>
+<td style="text-align:left">0.6</td>
+<td style="text-align:left">用户参与了互动，但评论可能包含批评等复杂情绪，信号强度中等</td>
+</tr>
+<tr>
+<td style="text-align:left">播放过半（50%-80%）</td>
+<td style="text-align:left">0.4</td>
+<td style="text-align:left">用户投入了部分时间，但未完成观看，兴趣存在但不够强烈</td>
+</tr>
+<tr>
+<td style="text-align:left">重播</td>
+<td style="text-align:left">0.8</td>
+<td style="text-align:left">用户主动重复消费同一个视频，是强烈的兴趣信号</td>
+</tr>
+<tr>
+<td style="text-align:left">快进跳过</td>
+<td style="text-align:left">-0.2</td>
+<td style="text-align:left">用户跳过了部分内容，表明不耐受，弱负向信号</td>
+</tr>
+<tr>
+<td style="text-align:left">快速划过（&lt;5秒）</td>
+<td style="text-align:left">-0.3</td>
+<td style="text-align:left">用户在极短时间内放弃观看，表明没有兴趣，负向信号</td>
+</tr>
+<tr>
+<td style="text-align:left">点击不感兴趣</td>
+<td style="text-align:left">-0.8</td>
+<td style="text-align:left">用户主动标记为不感兴趣，强负向信号，同时触发内容屏蔽</td>
+</tr>
+</tbody>
+</table>
+<p><strong>负向行为的处理策略</strong>：</p>
+<p>对于负向行为（如“不感兴趣”），系统采取三重处理策略：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>第一，不将其加入用户向量计算。负向行为不参与加权平均，避免拉偏用户向量。</p>
+</li>
+<li class="lvl-2">
+<p>第二，将其记录到用户负反馈列表（存储在Redis中）。后续所有召回结果都会过滤掉负反馈列表中的视频ID。</p>
+</li>
+<li class="lvl-2">
+<p>第三，当同一类别的视频多次被用户标记为负向时，系统会自动对该类别进行全局降权，在召回阶段减少该类别的配额。</p>
+</li>
+</ul>
+<h4 id="时间衰减函数">时间衰减函数</h4>
+<p>时间衰减函数确保最近的行为对画像的影响大于旧行为。阶段三采用指数衰减：
+$$
+timeDecay = e^{-\Delta t / \tau}
+$$</p>
+<blockquote>
+<p>其中，τ取3600秒</p>
+<p>这个公式用于计算用户历史行为在当前时刻的&quot;新鲜度权重&quot;。行为发生的时间越久远，对当前兴趣表征的贡献就越小。</p>
+</blockquote>
+<p><strong>参数说明</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">取值范围</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>Δt</code></td>
+<td style="text-align:left">行为发生时刻距当前时刻的时间差</td>
+<td style="text-align:left">Δt ≥ 0，单位为秒</td>
+<td style="text-align:left">行为越旧，Δt 越大，衰减越严重</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>τ</code></td>
+<td style="text-align:left">半衰期参数（时间常数）</td>
+<td style="text-align:left">τ &gt; 0，单位为秒</td>
+<td style="text-align:left">控制衰减速度，τ 越小衰减越快</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>e</code></td>
+<td style="text-align:left">自然常数</td>
+<td style="text-align:left">≈ 2.71828</td>
+<td style="text-align:left">指数函数的底数</td>
+</tr>
+</tbody>
+</table>
+<p><strong>不同τ值的衰减曲线对比</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">行为距今时间</th>
+<th style="text-align:left">τ=3600<em>τ</em>=3600（实时向量）</th>
+<th style="text-align:left">τ=7200<em>τ</em>=7200（短期向量）</th>
+<th style="text-align:left">τ=86400<em>τ</em>=86400（中期向量）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">1分钟</td>
+<td style="text-align:left">0.983</td>
+<td style="text-align:left">0.992</td>
+<td style="text-align:left">0.999</td>
+</tr>
+<tr>
+<td style="text-align:left">5分钟</td>
+<td style="text-align:left">0.920</td>
+<td style="text-align:left">0.958</td>
+<td style="text-align:left">0.997</td>
+</tr>
+<tr>
+<td style="text-align:left">15分钟</td>
+<td style="text-align:left">0.779</td>
+<td style="text-align:left">0.876</td>
+<td style="text-align:left">0.990</td>
+</tr>
+<tr>
+<td style="text-align:left">30分钟</td>
+<td style="text-align:left">0.607</td>
+<td style="text-align:left">0.768</td>
+<td style="text-align:left">0.980</td>
+</tr>
+<tr>
+<td style="text-align:left">1小时</td>
+<td style="text-align:left">0.368</td>
+<td style="text-align:left">0.607</td>
+<td style="text-align:left">0.959</td>
+</tr>
+<tr>
+<td style="text-align:left">2小时</td>
+<td style="text-align:left">0.135</td>
+<td style="text-align:left">0.368</td>
+<td style="text-align:left">0.920</td>
+</tr>
+<tr>
+<td style="text-align:left">6小时</td>
+<td style="text-align:left">0.0025</td>
+<td style="text-align:left">0.082</td>
+<td style="text-align:left">0.779</td>
+</tr>
+<tr>
+<td style="text-align:left">12小时</td>
+<td style="text-align:left">≈0.000006</td>
+<td style="text-align:left">0.0067</td>
+<td style="text-align:left">0.607</td>
+</tr>
+<tr>
+<td style="text-align:left">24小时</td>
+<td style="text-align:left">≈0</td>
+<td style="text-align:left">≈0.001</td>
+<td style="text-align:left">0.368</td>
+</tr>
+</tbody>
+</table>
+<p><strong>不同画像层次的τ值设定</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">画像层次</th>
+<th style="text-align:left">τ<em>τ</em> 值</th>
+<th style="text-align:left">半衰期</th>
+<th style="text-align:left">用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">实时向量</td>
+<td style="text-align:left">3600秒（1小时）</td>
+<td style="text-align:left">约42分钟</td>
+<td style="text-align:left">追踪用户在当前会话内的即时兴趣</td>
+</tr>
+<tr>
+<td style="text-align:left">短期向量</td>
+<td style="text-align:left">7200秒（2小时）</td>
+<td style="text-align:left">约83分钟</td>
+<td style="text-align:left">捕捉跨会话的兴趣延续</td>
+</tr>
+<tr>
+<td style="text-align:left">中期向量</td>
+<td style="text-align:left">86400秒（1天）</td>
+<td style="text-align:left">约24小时</td>
+<td style="text-align:left">捕获日级别的兴趣趋势</td>
+</tr>
+<tr>
+<td style="text-align:left">长期向量</td>
+<td style="text-align:left">2592000秒（30天）</td>
+<td style="text-align:left">约30天</td>
+<td style="text-align:left">反映月级别的稳定偏好</td>
+</tr>
+</tbody>
+</table>
+<h4 id="用户向量计算公式">用户向量计算公式</h4>
+<p>用户向量的计算采用加权平均方案，不同行为类型赋予不同权重：
+$$
+用户向量 = \frac{Σ (行为权重 × 视频向量 × 时间衰减)} {Σ (行为权重 × 时间衰减)}
+$$
+<strong>用户向量计算公式</strong>：
+$$
+\mathbf{v}_{user} = \frac{\sum_i^n w_i \cdot \mathbf{v}_i \cdot e^{-\Delta t_i / \tau}}{\sum_i^n w_i \cdot e^{-\Delta t_i / \tau}}
+$$</p>
+<blockquote>
+<p>其中：</p>
+<ul class="lvl-1">
+<li class="lvl-2"><em>n</em> 是滑动窗口大小（通常为20）</li>
+<li class="lvl-2">$w_i$ 是第 <em>i</em> 个行为的权重</li>
+<li class="lvl-2">$v_i$ 是第 <em>i</em> 个行为对应的视频向量（768维）</li>
+<li class="lvl-2">$\Delta t_i$ 是第 <em>i</em> 个行为距当前时刻的时间差（秒）</li>
+<li class="lvl-2"><em>τ</em> 是时间衰减半衰期参数（秒）</li>
+</ul>
+</blockquote>
+<p><strong>参数说明</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">行为权重</td>
+<td style="text-align:left">反映不同行为类型对兴趣表征的贡献度</td>
+<td style="text-align:left">预定义配置，基于业务经验</td>
+</tr>
+<tr>
+<td style="text-align:left">视频向量</td>
+<td style="text-align:left">视频内容的多模态融合向量（768维）</td>
+<td style="text-align:left">OpenSearch/Milvus 存储</td>
+</tr>
+<tr>
+<td style="text-align:left">时间衰减</td>
+<td style="text-align:left">行为新鲜度权重</td>
+<td style="text-align:left">由时间衰减公式计算</td>
+</tr>
+</tbody>
+</table>
+<p><strong>计算示例</strong>（假设用户最近有3个行为）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">行为</th>
+<th style="text-align:left">视频向量（简化3维）</th>
+<th style="text-align:left">行为权重</th>
+<th style="text-align:left">时间衰减e−Δt/τ<em>e</em>−Δ<em>t</em>/<em>τ</em></th>
+<th style="text-align:left">加权向量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">完播视频A</td>
+<td style="text-align:left">[0.8, 0.1, 0.1]</td>
+<td style="text-align:left">1.0</td>
+<td style="text-align:left">0.90</td>
+<td style="text-align:left">[0.72, 0.09, 0.09]</td>
+</tr>
+<tr>
+<td style="text-align:left">点赞视频B</td>
+<td style="text-align:left">[0.2, 0.7, 0.1]</td>
+<td style="text-align:left">0.9</td>
+<td style="text-align:left">0.60</td>
+<td style="text-align:left">[0.108, 0.378, 0.054]</td>
+</tr>
+<tr>
+<td style="text-align:left">分享视频C</td>
+<td style="text-align:left">[0.3, 0.2, 0.5]</td>
+<td style="text-align:left">1.2</td>
+<td style="text-align:left">0.35</td>
+<td style="text-align:left">[0.126, 0.084, 0.21]</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>分子</strong> =[0.72+0.108+0.126,  0.09+0.378+0.084,  0.09+0.054+0.21]=[0.954,0.552,0.354]=[0.72+0.108+0.126,0.09+0.378+0.084,0.09+0.054+0.21]=[0.954,0.552,0.354]</p>
+<p><strong>分母</strong> =1.0×0.90+0.9×0.60+1.2×0.35=0.90+0.54+0.42=1.86=1.0×0.90+0.9×0.60+1.2×0.35=0.90+0.54+0.42=1.86</p>
+<p><strong>用户向量</strong> =[0.954/1.86,  0.552/1.86,  0.354/1.86]=[0.513,0.297,0.190]=[0.954/1.86,0.552/1.86,0.354/1.86]=[0.513,0.297,0.190]</p>
+</blockquote>
+<h4 id="L2归一化">L2归一化</h4>
+<p>计算得到用户向量后，需要进行L2归一化：
+$$
+\mathbf{v}_{normalized} = \frac{\mathbf{v}}{|\mathbf{v}|_2} \tag{2}
+$$
+其中 $|\mathbf{v}|_2$  表示L2范数，即向量所有元素平方和的开方：：
+$$
+|\mathbf{v}|_2 = \sqrt{\sum_j^d v_j^2} \tag{3}
+$$
+<strong>计算示例</strong>：</p>
+<blockquote>
+<p><strong>用户向量</strong> =[0.513,0.297,0.190]=[0.513,0.297,0.190]</p>
+<p><strong>L2范数</strong> =0.5132+0.2972+0.1902=0.263+0.088+0.036=0.387=0.622=0.5132+0.2972+0.1902=0.263+0.088+0.036=0.387=0.622</p>
+<p><strong>归一化后</strong> =[0.513/0.622,  0.297/0.622,  0.190/0.622]=[0.825,0.478,0.305]=[0.513/0.622,0.297/0.622,0.190/0.622]=[0.825,0.478,0.305]</p>
+</blockquote>
+<p><strong>为什么需要归一化？</strong></p>
+<p>第一，<strong>统一尺度</strong>：不同用户的历史行为数量不同，不归一化会导致行为多的用户向量“幅度”更大，在相似度计算中产生偏差。例如，一个观看了100个视频的用户，其向量幅度天然大于只观看了10个视频的用户，但这并不代表前者的兴趣“更强”。</p>
+<p>第二，<strong>余弦相似度的前提</strong>：向量检索通常使用余弦相似度，其本质就是归一化向量的点积。当两个向量都归一化后，余弦相似度退化为点积，可以显著加速向量检索的计算：
+$$
+\text{score}(u, v) = \mathbf{v}_u \cdot \mathbf{v}_v \tag{2}
+$$</p>
+<h4 id="加权平均的数学推导">加权平均的数学推导</h4>
+<p><strong>为什么用加权平均？</strong></p>
+<p>从概率论角度，用户兴趣可以通过最大化行为序列的似然概率来推断。假设用户的行为向量 $v_1,v_2,…,v_n$ 是独立同分布的，且每个行为向量服从以用户真实兴趣  $v_{user}$ 为中心的球面高斯分布：
+$$
+P(\mathbf{v}_i \mid \mathbf{v}_u) = \frac{1}{(2\pi\sigma^2)^{d/2}} \exp\left(-\frac{|\mathbf{v}_i - \mathbf{v}_u|^2}{2\sigma^2}\right) \tag{5}
+$$</p>
+<p>则用户真实兴趣 $v_{user}$ 的最大似然估计为：
+$$
+\hat{\mathbf{v}}_u = \arg\max_v \prod_i^n P(\mathbf{v}_i \mid \mathbf{v}) \tag{6}
+$$</p>
+<p>对似然函数取对数并求导，得到：
+$$
+\hat{\mathbf{v}}_u = \frac{1}{n} \sum_i^n \mathbf{v}_i \tag{7}
+$$</p>
+<p>加权平均中的“权”来自行为类型对兴趣信号的贡献度，等价于对不同行为类型赋予不同的置信度：
+$$
+\hat{\mathbf{v}}_u = \frac{\sum_i^n w_i \cdot \mathbf{v}_i}{\sum_i^n w_i} \tag{8}
+$$</p>
+<h3 id="多时间窗口用户向量">多时间窗口用户向量</h3>
+<p>为了兼顾长期兴趣和短期兴趣，系统同时维护三个不同粒度的用户向量：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">向量类型</th>
+<th style="text-align:left">窗口范围</th>
+<th style="text-align:left">更新频率</th>
+<th style="text-align:left">特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">长期向量</td>
+<td style="text-align:left">30天行为</td>
+<td style="text-align:left">每日更新</td>
+<td style="text-align:left">反映稳定偏好，适合基础画像</td>
+</tr>
+<tr>
+<td style="text-align:left">中期向量</td>
+<td style="text-align:left">7天行为</td>
+<td style="text-align:left">每小时更新</td>
+<td style="text-align:left">捕捉近期兴趣变化</td>
+</tr>
+<tr>
+<td style="text-align:left">短期向量</td>
+<td style="text-align:left">最近20次行为</td>
+<td style="text-align:left">实时更新</td>
+<td style="text-align:left">追踪瞬时兴趣，响应快</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>精排阶段将三个向量组合使用：</p>
+<p>$$\mathbf{v}_u = 0.6 \cdot \mathbf{v}_s + 0.3 \cdot \mathbf{v}_m + 0.1 \cdot \mathbf{v}_l \tag{9}$$</p>
+<p>实时向量权重最高$\mathbf{v}_s=$（0.6），中期向量次之 $\mathbf{v}_m=$（0.3），长期向量最低$\mathbf{v}_l=$（0.1）。</p>
+<p>这种设计既保证了实时响应能力，又维持了兴趣的稳定性，避免因单次偶然行为导致画像剧烈波动。</p>
+</blockquote>
+<h3 id="用户向量计算规则">用户向量计算规则</h3>
+<p>不同行为类型对兴趣表征的贡献度不同。行为权重的设计需要基于业务数据和A/B测试结果持续优化：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">行为类型</th>
+<th style="text-align:left">权重</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">完播（≥80%）</td>
+<td style="text-align:left">1.0</td>
+<td style="text-align:left">强正向信号，用户完整观看视频</td>
+</tr>
+<tr>
+<td style="text-align:left">点赞</td>
+<td style="text-align:left">0.9</td>
+<td style="text-align:left">明确喜好，信号强度高</td>
+</tr>
+<tr>
+<td style="text-align:left">分享</td>
+<td style="text-align:left">1.2</td>
+<td style="text-align:left">用户主动传播，推荐意愿最强</td>
+</tr>
+<tr>
+<td style="text-align:left">关注作者</td>
+<td style="text-align:left">1.1</td>
+<td style="text-align:left">对创作者认可，具有持续性</td>
+</tr>
+<tr>
+<td style="text-align:left">评论</td>
+<td style="text-align:left">0.6</td>
+<td style="text-align:left">用户参与互动，但情绪可能复杂</td>
+</tr>
+<tr>
+<td style="text-align:left">播放过半（50%-80%）</td>
+<td style="text-align:left">0.4</td>
+<td style="text-align:left">有一定兴趣，但未达到完播程度</td>
+</tr>
+<tr>
+<td style="text-align:left">重播</td>
+<td style="text-align:left">0.8</td>
+<td style="text-align:left">内容有重复消费价值</td>
+</tr>
+<tr>
+<td style="text-align:left">快进跳过</td>
+<td style="text-align:left">-0.2</td>
+<td style="text-align:left">对部分内容不耐受，弱负向信号</td>
+</tr>
+<tr>
+<td style="text-align:left">快速划过（&lt;5秒）</td>
+<td style="text-align:left">-0.3</td>
+<td style="text-align:left">无明显兴趣，负向信号</td>
+</tr>
+<tr>
+<td style="text-align:left">点击不感兴趣</td>
+<td style="text-align:left">-0.8</td>
+<td style="text-align:left">明确拒绝，强负向信号</td>
+</tr>
+</tbody>
+</table>
+<h3 id="适用场景与优缺点-2">适用场景与优缺点</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">说明</th>
+<th style="text-align:left">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">首页Feed流</td>
+<td style="text-align:left">个性化推荐主列表</td>
+<td style="text-align:left">用户打开APP时的推荐流</td>
+</tr>
+<tr>
+<td style="text-align:left">新用户冷启动</td>
+<td style="text-align:left">基于有限行为的推荐</td>
+<td style="text-align:left">新用户授权后基于基础画像推荐</td>
+</tr>
+<tr>
+<td style="text-align:left">兴趣发现</td>
+<td style="text-align:left">挖掘用户潜在兴趣</td>
+<td style="text-align:left">推荐用户从未看过但匹配画像的新类别</td>
+</tr>
+</tbody>
+</table>
+<p><strong>优点</strong>：能发现新内容、突破已有观看范围、一次查询覆盖全库、适合个性化主场景。</p>
+<p><strong>缺点</strong>：冷启动用户向量质量差、用户向量构建依赖行为权重的准确性、对行为稀疏用户效果不佳。</p>
+<hr>
+<h2 id="热搜召回">热搜召回</h2>
+<p>热搜召回是最简单的召回策略：<strong>返回全局热门的视频，不针对特定用户做个性化</strong>。它的价值在于：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>兜底保障</strong>：当个性化召回效果不佳时（如新用户、冷启动），热搜内容能保证用户总有内容可看</p>
+</li>
+<li class="lvl-2">
+<p><strong>趋势发现</strong>：热搜是用户发现流行趋势的窗口，满足用户的从众心理</p>
+</li>
+<li class="lvl-2">
+<p><strong>降级策略</strong>：当向量服务异常时，热搜可作为降级方案</p>
+</li>
+</ul>
+<pre class="mermaid">flowchart LR
+    subgraph "热度计算"
+        V1[播放量] --> Score[热度分数]
+        V2[点赞量] --> Score
+        V3[分享量] --> Score
+        V4[时间衰减] --> Score
+    end
+    
+    subgraph "排序"
+        Score --> Sort[按热度分数排序]
+    end
+    
+    subgraph "输出"
+        Sort --> Top[Top 100 热门视频]
+    end</pre>
+<h3 id="热度计算公式">热度计算公式</h3>
+<p>播放量、点赞量、分享量的数值量级差异巨大（播放量百万级，分享量万级）。直接线性加权会导致播放量主导热度分数，点赞和分享几乎不起作用。</p>
+<p>因此在实际工程中，各指标需要先归一化到同一量级：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">play_norm = playCount / max_play_in_period</span><br><span class="line">like_norm = likeCount / max_like_in_period</span><br><span class="line">share_norm = shareCount / max_share_in_period</span><br><span class="line"></span><br><span class="line">hotScore = (play_norm × <span class="number">0.3</span> + like_norm × <span class="number">0.4</span> + share_norm × <span class="number">0.3</span>) × timeDecay</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>这种归一化方式让三个指标在0-1范围内贡献，权重才能真正发挥作用。</p>
+</blockquote>
+<h4 id="多指标加权">多指标加权</h4>
+<p>$$
+\text{hotScore} = (playNorm \times 0.3 + likeNorm \times 0.4 + shareNorm \times 0.3) \times \text{timeDecay} \tag{10}
+$$</p>
+<p><strong>为什么需要先归一化？</strong></p>
+<p>播放量、点赞量、分享量的数值量级差异巨大（播放量百万级，分享量万级）。直接线性加权会导致播放量主导热度分数，点赞和分享几乎不起作用。因此在实际工程中，各指标需要先归一化到同一量级：
+$$
+playNorm = \frac{playCount}{maxPlay} \tag{11}
+$$</p>
+<p>$$
+likeNorm = \frac{likeCount}{maxLike} \tag{12}
+$$</p>
+<p>$$
+shareNorm = \frac{shareCount}{maxShare} \tag{13}
+$$</p>
+<p>这种归一化方式让三个指标在0-1范围内贡献，权重才能真正发挥作用。</p>
+<h4 id="时间衰减">时间衰减</h4>
+<p>$$
+\text{timeDecay} = e^{-ageHours / 72} \tag{14}
+$$</p>
+<p>其中 ageHours 是视频发布至今的小时数，72小时的半衰期意味着3天后的视频热度减半。</p>
+<p>时间衰减确保新内容有足够的曝光机会，避免热门内容长期霸榜。</p>
+<h4 id="完整公式">完整公式</h4>
+<p>$$
+\text{hotScore} = (playCount \times 0.3 + likeCount \times 0.4 + shareCount \times 0.3) \times e^{-ageHours / 72} \tag{15}
+$$</p>
+<p><strong>参数说明</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">权重</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">playCount</td>
+<td style="text-align:left">视频播放次数</td>
+<td style="text-align:left">0.3</td>
+<td style="text-align:left">覆盖广度指标，权重适中</td>
+</tr>
+<tr>
+<td style="text-align:left">likeCount</td>
+<td style="text-align:left">视频点赞次数</td>
+<td style="text-align:left">0.4</td>
+<td style="text-align:left">认可度指标，权重最高</td>
+</tr>
+<tr>
+<td style="text-align:left">shareCount</td>
+<td style="text-align:left">视频分享次数</td>
+<td style="text-align:left">0.3</td>
+<td style="text-align:left">传播价值指标，权重适中</td>
+</tr>
+<tr>
+<td style="text-align:left">timeDecay</td>
+<td style="text-align:left">时间衰减因子</td>
+<td style="text-align:left">-</td>
+<td style="text-align:left">防止旧内容长期霸榜</td>
+</tr>
+</tbody>
+</table>
+<p><strong>计算示例</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">视频</th>
+<th style="text-align:left">播放量</th>
+<th style="text-align:left">点赞量</th>
+<th style="text-align:left">分享量</th>
+<th style="text-align:left">发布年龄</th>
+<th style="text-align:left">热度分数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">视频A</td>
+<td style="text-align:left">100万</td>
+<td style="text-align:left">5万</td>
+<td style="text-align:left">2万</td>
+<td style="text-align:left">2小时</td>
+<td style="text-align:left">(100万×0.3+5万×0.4+2万×0.3)×e−2/72≈32.6万(100万×0.3+5万×0.4+2万×0.3)×<em>e</em>−2/72≈32.6万</td>
+</tr>
+<tr>
+<td style="text-align:left">视频B</td>
+<td style="text-align:left">80万</td>
+<td style="text-align:left">8万</td>
+<td style="text-align:left">3万</td>
+<td style="text-align:left">6小时</td>
+<td style="text-align:left">(80万×0.3+8万×0.4+3万×0.3)×e−6/72≈31.9万(80万×0.3+8万×0.4+3万×0.3)×<em>e</em>−6/72≈31.9万</td>
+</tr>
+<tr>
+<td style="text-align:left">视频C</td>
+<td style="text-align:left">200万</td>
+<td style="text-align:left">10万</td>
+<td style="text-align:left">5万</td>
+<td style="text-align:left">72小时</td>
+<td style="text-align:left">(200万×0.3+10万×0.4+5万×0.3)×e−72/72≈65.8万×0.368≈24.2万(200万×0.3+10万×0.4+5万×0.3)×<em>e</em>−72/72≈65.8万×0.368≈24.2万</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>视频C虽然累计数据最高，但因发布超过72小时，时间衰减后热度低于更新的视频A和视频B。</p>
+</blockquote>
+<p><strong>热度分数的计算需要平衡多个因素</strong>：播放量反映内容的覆盖广度，点赞量反映用户的认可程度，分享量反映内容的传播价值。时间衰减确保新内容有足够的曝光机会，避免热门内容长期霸榜，72小时的半衰期意味着3天后的视频热度减半。</p>
+<h3 id="多维度热度优化">多维度热度优化</h3>
+<p>在实际工程中，单纯基于播放量、点赞量、分享量的热度计算可能会被刷量行为干扰。因此需要引入更多维度的信号：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">信号维度</th>
+<th style="text-align:left">权重</th>
+<th style="text-align:left">抗刷能力</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">完播率</td>
+<td style="text-align:left">0.2</td>
+<td style="text-align:left">强</td>
+<td style="text-align:left">用户完整观看的比例，反映内容质量</td>
+</tr>
+<tr>
+<td style="text-align:left">互动率</td>
+<td style="text-align:left">0.2</td>
+<td style="text-align:left">强</td>
+<td style="text-align:left">(点赞+评论+分享)/播放量，反映用户参与度</td>
+</tr>
+<tr>
+<td style="text-align:left">互动量</td>
+<td style="text-align:left">0.25</td>
+<td style="text-align:left">中</td>
+<td style="text-align:left">点赞+评论+分享的总量，反映传播范围</td>
+</tr>
+<tr>
+<td style="text-align:left">播放量</td>
+<td style="text-align:left">0.15</td>
+<td style="text-align:left">弱</td>
+<td style="text-align:left">容易受刷量影响，权重降低</td>
+</tr>
+<tr>
+<td style="text-align:left">搜索转化</td>
+<td style="text-align:left">0.1</td>
+<td style="text-align:left">中</td>
+<td style="text-align:left">被搜索后点击的比例，反映用户意图匹配</td>
+</tr>
+<tr>
+<td style="text-align:left">权威性</td>
+<td style="text-align:left">0.1</td>
+<td style="text-align:left">强</td>
+<td style="text-align:left">来源于认证创作者或官方账号</td>
+</tr>
+</tbody>
+</table>
+<p>更稳健的热度公式：
+$$
+\text{hotScore} = 0.2 \times \text{completionRate} + 0.2 \times \text{interactionRate} + 0.25 \times \text{interactionCountNorm} + 0.15 \times \text{playCountNorm} + 0.1 \times \text{searchCTR} + 0.1 \times \text{authorityScore} \tag{16}
+$$</p>
+<h3 id="热度刷新策略">热度刷新策略</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">策略</th>
+<th style="text-align:left">更新频率</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">全量重算</td>
+<td style="text-align:left">每小时</td>
+<td style="text-align:left">重新计算全量视频的热度分数，保证准确</td>
+</tr>
+<tr>
+<td style="text-align:left">增量更新</td>
+<td style="text-align:left">实时</td>
+<td style="text-align:left">新行为到达时增量更新受影响视频的热度</td>
+</tr>
+<tr>
+<td style="text-align:left">热门缓存</td>
+<td style="text-align:left">10分钟</td>
+<td style="text-align:left">预热TopN热门视频，加速查询</td>
+</tr>
+</tbody>
+</table>
+<h3 id="适用场景与降级">适用场景与降级</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">说明</th>
+<th style="text-align:left">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">冷启动兜底</td>
+<td style="text-align:left">新用户无历史行为时</td>
+<td style="text-align:left">首次打开APP的用户</td>
+</tr>
+<tr>
+<td style="text-align:left">降级策略</td>
+<td style="text-align:left">个性化召回失败时</td>
+<td style="text-align:left">向量检索超时或返回空</td>
+</tr>
+<tr>
+<td style="text-align:left">热门发现</td>
+<td style="text-align:left">让用户了解流行内容</td>
+<td style="text-align:left">“热门榜单”板块</td>
+</tr>
+<tr>
+<td style="text-align:left">低活跃用户</td>
+<td style="text-align:left">行为稀疏的用户</td>
+<td style="text-align:left">一周只打开几次的用户</td>
+</tr>
+</tbody>
+</table>
+<p><strong>降级链路</strong>：</p>
+<pre class="mermaid">flowchart TB
+    subgraph "召回降级链路"
+        Request[召回请求] --> Check1{个性化召回正常?}
+        Check1 --> |是| Normal[返回多路召回结果]
+        Check1 --> |否| Check2{向量服务正常?}
+        Check2 --> |是| VectorOnly[仅返回向量召回结果]
+        Check2 --> |否| Check3{OpenSearch正常?}
+        Check3 --> |是| Keyword[仅返回关键词检索结果]
+        Check3 --> |否| Fallback[返回预置热门缓存]
+    end</pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">降级级别</th>
+<th style="text-align:left">触发条件</th>
+<th style="text-align:left">响应质量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">L0（正常）</td>
+<td style="text-align:left">全部服务正常</td>
+<td style="text-align:left">四路召回融合</td>
+</tr>
+<tr>
+<td style="text-align:left">L1（向量降级）</td>
+<td style="text-align:left">Milvus不可用</td>
+<td style="text-align:left">OpenSearch向量+热搜</td>
+</tr>
+<tr>
+<td style="text-align:left">L2（粗排降级）</td>
+<td style="text-align:left">OpenSearch不可用</td>
+<td style="text-align:left">仅热搜（从Redis缓存读取）</td>
+</tr>
+<tr>
+<td style="text-align:left">L3（兜底）</td>
+<td style="text-align:left">全部不可用</td>
+<td style="text-align:left">静态热门列表</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>热搜召回实现简单、性能好，保证内容质量，适合兜底和降级场景。但它完全没有个性化，所有用户看到的内容相同，可能忽略长尾优质内容。</p>
+</blockquote>
+<hr>
+<h2 id="探索召回">探索召回</h2>
+<p>探索召回的核心目标是<strong>打破信息茧房</strong>。一味推荐用户已知喜欢的内容，短期点击率好看，但长期会导致用户疲劳和流失。探索召回主动推荐用户未曾接触过的新内容，探索潜在兴趣。</p>
+<pre class="mermaid">flowchart TB
+    subgraph "探索对象"
+        N1[新视频 发布<1小时]
+        N2[长尾视频 播放量低]
+        N3[冷启动视频 无行为积累]
+    end
+    
+    subgraph "探索策略"
+        S1[向量加噪声]
+        S2[强制配额10%]
+        S3[随机采样]
+    end
+    
+    subgraph "探索执行"
+        S1 --> Query[构建探索查询]
+        S2 --> Query
+        S3 --> Query
+        Query --> OS[OpenSearch]
+    end
+    
+    subgraph "结果处理"
+        OS --> Result[探索结果]
+        Result --> Merge[与主召回合并]
+    end</pre>
+<h3 id="四种探索策略">四种探索策略</h3>
+<p>阶段三引入了四种细化探索策略，适配不同的探索目标：</p>
+<p><strong>策略一：新视频冷启动探索</strong></p>
+<p>新视频发布后1小时内，其向量添加随机噪声，使其出现在原本不匹配的召回结果中。探索强度随视频发布时间的增长而衰减：
+$$
+\text{noiseScale} = 0.1 \times e^{-ageMinutes / 30} \tag{17}
+$$</p>
+<p>$$
+\text{exploreWeight} = 1.0 + \text{noiseScale} \tag{18}
+$$</p>
+<p><strong>参数说明</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">noiseScale</td>
+<td style="text-align:left">噪声强度</td>
+<td style="text-align:left">值越大，向量偏移越明显</td>
+</tr>
+<tr>
+<td style="text-align:left">ageMinutes</td>
+<td style="text-align:left">视频发布后的分钟数</td>
+<td style="text-align:left">发布越久，噪声越小</td>
+</tr>
+<tr>
+<td style="text-align:left">30</td>
+<td style="text-align:left">半衰期（分钟）</td>
+<td style="text-align:left">30分钟后噪声减半</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实际效果</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">发布年龄</th>
+<th style="text-align:left">noiseScale</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">刚发布</td>
+<td style="text-align:left">0.100</td>
+<td style="text-align:left">最大探索强度，推荐结果偏离最远</td>
+</tr>
+<tr>
+<td style="text-align:left">15分钟</td>
+<td style="text-align:left">0.061</td>
+<td style="text-align:left">探索强度减弱约40%</td>
+</tr>
+<tr>
+<td style="text-align:left">30分钟</td>
+<td style="text-align:left">0.037</td>
+<td style="text-align:left">探索强度减弱约63%</td>
+</tr>
+<tr>
+<td style="text-align:left">60分钟</td>
+<td style="text-align:left">0.014</td>
+<td style="text-align:left">探索强度减弱约86%</td>
+</tr>
+<tr>
+<td style="text-align:left">120分钟</td>
+<td style="text-align:left">0.002</td>
+<td style="text-align:left">几乎不再探索</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<p><strong>策略二：长尾内容探索</strong></p>
+<p>播放量低于1000的视频被标记为长尾内容，系统强制留出5-10%的召回配额给长尾桶。长尾桶中的视频基于内容向量匹配用户兴趣边缘。这种策略的目的是发现那些质量高但缺乏曝光机会的小众内容。</p>
+<hr>
+<p><strong>策略三：兴趣边界探索</strong></p>
+<p>U2I和探索中的“兴趣边界探索”都基于用户向量检索，但区别在于检索空间不同：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>U2I</strong>：在用户向量的<strong>中心区域</strong>检索（<code>k = 50</code>）</p>
+</li>
+<li class="lvl-2">
+<p><strong>兴趣边界探索</strong>：在用户向量的<strong>边缘区域</strong>检索（<code>k = 10</code>，偏移方向随机）</p>
+</li>
+</ul>
+<p>两者的关系可以理解为核心兴趣区和兴趣探索区的分层：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">探索层级</th>
+<th style="text-align:left">召回类型</th>
+<th style="text-align:left">检索区域</th>
+<th style="text-align:left">风险</th>
+<th style="text-align:left">点击率预期</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">核心区</td>
+<td style="text-align:left">U2I召回</td>
+<td style="text-align:left">用户向量中心</td>
+<td style="text-align:left">低</td>
+<td style="text-align:left">高</td>
+</tr>
+<tr>
+<td style="text-align:left">边界区</td>
+<td style="text-align:left">兴趣边界探索</td>
+<td style="text-align:left">用户向量边缘</td>
+<td style="text-align:left">中</td>
+<td style="text-align:left">中</td>
+</tr>
+<tr>
+<td style="text-align:left">冷启动区</td>
+<td style="text-align:left">新视频探索</td>
+<td style="text-align:left">随机区域</td>
+<td style="text-align:left">高</td>
+<td style="text-align:left">低</td>
+</tr>
+<tr>
+<td style="text-align:left">长尾区</td>
+<td style="text-align:left">长尾探索</td>
+<td style="text-align:left">特定长尾桶</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">低</td>
+</tr>
+</tbody>
+</table>
+<p>在用户当前兴趣向量方向增加微小偏移，检索略微偏离用户兴趣的内容。偏移量随用户探索接受率动态调整：
+$$
+\text{shiftDirection} = \text{randUnitVec} \times 0.1 \times (1 - \text{acceptRate}) \tag{19}
+$$</p>
+<p>$$
+\text{exploreVector} = \text{userVector} + \text{shiftDirection} \tag{20}
+$$</p>
+<p><strong>参数说明</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">randUnitVec</td>
+<td style="text-align:left">随机单位向量</td>
+<td style="text-align:left">方向随机，模长为1</td>
+</tr>
+<tr>
+<td style="text-align:left">0.1</td>
+<td style="text-align:left">最大偏移幅度</td>
+<td style="text-align:left">控制探索范围的边界</td>
+</tr>
+<tr>
+<td style="text-align:left">acceptRate</td>
+<td style="text-align:left">用户探索接受率</td>
+<td style="text-align:left">成功探索次数 / 总探索次数</td>
+</tr>
+<tr>
+<td style="text-align:left">1−acceptRate</td>
+<td style="text-align:left">探索需求强度</td>
+<td style="text-align:left">接受率越低，越需要探索</td>
+</tr>
+</tbody>
+</table>
+<p><strong>计算示例</strong>：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">用户向量 = [0.825, 0.478, 0.305]</span><br><span class="line">随机单位向量 = [0.707, -0.707, 0]</span><br><span class="line">acceptRate = 0.3</span><br><span class="line"></span><br><span class="line">偏移量 = [0.707, -0.707, 0] × 0.1 × 0.7 = [0.0495, -0.0495, 0]</span><br><span class="line">探索向量 = [0.825+0.0495, 0.478-0.0495, 0.305] = [0.8745, 0.4285, 0.305]</span><br></pre></td></tr></table></figure>
+<hr>
+<p><strong>策略四：热度渗透探索</strong></p>
+<p>从热门内容中抽取与用户历史兴趣无关的视频，测试用户是否对新的流行趋势感兴趣。这种策略适合发现用户的跨品类兴趣，例如一个只看搞笑视频的用户突然对科技资讯产生兴趣。</p>
+<h3 id="自适应探索强度">自适应探索强度</h3>
+<p>探索比例不再是固定值，而是根据用户实时反馈动态调整：</p>
+<pre class="mermaid">flowchart TB
+    subgraph "用户反馈追踪"
+        F1[探索内容曝光] --> F2[用户行为采集]
+        F2 --> F3{行为类型}
+        F3 --> |正反馈| P[点赞/完播/分享]
+        F3 --> |负反馈| N[快速划过/不感兴趣]
+    end
+    
+    subgraph "探索强度计算"
+        P --> Up[探索成功计数++]
+        N --> Down[探索失败计数++]
+        Up --> Ratio[探索接受率 = 成功/总探索]
+        Down --> Ratio
+        Ratio --> Adjust[调整探索比例]
+        Adjust --> Apply[应用到下一轮推荐]
+    end
+    
+    subgraph "个性化阈值"
+        U[用户历史探索接受率] --> T[动态阈值]
+        T --> Compare{当前接受率 > 阈值?}
+        Compare --> |是| Inc[探索比例 +2%]
+        Compare --> |否| Dec[探索比例 -2%]
+        Inc --> Clip[限制范围 5%-20%]
+        Dec --> Clip
+    end</pre>
+<h3 id="适用场景与优缺点-3">适用场景与优缺点</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">说明</th>
+<th style="text-align:left">探索比例建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">新视频冷启动</td>
+<td style="text-align:left">刚发布无行为的新视频</td>
+<td style="text-align:left">5-10%</td>
+</tr>
+<tr>
+<td style="text-align:left">长尾内容发现</td>
+<td style="text-align:left">播放量&lt;1000的优质内容</td>
+<td style="text-align:left">3-5%</td>
+</tr>
+<tr>
+<td style="text-align:left">兴趣边界拓展</td>
+<td style="text-align:left">用户兴趣边缘的内容</td>
+<td style="text-align:left">2-3%</td>
+</tr>
+<tr>
+<td style="text-align:left">A/B测试新策略</td>
+<td style="text-align:left">验证新召回算法的效果</td>
+<td style="text-align:left">1-5%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>优点</strong>：打破信息茧房、提升长期留存、帮助新内容快速积累初始数据、发现用户的潜在兴趣。</p>
+<p><strong>缺点</strong>：短期点击率可能下降、需要精细调控避免劣质内容、对探索效果需要持续监控。</p>
+<hr>
+<h2 id="多路召回融合">多路召回融合</h2>
+<pre class="mermaid">flowchart TB
+    subgraph "并行召回"
+        I2I[I2I召回 100条] --> Merge
+        U2I[U2I召回 100条] --> Merge
+        Hot[热搜召回 50条] --> Merge
+        Explore[探索召回 50条] --> Merge
+    end
+    
+    subgraph "融合去重"
+        Merge[结果合并] --> Dedup[按video_id去重]
+        Dedup --> Rank[排序：多源加权分]
+    end
+    
+    subgraph "配额分配"
+        Rank --> Final[输出300条 送入粗排]
+    end</pre>
+<h3 id="分数归一化">分数归一化</h3>
+<p>四路召回的分数来源不同，量纲和分布完全不同：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">召回源</th>
+<th style="text-align:left">分数类型</th>
+<th style="text-align:left">典型范围</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">I2I</td>
+<td style="text-align:left">向量余弦相似度</td>
+<td style="text-align:left">0.3-0.95</td>
+<td style="text-align:left">取决于向量分布</td>
+</tr>
+<tr>
+<td style="text-align:left">U2I</td>
+<td style="text-align:left">向量余弦相似度</td>
+<td style="text-align:left">0.1-0.85</td>
+<td style="text-align:left">用户向量可能更稀疏</td>
+</tr>
+<tr>
+<td style="text-align:left">热搜</td>
+<td style="text-align:left">热度分数</td>
+<td style="text-align:left">0-100万</td>
+<td style="text-align:left">绝对数值，与相似度无关</td>
+</tr>
+<tr>
+<td style="text-align:left">探索</td>
+<td style="text-align:left">随机+相关性</td>
+<td style="text-align:left">0.2-0.60</td>
+<td style="text-align:left">可能附带随机因素</td>
+</tr>
+</tbody>
+</table>
+<p>如果不归一化，热搜分数百万级的数值会主导融合结果，向量召回的贡献被淹没。<strong>Sigmoid归一化</strong>可将不同分布映射到同一尺度：
+$$
+\text{normalizedScore} = \frac{1}{1 + e^{-score}} \tag{21}
+$$</p>
+<h3 id="RRF融合计算">RRF融合计算</h3>
+<p>RRF（倒数排名融合）是一种不依赖分数尺度的融合算法。其核心公式为：
+$$
+\text{score} = \sum_{i} \frac{1}{rank_i + 60} \tag{22}
+$$
+<strong>参数说明</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">参数</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">rank</td>
+<td style="text-align:left">文档在第i路召回中的排名</td>
+<td style="text-align:left">从1开始，排名越靠前值越小</td>
+</tr>
+<tr>
+<td style="text-align:left">rankConstant</td>
+<td style="text-align:left">平滑常数（通常取60）</td>
+<td style="text-align:left">防止排名靠后的文档得分过小</td>
+</tr>
+<tr>
+<td style="text-align:left">Σ</td>
+<td style="text-align:left">对所有召回源求和</td>
+<td style="text-align:left">文档出现在几路召回中就加几次</td>
+</tr>
+</tbody>
+</table>
+<p><strong>计算示例</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">文档</th>
+<th style="text-align:left">向量检索排名</th>
+<th style="text-align:left">关键词检索排名</th>
+<th style="text-align:left">得分计算</th>
+<th style="text-align:left">最终得分</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">文档X</td>
+<td style="text-align:left">第1名</td>
+<td style="text-align:left">第2名</td>
+<td style="text-align:left">1/(1+60) + 1/(2+60) = 0.0164 + 0.0161</td>
+<td style="text-align:left">0.0325</td>
+</tr>
+<tr>
+<td style="text-align:left">文档Y</td>
+<td style="text-align:left">第3名</td>
+<td style="text-align:left">第5名</td>
+<td style="text-align:left">1/(3+60) + 1/(5+60) = 0.0159 + 0.0154</td>
+<td style="text-align:left">0.0313</td>
+</tr>
+<tr>
+<td style="text-align:left">文档Z</td>
+<td style="text-align:left">仅向量检索第1名</td>
+<td style="text-align:left">未出现</td>
+<td style="text-align:left">1/(1+60)</td>
+<td style="text-align:left">0.0164</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>文档X在两路召回中排名都靠前，得分最高。文档Z虽然在向量检索中排名第一，但未出现在关键词检索中，得分反而低于文档X。</p>
+</blockquote>
+<h3 id="加权融合">加权融合</h3>
+<p>$$
+\text{finalScore} = \sum (\text{recallSourceScore} \times \text{sourceWeight}) \tag{23}
+$$</p>
+<p>分数归一化后各路召回的分值尺度统一为0-1之间。rankPosition 为视频在该路召回中的排名位置（从1开始），排名越靠前得分越高。sourceWeight 为各路召回的权重，反映该路召回在整体融合中的重要程度，默认I2I和U2I权重为0.4，热搜和探索权重为0.1。</p>
+<h3 id="配额动态调整">配额动态调整</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">用户类型</th>
+<th style="text-align:left">I2I</th>
+<th style="text-align:left">U2I</th>
+<th style="text-align:left">热搜</th>
+<th style="text-align:left">探索</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">高活跃用户</td>
+<td style="text-align:left">100</td>
+<td style="text-align:left">100</td>
+<td style="text-align:left">30</td>
+<td style="text-align:left">70</td>
+<td style="text-align:left">更多探索</td>
+</tr>
+<tr>
+<td style="text-align:left">中活跃用户</td>
+<td style="text-align:left">100</td>
+<td style="text-align:left">100</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">均衡分配</td>
+</tr>
+<tr>
+<td style="text-align:left">低活跃用户</td>
+<td style="text-align:left">50</td>
+<td style="text-align:left">80</td>
+<td style="text-align:left">100</td>
+<td style="text-align:left">20</td>
+<td style="text-align:left">更多热搜兜底</td>
+</tr>
+<tr>
+<td style="text-align:left">新用户</td>
+<td style="text-align:left">30</td>
+<td style="text-align:left">30</td>
+<td style="text-align:left">120</td>
+<td style="text-align:left">20</td>
+<td style="text-align:left">热搜为主</td>
+</tr>
+<tr>
+<td style="text-align:left">探索友好型</td>
+<td style="text-align:left">80</td>
+<td style="text-align:left">80</td>
+<td style="text-align:left">40</td>
+<td style="text-align:left">100</td>
+<td style="text-align:left">鼓励探索</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="四路召回对比">四路召回对比</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">I2I</th>
+<th style="text-align:left">U2I</th>
+<th style="text-align:left">热搜</th>
+<th style="text-align:left">探索</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">个性化程度</td>
+<td style="text-align:left">中（基于当前视频）</td>
+<td style="text-align:left">高（基于用户画像）</td>
+<td style="text-align:left">无</td>
+<td style="text-align:left">低（随机探索）</td>
+</tr>
+<tr>
+<td style="text-align:left">新颖度</td>
+<td style="text-align:left">低</td>
+<td style="text-align:left">中</td>
+<td style="text-align:left">低</td>
+<td style="text-align:left">高</td>
+</tr>
+<tr>
+<td style="text-align:left">相关性</td>
+<td style="text-align:left">高</td>
+<td style="text-align:left">中高</td>
+<td style="text-align:left">中</td>
+<td style="text-align:left">低</td>
+</tr>
+<tr>
+<td style="text-align:left">冷启动能力</td>
+<td style="text-align:left">中</td>
+<td style="text-align:left">差</td>
+<td style="text-align:left">好</td>
+<td style="text-align:left">好</td>
+</tr>
+<tr>
+<td style="text-align:left">主要风险</td>
+<td style="text-align:left">同质化</td>
+<td style="text-align:left">新用户空结果</td>
+<td style="text-align:left">无个性化</td>
+<td style="text-align:left">点击率下降</td>
+</tr>
+<tr>
+<td style="text-align:left">计算复杂度</td>
+<td style="text-align:left">低</td>
+<td style="text-align:left">低</td>
+<td style="text-align:left">极低</td>
+<td style="text-align:left">低</td>
+</tr>
+<tr>
+<td style="text-align:left">可解释性</td>
+<td style="text-align:left">高</td>
+<td style="text-align:left">高</td>
+<td style="text-align:left">高</td>
+<td style="text-align:left">中</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="总结">总结</h2>
+<p>多路并行召回是推荐系统中承上启下的关键环节，其设计质量直接影响后续粗排和精排的效果上限。核心设计原则可以归纳为以下几点：</p>
+<p><strong>1. 多样化是召回的生命线</strong></p>
+<p>单一路召回无法覆盖所有用户和场景。I2I保证相关性，U2I提供泛化能力，热搜兜底，探索打破茧房。四路召回的互补性使得候选集既有高质量内容，又有新鲜内容。</p>
+<p><strong>2. 配额动态调整是精细化的体现</strong></p>
+<p>不同用户类型对四路召回的依赖程度不同。高活跃用户可以承受更多探索，新用户需要更多热搜兜底。配额动态调整使得系统能够根据用户状态自适应地分配流量。</p>
+<p><strong>3. 多模态向量是I2I和U2I的共同基础</strong></p>
+<p>无论是视频相似度计算还是用户向量构建，多模态向量都提供了比单模态更全面的内容理解。视觉、音频、文本三路并发查询使得相似判断更加准确和全面。</p>
+<p><strong>4. 探索与利用的平衡是长期收益的保障</strong></p>
+<p>短期点击率优化会鼓励系统保守地推荐用户已知喜欢的内容，但长期用户留存需要主动探索新兴趣。E&amp;E机制通过自适应探索比例，在短期指标和长期收益之间取得平衡。</p>
+<p><strong>5. 降级链路是系统稳定性的保证</strong></p>
+<p>召回层处于推荐漏斗的最前端，其服务稳定性直接影响整个推荐系统的可用性。设计完整的降级链路，确保在部分服务不可用时系统仍能返回合理的推荐结果。</p>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/07/1253d04858e94ba2a6856cc795b01c8b/">https://pengline.cn/2026/07/1253d04858e94ba2a6856cc795b01c8b/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%8E%A8%E8%8D%90%E7%B3%BB%E7%BB%9F/">推荐系统</a><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E/">多路召回</a><a class="post-meta__tags" href="/tags/I2I%E5%8F%AC%E5%9B%9E/">I2I召回</a><a class="post-meta__tags" href="/tags/U2I%E5%8F%AC%E5%9B%9E/">U2I召回</a><a class="post-meta__tags" href="/tags/%E8%A7%86%E9%A2%91%E6%8E%A8%E8%8D%90/">视频推荐</a><a class="post-meta__tags" href="/tags/%E5%8F%AC%E5%9B%9E%E7%AD%96%E7%95%A5/">召回策略</a><a class="post-meta__tags" href="/tags/%E7%83%AD%E6%90%9C%E5%8F%AC%E5%9B%9E/">热搜召回</a><a class="post-meta__tags" href="/tags/%E6%8E%A2%E7%B4%A2%E5%8F%AC%E5%9B%9E/">探索召回</a><a class="post-meta__tags" href="/tags/%E5%8D%8F%E5%90%8C%E8%BF%87%E6%BB%A4/">协同过滤</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E6%A8%A1%E6%80%81%E8%9E%8D%E5%90%88/">多模态融合</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/07/094031edb39c4505aefb6b0572381e03/" title="短视频推荐系统之用户画像构建方法"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small193133vUdYM1755689493.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post"><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">短视频推荐系统之用户画像构建方法</div></div><div class="info-2"><div class="info-item-1">短视频推荐系统中用户画像的构建：显式与隐式画像融合、标签画像与向量画像双轨构建、滑动窗口实时更新机制、时间衰减策略、行为序列建模及画像存储架构，从静态标签到动态兴趣表征的演进路径。</div></div></div></a><a class="pagination-related" href="/2026/07/af0a363a828649bbbbfc42583dbfb2a9/" title="基于OpenSearch + Milvus的混合召回策略"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">基于OpenSearch + Milvus的混合召回策略</div></div><div class="info-2"><div class="info-item-1">深入对比分析Milvus与OpenSearch在向量检索领域的架构设计与技术原理，涵盖索引算法（HNSW/IVF/PQ）、量化压缩、硬件加速等核心机制，并结合推荐系统场景给出混合检索架构的实践方案。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/06/9509f9a6b42748bab6acf320d3419eeb/" title="基于 OpenSearch + 多模态融合的推荐系统"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1704300572353170430057255.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-18</div><div class="info-item-2">基于 OpenSearch + 多模态融合的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建多模态娱乐视频推荐系统，涵盖视觉/音频/文本三模态特征提取、独立存储与动态权重融合、混合检索与RRF融合、多路召回升级及推理服务扩展，适合推荐系统架构师参考。</div></div></div></a><a class="pagination-related" href="/2026/06/1726f4eec04b4cdf873479019b5c604a/" title="基于 OpenSearch 构建短视频推荐系统"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-09</div><div class="info-item-2">基于 OpenSearch 构建短视频推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建推荐系统，涵盖三模态（视觉/音频/文本）特征提取与融合、四路召回（I2I/U2I/热搜/探索）、混合检索与RRF融合、滑动窗口用户向量、E&E探索机制、MMR多样性重排等。</div></div></div></a><a class="pagination-related" href="/2026/06/198954be50c24c0483353bb975e882d3/" title="基于 OpenSearch + 文本向量的推荐系统"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small213646O4a2y1754228206.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-09</div><div class="info-item-2">基于 OpenSearch + 文本向量的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建文本向量推荐系统，涵盖系统架构设计、离线数据处理Pipeline、OpenSearch/Redis/HBase多级存储架构、BERT推理服务部署、双路召回（I2I/U2I）实现、规则排序策略。</div></div></div></a><a class="pagination-related" href="/2026/06/b014b5e8d1b24b4ab945634f08ddce0f/" title="短视频推荐系统各阶段算法策略"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/1638860445980163886044557.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-26</div><div class="info-item-2">短视频推荐系统各阶段算法策略</div></div><div class="info-2"><div class="info-item-1">剖析短视频推荐系统的分层漏斗架构，从召回、粗排、精排到重排四个阶段：协同过滤、双塔向量召回、MMoE/PLE多目标模型、MMR多样性打散等核心算法原理、工程实现与典型场景应用。</div></div></div></a><a class="pagination-related" href="/2026/07/af0a363a828649bbbbfc42583dbfb2a9/" title="基于OpenSearch + Milvus的混合召回策略"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-08</div><div class="info-item-2">基于OpenSearch + Milvus的混合召回策略</div></div><div class="info-2"><div class="info-item-1">深入对比分析Milvus与OpenSearch在向量检索领域的架构设计与技术原理，涵盖索引算法（HNSW/IVF/PQ）、量化压缩、硬件加速等核心机制，并结合推荐系统场景给出混合检索架构的实践方案。</div></div></div></a><a class="pagination-related" href="/2026/07/094031edb39c4505aefb6b0572381e03/" title="短视频推荐系统之用户画像构建方法"><img class="cover" src= "/img/20241215205335173426721579192.webp" data-lazy-src="https://tool.pengline.cn/imgs/blog/essay/small193133vUdYM1755689493.webp" alt="cover"><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-11</div><div class="info-item-2">短视频推荐系统之用户画像构建方法</div></div><div class="info-2"><div class="info-item-1">短视频推荐系统中用户画像的构建：显式与隐式画像融合、标签画像与向量画像双轨构建、滑动窗口实时更新机制、时间衰减策略、行为序列建模及画像存储架构，从静态标签到动态兴趣表征的演进路径。</div></div></div></a></div></div><hr class="custom-hr"/><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">多路并行召回策略</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E6%9E%B6%E6%9E%84"><span class="toc-number">1.1.</span> <span class="toc-text">多路召回架构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AC%E5%9B%9E%E5%B1%82%E7%9A%84%E5%AE%9A%E4%BD%8D"><span class="toc-number">1.1.1.</span> <span class="toc-text">召回层的定位</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8D%95%E8%B7%AF%E5%8F%AC%E5%9B%9E%E7%9A%84%E5%B1%80%E9%99%90%E6%80%A7"><span class="toc-number">1.1.2.</span> <span class="toc-text">单路召回的局限性</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%B9%B6%E8%A1%8C%E7%9A%84%E5%B9%B6%E5%8F%91%E6%A8%A1%E5%9E%8B"><span class="toc-number">1.1.3.</span> <span class="toc-text">多路并行的并发模型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AC%E5%9B%9E%E6%9E%B6%E6%9E%84%E6%A8%A1%E5%9E%8B"><span class="toc-number">1.1.4.</span> <span class="toc-text">召回架构模型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B6%85%E6%97%B6%E4%B8%AD%E6%96%AD%E6%9C%BA%E5%88%B6"><span class="toc-number">1.1.5.</span> <span class="toc-text">超时中断机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%99%8D%E7%BA%A7%E5%86%B3%E7%AD%96%E6%B5%81%E7%A8%8B"><span class="toc-number">1.1.6.</span> <span class="toc-text">降级决策流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#I2I%E5%8F%AC%E5%9B%9E%EF%BC%9A%E5%9F%BA%E4%BA%8E%E7%89%A9%E5%93%81%E7%9A%84%E5%8D%8F%E5%90%8C%E8%BF%87%E6%BB%A4"><span class="toc-number">1.2.</span> <span class="toc-text">I2I召回：基于物品的协同过滤</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9B%B8%E4%BC%BC%E5%BA%A6%E8%AE%A1%E7%AE%97"><span class="toc-number">1.2.1.</span> <span class="toc-text">相似度计算</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%A8%E5%A4%9A%E6%A8%A1%E6%80%81%E5%90%91%E9%87%8F%E8%80%8C%E9%9D%9E%E4%BC%A0%E7%BB%9F%E5%8D%8F%E5%90%8C%E8%BF%87%E6%BB%A4"><span class="toc-number">1.2.2.</span> <span class="toc-text">用多模态向量而非传统协同过滤</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E8%A7%86%E9%A2%91%E6%9D%A5%E6%BA%90%E7%9A%84I2I%E8%9E%8D%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.2.3.</span> <span class="toc-text">多视频来源的I2I融合策略</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9F%A5%E8%AF%A2%E9%85%8D%E9%A2%9D%E5%88%86%E9%85%8D"><span class="toc-number">1.2.4.</span> <span class="toc-text">查询配额分配</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF%E4%B8%8E%E4%BC%98%E7%BC%BA%E7%82%B9"><span class="toc-number">1.2.5.</span> <span class="toc-text">适用场景与优缺点</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#U2I%E5%8F%AC%E5%9B%9E%EF%BC%9A%E5%9F%BA%E4%BA%8E%E7%94%A8%E6%88%B7%E7%9A%84%E5%8D%8F%E5%90%8C%E8%BF%87%E6%BB%A4"><span class="toc-number">1.3.</span> <span class="toc-text">U2I召回：基于用户的协同过滤</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%A8%E6%88%B7%E5%90%91%E9%87%8F%E7%9A%84%E6%9E%84%E5%BB%BA%E6%96%B9%E6%B3%95"><span class="toc-number">1.3.1.</span> <span class="toc-text">用户向量的构建方法</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%BB%91%E5%8A%A8%E7%AA%97%E5%8F%A3%E6%9C%BA%E5%88%B6"><span class="toc-number">1.3.1.1.</span> <span class="toc-text">滑动窗口机制</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%A1%8C%E4%B8%BA%E6%9D%83%E9%87%8D%E9%85%8D%E7%BD%AE"><span class="toc-number">1.3.1.2.</span> <span class="toc-text">行为权重配置</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%97%B6%E9%97%B4%E8%A1%B0%E5%87%8F%E5%87%BD%E6%95%B0"><span class="toc-number">1.3.1.3.</span> <span class="toc-text">时间衰减函数</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%94%A8%E6%88%B7%E5%90%91%E9%87%8F%E8%AE%A1%E7%AE%97%E5%85%AC%E5%BC%8F"><span class="toc-number">1.3.1.4.</span> <span class="toc-text">用户向量计算公式</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#L2%E5%BD%92%E4%B8%80%E5%8C%96"><span class="toc-number">1.3.1.5.</span> <span class="toc-text">L2归一化</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%8A%A0%E6%9D%83%E5%B9%B3%E5%9D%87%E7%9A%84%E6%95%B0%E5%AD%A6%E6%8E%A8%E5%AF%BC"><span class="toc-number">1.3.1.6.</span> <span class="toc-text">加权平均的数学推导</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%97%B6%E9%97%B4%E7%AA%97%E5%8F%A3%E7%94%A8%E6%88%B7%E5%90%91%E9%87%8F"><span class="toc-number">1.3.2.</span> <span class="toc-text">多时间窗口用户向量</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%A8%E6%88%B7%E5%90%91%E9%87%8F%E8%AE%A1%E7%AE%97%E8%A7%84%E5%88%99"><span class="toc-number">1.3.3.</span> <span class="toc-text">用户向量计算规则</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF%E4%B8%8E%E4%BC%98%E7%BC%BA%E7%82%B9-2"><span class="toc-number">1.3.4.</span> <span class="toc-text">适用场景与优缺点</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%83%AD%E6%90%9C%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.4.</span> <span class="toc-text">热搜召回</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%83%AD%E5%BA%A6%E8%AE%A1%E7%AE%97%E5%85%AC%E5%BC%8F"><span class="toc-number">1.4.1.</span> <span class="toc-text">热度计算公式</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%A4%9A%E6%8C%87%E6%A0%87%E5%8A%A0%E6%9D%83"><span class="toc-number">1.4.1.1.</span> <span class="toc-text">多指标加权</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%97%B6%E9%97%B4%E8%A1%B0%E5%87%8F"><span class="toc-number">1.4.1.2.</span> <span class="toc-text">时间衰减</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%AE%8C%E6%95%B4%E5%85%AC%E5%BC%8F"><span class="toc-number">1.4.1.3.</span> <span class="toc-text">完整公式</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E7%BB%B4%E5%BA%A6%E7%83%AD%E5%BA%A6%E4%BC%98%E5%8C%96"><span class="toc-number">1.4.2.</span> <span class="toc-text">多维度热度优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%83%AD%E5%BA%A6%E5%88%B7%E6%96%B0%E7%AD%96%E7%95%A5"><span class="toc-number">1.4.3.</span> <span class="toc-text">热度刷新策略</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF%E4%B8%8E%E9%99%8D%E7%BA%A7"><span class="toc-number">1.4.4.</span> <span class="toc-text">适用场景与降级</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8E%A2%E7%B4%A2%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.5.</span> <span class="toc-text">探索召回</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9B%9B%E7%A7%8D%E6%8E%A2%E7%B4%A2%E7%AD%96%E7%95%A5"><span class="toc-number">1.5.1.</span> <span class="toc-text">四种探索策略</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E9%80%82%E5%BA%94%E6%8E%A2%E7%B4%A2%E5%BC%BA%E5%BA%A6"><span class="toc-number">1.5.2.</span> <span class="toc-text">自适应探索强度</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF%E4%B8%8E%E4%BC%98%E7%BC%BA%E7%82%B9-3"><span class="toc-number">1.5.3.</span> <span class="toc-text">适用场景与优缺点</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E8%9E%8D%E5%90%88"><span class="toc-number">1.6.</span> <span class="toc-text">多路召回融合</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E6%95%B0%E5%BD%92%E4%B8%80%E5%8C%96"><span class="toc-number">1.6.1.</span> <span class="toc-text">分数归一化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#RRF%E8%9E%8D%E5%90%88%E8%AE%A1%E7%AE%97"><span class="toc-number">1.6.2.</span> <span class="toc-text">RRF融合计算</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8A%A0%E6%9D%83%E8%9E%8D%E5%90%88"><span class="toc-number">1.6.3.</span> <span class="toc-text">加权融合</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%85%8D%E9%A2%9D%E5%8A%A8%E6%80%81%E8%B0%83%E6%95%B4"><span class="toc-number">1.6.4.</span> <span class="toc-text">配额动态调整</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E8%B7%AF%E5%8F%AC%E5%9B%9E%E5%AF%B9%E6%AF%94"><span class="toc-number">1.7.</span> <span class="toc-text">四路召回对比</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">1.8.</span> <span class="toc-text">总结</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" target="_blank" href="https://github.com/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Hosted-Github-brightgreen.svg?style=flat&logo=GitHub" title="本站项目由Gtihub托管"></a><a style="margin-inline:5px" target="_blank" href="https://hexo.io/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Frame-Hexo-blue.svg?style=flat&logo=hexo" title="博客框架为Hexo"></a><a style="margin-inline:5px" target="_blank"  href="https://butterfly.js.org/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Theme-Butterfly-6513df.svg?logoColor=white&style=flat&logo=buefy" title="主题采用butterfly"></a><a  style="margin-inline:5px" target="_blank" href="https://giscus.app/zh-CN/"><img src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Comment-Giscus-2873df.svg?logoColor=white&style=flat&logo=git" title="评论系统为Giscus"></a><a style="margin-inline:5px" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img  src= "/img/20241215205335173426721579192.webp" data-lazy-src="/img/badge/Copyright-BY--NC--SA4.svg?style=flat&logo=Claris" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可"></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewBox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"></use></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/vanilla-lazyload/dist/lazyload.iife.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !false) {
+    if (false) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script src="/js/custom/mermaid-zoom.js"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zIndex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"/></div></div><hr/><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
