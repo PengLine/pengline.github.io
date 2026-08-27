@@ -1,0 +1,670 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Elasticsearch 深度分页的陷阱与最优解（from/size vs search_after） | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="全面剖析 Elasticsearch 分页机制，从 from&#x2F;size 的协调节点内存陷阱，到 search_after 的游标原理，再到 PIT 与滚动查询的选型建议。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Elasticsearch 深度分页的陷阱与最优解（from&#x2F;size vs search_after）">
+<meta property="og:url" content="https://pengline.cn/2025/12/d37bd4a145d34befa210169209870a38/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="全面剖析 Elasticsearch 分页机制，从 from&#x2F;size 的协调节点内存陷阱，到 search_after 的游标原理，再到 PIT 与滚动查询的选型建议。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1745746689748174574668963.webp">
+<meta property="article:published_time" content="2025-12-21T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-08-27T10:53:45.262Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Elasticsearch">
+<meta property="article:tag" content="search_after">
+<meta property="article:tag" content="倒排索引">
+<meta property="article:tag" content="分布式查询">
+<meta property="article:tag" content="深度分页">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1745746689748174574668963.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/12/d37bd4a145d34befa210169209870a38/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'Elasticsearch 深度分页的陷阱与最优解（from/size vs search_after）',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">106</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">519</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></div><div class="menus_item"><a class="site-page" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1745746689748174574668963.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Elasticsearch 深度分页的陷阱与最优解（from/size vs search_after）</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></div><div class="menus_item"><a class="site-page" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Elasticsearch 深度分页的陷阱与最优解（from/size vs search_after）</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-12-21T16:00:00.000Z" title="发表于 2025-12-22 00:00:00">2025-12-22</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-08-27T10:53:45.262Z" title="更新于 2026-08-27 18:53:45">2026-08-27</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/ES/">ES</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>Elasticsearch 深度分页</h1>
+<p>在数据量达到千万甚至亿级时，Elasticsearch（以下简称 ES）往往是首选。但在分页场景下，ES 的 <code>from/size</code> 机制存在一个<strong>毁灭性的陷阱</strong>：它不是“跳过前 N 条”，而是“取出前 N+M 条再丢弃前 N 条”。</p>
+<hr>
+<h2 id="基础分页：from-size（新手陷阱）">基础分页：<code>from / size</code>（新手陷阱）</h2>
+<p>这是 ES 最直观的分页方式，类似于 SQL 的 <code>LIMIT offset, size</code>。</p>
+<p><code>from + size</code> 分页方式的原理相对简单。当执行一个搜索查询并指定了 <code>from</code> 和 <code>size</code> 参数时，Elasticsearch 会进行以下步骤：</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>分发查询</strong>：Elasticsearch会将查询请求分发到所有相关的分片上。</p>
+</li>
+<li class="lvl-3">
+<p><strong>查询分片</strong>：每个分片都会执行查询，并返回前 <code>from + size</code> 条符合条件的文档（但实际上只会用到最后的 <code>size</code> 条）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>合并和排序</strong>：协调节点（通常是执行搜索的Elasticsearch节点）会收集所有分片返回的结果，将它们合并成一个全局的结果集，并根据查询中指定的排序规则进行排序。</p>
+</li>
+<li class="lvl-3">
+<p><strong>截断和返回</strong>：协调节点会从排序后的结果集中截取从 <code>from</code> 位置开始的 <code>size</code> 条记录，并将它们返回给客户端。</p>
+</li>
+</ol>
+</blockquote>
+<p>由于 <code>from + size</code> 需要合并和排序所有分片返回的结果，因此当 <code>from</code> 值很大时，这个过程可能变得非常慢，因为需要处理大量数据。</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">GET /products/_search</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;match&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;apple&quot;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;from&quot;</span><span class="punctuation">:</span> <span class="number">9</span><span class="punctuation">,</span>  <span class="comment">// 注意，索引从0开始，所以第10条记录的索引是9</span></span><br><span class="line">    <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">        <span class="punctuation">&#123;</span> <span class="attr">&quot;price&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="attr">&quot;order&quot;</span><span class="punctuation">:</span> <span class="string">&quot;asc&quot;</span><span class="punctuation">&#125;</span><span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p><strong>请求示例</strong>（查第 100 页，每页 10 条）：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">GET /orders/_search</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;from&quot;</span><span class="punctuation">:</span> <span class="number">990</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;match&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;paid&quot;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">&#123;</span> <span class="attr">&quot;create_time&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p><strong>执行流程图解</strong>：</p>
+<pre class="mermaid">sequenceDiagram
+    participant Client as 客户端
+    participant Coord as 协调节点
+    participant Shard1 as 分片1 (主)
+    participant Shard2 as 分片2 (主)
+
+    Client->>Coord: from=990, size=10
+    Coord->>Shard1: 每个分片取 from+size = 1000 条
+    Coord->>Shard2: 每个分片取 from+size = 1000 条
+    Shard1-->>Coord: 返回 1000 条本分片数据
+    Shard2-->>Coord: 返回 1000 条本分片数据
+    Note over Coord: 协调节点内存中合并 2000 条<br>全局排序后截取 990~999 共 10 条
+    Coord-->>Client: 返回最终 10 条结果</pre>
+<p><mark><strong>致命缺陷：深度分页下协调节点内存爆炸</strong></mark></p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">指标</th>
+<th style="text-align:left">第 1 页（from=0）</th>
+<th style="text-align:left">第 100 页（from=990）</th>
+<th style="text-align:left">第 10000 页（from=99990）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>每个分片取回</strong></td>
+<td style="text-align:left">10 条</td>
+<td style="text-align:left">1000 条</td>
+<td style="text-align:left">100000 条</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>3个分片总计</strong></td>
+<td style="text-align:left">30 条</td>
+<td style="text-align:left">3000 条</td>
+<td style="text-align:left">300000 条</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>协调节点内存</strong></td>
+<td style="text-align:left">极低</td>
+<td style="text-align:left">几 MB</td>
+<td style="text-align:left"><strong>几百 MB ~ GB 级</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>网络开销</strong></td>
+<td style="text-align:left">极小</td>
+<td style="text-align:left">中等</td>
+<td style="text-align:left"><strong>极大（频繁 GC 甚至 OOM）</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>根本原因</strong>：ES 无法在分片级别知道全局排序的第 990 条在哪，所以每个分片必须把所有可能的数据（前 990+10 条）全部送到协调节点，由协调节点做全局归并排序。</p>
+</blockquote>
+<hr>
+<h2 id="默认保护机制：max-result-window">默认保护机制：<code>max_result_window</code></h2>
+<p>ES 默认设置 <code>index.max_result_window = 10000</code>，意味着 <code>from + size</code> 不能超过 10000。</p>
+<p><strong>作用</strong>：防止无意识的深度分页打崩集群。</p>
+<p><strong>错误示例</strong>（超过限制）：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;error&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;root_cause&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;query_phase_execution_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Result window is too large, from + size must be less than or equal to: [10000]&quot;</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><strong>千万别轻易调大这个值！</strong> 调大意味着允许更深的分页，会极大增加协调节点的内存压力。如果必须随机跳页，请结合业务限制最大可访问页数。</p>
+</blockquote>
+<hr>
+<h2 id="优化方案：search-after（游标分页）">优化方案：<code>search_after</code>（游标分页）</h2>
+<p><code>search_after</code> 是 ES 官方推荐的<strong>深度分页解决方案</strong>，其核心思想与 Redis 的 <code>ZREVRANGEBYSCORE</code> 完全一致：<strong>用排序值代替偏移量</strong>。</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>首次查询</strong>：正常的 <code>from=0, size=10</code>，并记录<strong>最后一条数据的排序字段值</strong>。</p>
+</li>
+<li class="lvl-3">
+<p><strong>后续查询</strong>：使用 <code>search_after</code> 传入上一页最后的排序值，ES 直接定位到该值之后的数据。</p>
+</li>
+</ol>
+</blockquote>
+<h3 id="代码示例（必须配合-sort）">代码示例（必须配合 <code>sort</code>）</h3>
+<p><strong>首次查询</strong>：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">GET /orders/_search</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;match&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;paid&quot;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;create_time&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span>   <span class="comment">// 必须加 tiebreaker（平局打破器），保证排序唯一</span></span><br><span class="line">  <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p><strong>响应结果</strong>（截取最后一条）：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;hits&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;hits&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="comment">// ... 前 9 条 ...</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;order_999&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_source&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> ... <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span> <span class="string">&quot;2026-08-26T23:59:59Z&quot;</span><span class="punctuation">,</span> <span class="number">999</span> <span class="punctuation">]</span>  <span class="comment">// ← 关键游标值</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p><strong>下一页查询</strong>（使用 <code>search_after</code>）：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">GET /orders/_search</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;match&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;paid&quot;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;create_time&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;search_after&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;2026-08-26T23:59:59Z&quot;</span><span class="punctuation">,</span> <span class="number">999</span><span class="punctuation">]</span>  <span class="comment">// 传入上一页最后的 sort 值</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<h3 id="search-after-的底层优势"><code>search_after</code> 的底层优势</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">对比项</th>
+<th style="text-align:left"><code>from / size</code></th>
+<th style="text-align:left"><code>search_after</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>分片取回数据量</strong></td>
+<td style="text-align:left">每个分片取 <code>from+size</code> 条</td>
+<td style="text-align:left">每个分片只取 <code>size</code> 条</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>协调节点内存</strong></td>
+<td style="text-align:left">随 <code>from</code> 线性增长</td>
+<td style="text-align:left"><strong>恒定 O(size × 分片数)</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>是否支持随机跳页</strong></td>
+<td style="text-align:left">支持</td>
+<td style="text-align:left">不支持（仅支持上一页/下一页）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>性能退化</strong></td>
+<td style="text-align:left">深度分页急剧恶化</td>
+<td style="text-align:left"><strong>恒定不变</strong></td>
+</tr>
+</tbody>
+</table>
+<pre class="mermaid">graph LR
+    subgraph from/size 内存消耗
+        A[分片1: 取 10000 条] --> C[协调节点: 30000 条]
+        B[分片2: 取 10000 条] --> C
+        D[分片3: 取 10000 条] --> C
+        C --> E[排序后丢弃 29990 条]
+    end
+
+    subgraph search_after 内存消耗
+        F[分片1: 取 10 条] --> H[协调节点: 30 条]
+        G[分片2: 取 10 条] --> H
+        I[分片3: 取 10 条] --> H
+        H --> J[排序后直接返回 10 条]
+    end</pre>
+<hr>
+<h2 id="游标持久化：Point-In-Time（PIT）">游标持久化：Point In Time（PIT）</h2>
+<p>使用 <code>search_after</code> 时有一个<strong>隐藏问题</strong>：索引在查询过程中可能发生变化（新增/删除/更新），导致 <code>search_after</code> 的排序值指向的数据发生变化，进而出现<strong>数据重复或遗漏</strong>。</p>
+<p><strong>解决方案</strong>：在查询前创建一个 <strong>Point In Time（PIT）</strong>，相当于给索引拍了一张“快照”，确保整个翻页过程中数据视图一致。</p>
+<p><strong>使用流程</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>创建 PIT</strong>（保留 5 分钟）：</p>
+<p><code>POST /orders/_pit?keep_alive=5m</code></p>
+<p>返回：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span> <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;46ToAwMD...&quot;</span> <span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>首次查询</strong>（携带 PIT，不带索引名）：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">GET /_search</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;match&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;paid&quot;</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;pit&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;46ToAwMD...&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;keep_alive&quot;</span><span class="punctuation">:</span> <span class="string">&quot;5m&quot;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;create_time&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>后续查询</strong>（继续使用同一个 PIT ID + <code>search_after</code>）：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">GET /_search</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;pit&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;46ToAwMD...&quot;</span><span class="punctuation">,</span> <span class="attr">&quot;keep_alive&quot;</span><span class="punctuation">:</span> <span class="string">&quot;5m&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;create_time&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="punctuation">&#123;</span> <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span> <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;search_after&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;2026-08-26T23:59:59Z&quot;</span><span class="punctuation">,</span> <span class="number">999</span><span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>用完删除 PIT</strong>（释放资源）：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">DELETE /_pit</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;46ToAwMD...&quot;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<hr>
+<h2 id="替代方案：scroll（滚动查询，已过时）">替代方案：<code>scroll</code>（滚动查询，已过时）</h2>
+<p><code>scroll</code> 是 ES 早期提供的深度分页方案，适用于<strong>大量数据的批量导出</strong>（如 ETL），<strong>不适用于实时用户交互</strong>。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">特性</th>
+<th style="text-align:left"><code>scroll</code></th>
+<th style="text-align:left"><code>search_after</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>快照</strong></td>
+<td style="text-align:left">创建时生成完整快照</td>
+<td style="text-align:left">依赖 PIT（可选）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>内存占用</strong></td>
+<td style="text-align:left">高（保留上下文快照）</td>
+<td style="text-align:left">低（无状态游标）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>排序一致性</strong></td>
+<td style="text-align:left">强一致</td>
+<td style="text-align:left">PIT 保证一致</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>适用场景</strong></td>
+<td style="text-align:left">数据导出、全量遍历</td>
+<td style="text-align:left">实时滚动加载</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>ES 官方态度</strong></td>
+<td style="text-align:left">推荐仅用于导出，不推荐用于分页</td>
+<td style="text-align:left"><strong>官方推荐首选</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>注意</strong>：ES 7.x+ 中，<code>scroll</code> 的 <code>search_type=scan</code> 已被弃用。新的导出场景请使用 <code>search_after</code> 配合 PIT。</p>
+</blockquote>
+<hr>
+<h2 id="三种方案选型全景图">三种方案选型全景图</h2>
+<pre class="mermaid">flowchart TD
+    A[ES 分页需求] --> B{是否支持上一页/下一页？}
+    
+    B -->|是| C[search_after + PIT]
+    B -->|否，必须随机跳页| D[from / size]
+    
+    C --> E[最佳实践：<br>TopN 排行榜、<br>App 无限滚动]
+    
+    D --> F{数据总量是否 < 10000？}
+    F -->|是| G[安全，直接使用]
+    F -->|否| H[必须限制最大页数<br>或改用 search_after]
+    
+    C --> I[额外建议：<br>禁止使用 scroll<br>（仅限 ETL 导出）]</pre>
+<hr>
+<h2 id="最佳实践总结">最佳实践总结</h2>
+<blockquote>
+<p><strong>核心原则：能用 <code>search_after</code> 就不用 <code>from/size</code>，能加 PIT 就加 PIT，永远不把 <code>max_result_window</code> 调大到 10000 以上。</strong></p>
+</blockquote>
+<h3 id="业务场景选型矩阵">业务场景选型矩阵</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">业务场景</th>
+<th style="text-align:left">推荐方案</th>
+<th style="text-align:left">理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>C 端 App 消息列表</strong></td>
+<td style="text-align:left"><code>search_after</code> + PIT</td>
+<td style="text-align:left">无限下拉，性能恒定，体验最佳</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>后台管理列表（含跳页）</strong></td>
+<td style="text-align:left"><code>from/size</code> + 限制最大页数（前 100 页）</td>
+<td style="text-align:left">用户通常不看深页，限制保护集群</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>数据导出（全量同步）</strong></td>
+<td style="text-align:left"><code>search_after</code> + PIT + 循环</td>
+<td style="text-align:left">替代 <code>scroll</code>，无状态，易恢复</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>实时监控/日志查看</strong></td>
+<td style="text-align:left"><code>search_after</code> + PIT</td>
+<td style="text-align:left">时间线滚动，天然适合</td>
+</tr>
+</tbody>
+</table>
+<h3 id="排序字段设计的黄金法则">排序字段设计的黄金法则</h3>
+<p>使用 <code>search_after</code> 时，<strong>排序字段必须保证全局唯一</strong>，否则会出现数据跳跃。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>推荐方案</strong>：<code>[时间戳, 文档ID]</code> 组合排序。</p>
+</li>
+<li class="lvl-2">
+<p><strong>避免使用</strong>：只有 <code>score</code> 或只有 <code>timestamp</code>（当有大量相同时间戳时）。</p>
+</li>
+</ul>
+<hr>
+<h2 id="MySQL-vs-Redis-vs-Elasticsearch">MySQL vs Redis vs Elasticsearch</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">对比维度</th>
+<th style="text-align:left">MySQL</th>
+<th style="text-align:left">Redis ZSET</th>
+<th style="text-align:left">Elasticsearch</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>深度分页方案</strong></td>
+<td style="text-align:left"><code>WHERE id &gt; last_id</code></td>
+<td style="text-align:left"><code>ZREVRANGEBYSCORE</code></td>
+<td style="text-align:left"><code>search_after</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>随机跳页支持</strong></td>
+<td style="text-align:left">支持（但性能差）</td>
+<td style="text-align:left">不支持（需限制）</td>
+<td style="text-align:left">支持（但有限制）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>数据量级</strong></td>
+<td style="text-align:left">亿级（磁盘）</td>
+<td style="text-align:left">千万级（内存）</td>
+<td style="text-align:left">十亿级（分布式）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>排序字段要求</strong></td>
+<td style="text-align:left">最好为主键或唯一索引</td>
+<td style="text-align:left">Score 必须复合（处理同分）</td>
+<td style="text-align:left">Sort 必须唯一（加 tiebreaker）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>一致性保证</strong></td>
+<td style="text-align:left">事务隔离级别</td>
+<td style="text-align:left">无（实时数据）</td>
+<td style="text-align:left">PIT 快照</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>选型结论</strong></td>
+<td style="text-align:left">事务性业务主库</td>
+<td style="text-align:left">热数据 TopN 缓存</td>
+<td style="text-align:left">全文搜索与分析</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Elasticsearch 的深度分页是一个典型“分布式系统比单机更难”的问题。<code>search_after</code> 本质上是将“我只要第 N 条”的随机访问问题，转化为“我要排在 X 之后的数据”的顺序访问问题——<strong>这是所有数据库解决深度分页的终极哲学</strong>。</p>
+</blockquote>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/12/d37bd4a145d34befa210169209870a38/">https://pengline.cn/2025/12/d37bd4a145d34befa210169209870a38/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Elasticsearch/">Elasticsearch</a><a class="post-meta__tags" href="/tags/%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5/">深度分页</a><a class="post-meta__tags" href="/tags/search-after/">search_after</a><a class="post-meta__tags" href="/tags/%E5%80%92%E6%8E%92%E7%B4%A2%E5%BC%95/">倒排索引</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E6%9F%A5%E8%AF%A2/">分布式查询</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1745746689748174574668963.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/12/d19b9918fb0b4c88b7f585fa60506dc8/" title="JPA save() 的性能影响和潜在风险分析"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1744010580430174401058043.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">JPA save() 的性能影响和潜在风险分析</div></div><div class="info-2"><div class="info-item-1">save() 存在 SELECT，为避免额外查询开销，可通过多种方式解决，以提高插入、更新效率。更新存在潜在级联风险，该如何避免？</div></div></div></a><a class="pagination-related" href="/2025/12/993e8895ae2e46ca8c4d744b312d1491/" title="ES 手动路由和自动路由的实现过程"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860445980163886044557.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">ES 手动路由和自动路由的实现过程</div></div><div class="info-2"><div class="info-item-1">Routing 决定文档存在哪个分片，Pipeline 在文档入库前可以自动处理数据，能实现自动、智能的路由策略。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/09/b35492bf2a96482e86fe1e77b2bc7812/" title="海量数据的深度分页查询方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-05</div><div class="info-item-2">海量数据的深度分页查询方案</div></div><div class="info-2"><div class="info-item-1">在海量数据表中，如何解决深度分页问题，提高查询效率</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">Elasticsearch 深度分页</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9F%BA%E7%A1%80%E5%88%86%E9%A1%B5%EF%BC%9Afrom-size%EF%BC%88%E6%96%B0%E6%89%8B%E9%99%B7%E9%98%B1%EF%BC%89"><span class="toc-number">1.1.</span> <span class="toc-text">基础分页：from &#x2F; size（新手陷阱）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%BB%98%E8%AE%A4%E4%BF%9D%E6%8A%A4%E6%9C%BA%E5%88%B6%EF%BC%9Amax-result-window"><span class="toc-number">1.2.</span> <span class="toc-text">默认保护机制：max_result_window</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BC%98%E5%8C%96%E6%96%B9%E6%A1%88%EF%BC%9Asearch-after%EF%BC%88%E6%B8%B8%E6%A0%87%E5%88%86%E9%A1%B5%EF%BC%89"><span class="toc-number">1.3.</span> <span class="toc-text">优化方案：search_after（游标分页）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%A3%E7%A0%81%E7%A4%BA%E4%BE%8B%EF%BC%88%E5%BF%85%E9%A1%BB%E9%85%8D%E5%90%88-sort%EF%BC%89"><span class="toc-number">1.3.1.</span> <span class="toc-text">代码示例（必须配合 sort）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#search-after-%E7%9A%84%E5%BA%95%E5%B1%82%E4%BC%98%E5%8A%BF"><span class="toc-number">1.3.2.</span> <span class="toc-text">search_after 的底层优势</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B8%B8%E6%A0%87%E6%8C%81%E4%B9%85%E5%8C%96%EF%BC%9APoint-In-Time%EF%BC%88PIT%EF%BC%89"><span class="toc-number">1.4.</span> <span class="toc-text">游标持久化：Point In Time（PIT）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9B%BF%E4%BB%A3%E6%96%B9%E6%A1%88%EF%BC%9Ascroll%EF%BC%88%E6%BB%9A%E5%8A%A8%E6%9F%A5%E8%AF%A2%EF%BC%8C%E5%B7%B2%E8%BF%87%E6%97%B6%EF%BC%89"><span class="toc-number">1.5.</span> <span class="toc-text">替代方案：scroll（滚动查询，已过时）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E7%A7%8D%E6%96%B9%E6%A1%88%E9%80%89%E5%9E%8B%E5%85%A8%E6%99%AF%E5%9B%BE"><span class="toc-number">1.6.</span> <span class="toc-text">三种方案选型全景图</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E6%80%BB%E7%BB%93"><span class="toc-number">1.7.</span> <span class="toc-text">最佳实践总结</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%9A%E5%8A%A1%E5%9C%BA%E6%99%AF%E9%80%89%E5%9E%8B%E7%9F%A9%E9%98%B5"><span class="toc-number">1.7.1.</span> <span class="toc-text">业务场景选型矩阵</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8E%92%E5%BA%8F%E5%AD%97%E6%AE%B5%E8%AE%BE%E8%AE%A1%E7%9A%84%E9%BB%84%E9%87%91%E6%B3%95%E5%88%99"><span class="toc-number">1.7.2.</span> <span class="toc-text">排序字段设计的黄金法则</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#MySQL-vs-Redis-vs-Elasticsearch"><span class="toc-number">1.8.</span> <span class="toc-text">MySQL vs Redis vs Elasticsearch</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script src="/js/custom/mermaid-zoom.js"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
