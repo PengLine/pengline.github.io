@@ -1,19 +1,19 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>系统架构技术选型之 MQ 篇 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="主流 MQ 包括 Kafka、RabbitMQ、RocketMQ。本文从多个维度对这三者进行详细对比分析，帮助进行技术选型。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>系统架构技术选型之 MQ 篇 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="主流消息队列（Kafka &#x2F; RabbitMQ &#x2F; RocketMQ）的多维度深度对比与选型指南。从吞吐量、消息延迟、可靠性机制、事务消息、顺序消息、消息回溯、死信队列、运维复杂度、生态兼容性等维度逐一剖析，提供不同业务场景下的选型建议与架构取舍分析。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="系统架构技术选型之 MQ 篇">
 <meta property="og:url" content="https://pengline.cn/2025/10/e957152912ce463aa001ac0dda36a695/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="主流 MQ 包括 Kafka、RabbitMQ、RocketMQ。本文从多个维度对这三者进行详细对比分析，帮助进行技术选型。">
+<meta property="og:description" content="主流消息队列（Kafka &#x2F; RabbitMQ &#x2F; RocketMQ）的多维度深度对比与选型指南。从吞吐量、消息延迟、可靠性机制、事务消息、顺序消息、消息回溯、死信队列、运维复杂度、生态兼容性等维度逐一剖析，提供不同业务场景下的选型建议与架构取舍分析。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp">
 <meta property="article:published_time" content="2025-10-11T16:00:00.000Z">
-<meta property="article:modified_time" content="2025-10-15T07:13:42.763Z">
+<meta property="article:modified_time" content="2026-09-05T12:04:23.261Z">
 <meta property="article:author" content="余一叶知秋尽">
 <meta property="article:tag" content="MQ技术选型">
 <meta property="article:tag" content="MQ特性">
 <meta property="article:tag" content="架构设计">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/10/e957152912ce463aa001ac0dda36a695/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/10/e957152912ce463aa001ac0dda36a695/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -151,8 +151,38 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">106</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">531</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">系统架构技术选型之 MQ 篇</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">系统架构技术选型之 MQ 篇</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-10-11T16:00:00.000Z" title="发表于 2025-10-12 00:00:00">2025-10-12</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2025-10-15T07:13:42.763Z" title="更新于 2025-10-15 15:13:42">2025-10-15</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/">架构</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B/">技术选型</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>在系统架构中，消息队列（Message Queue, MQ）是实现异步通信、解耦、削峰填谷、可靠投递等关键能力的核心中间件。</p>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">571</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">系统架构技术选型之 MQ 篇</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">系统架构技术选型之 MQ 篇</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-10-11T16:00:00.000Z" title="发表于 2025-10-12 00:00:00">2025-10-12</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-05T12:04:23.261Z" title="更新于 2026-09-05 20:04:23">2026-09-05</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/">架构</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B/">技术选型</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>在系统架构中，消息队列（Message Queue, MQ）是实现异步通信、解耦、削峰填谷、可靠投递等关键能力的核心中间件。</p>
 <p>目前主流的 MQ 技术包括 <strong>Apache Kafka</strong>、<strong>RabbitMQ</strong> 和 <strong>RocketMQ</strong>。</p>
+<pre class="mermaid">flowchart LR
+    subgraph Producer
+        P1[业务应用
+        订单服务]
+        P2[业务应用
+        用户行为]
+        P3[业务应用
+        日志采集]
+    end
+    subgraph MQ 消息队列
+        K[Kafka
+        高吞吐/日志型]
+        R[RabbitMQ
+        灵活路由/通用型]
+        RM[ROCKETMQ
+        金融级/事务消息]
+    end
+    subgraph Consumer
+        C1[搜索索引
+        Elasticsearch]
+        C2[实时计算
+        Flink/Spark]
+        C3[下游服务
+        库存/通知]
+    end
+    P1 & P2 & P3 -->|消息生产| K & R & RM
+    K & R & RM -->|消息消费| C1 & C2 & C3
+    K -.-|超高吞吐| P1
+    R -.-|灵活路由| P2
+    RM -.-|事务消息| P3</pre>
 <blockquote>
 <p>没有“最好”的 MQ，只有“最合适”的 MQ。选型应结合：</p>
 <ul class="lvl-1">
@@ -411,10 +441,28 @@
 <p>每隔固定间隔（如 100ms）检查对应 Queue 中是否有到期的消息。</p>
 </li>
 <li class="lvl-2">
-<p>如果消息的“预期投递时间” ≤ 当前时间，则将其<strong>重新投递</strong>到原始的目标 Topic。</p>
+<p>如果消息的&quot;预期投递时间&quot; ≤ 当前时间，则将其<strong>重新投递</strong>到原始的目标 Topic。</p>
 </li>
 </ul>
 </blockquote>
+<pre class="mermaid">sequenceDiagram
+    participant P as Producer
+    participant B as Broker
+    participant S as ScheduleMessageService
+    participant T as Target Topic
+
+    P->>B: 发送延迟消息<br>(delayLevel=3, 10s)
+    B->>S: 投递到 SCHEDULE_TOPIC_XXXX
+    Note over S: 根据延迟等级写入<br>对应 Queue (level3)
+    loop 每 100ms 检查
+        S->>S: 检查 Queue 中消息到期时间
+        alt 消息已到期
+            S->>T: 重新投递到目标 Topic
+            T->>C: 消费者正常消费
+        else 未到期
+            S->>S: 继续等待
+        end
+    end</pre>
 <h3 id="扩展性与运维">扩展性与运维</h3>
 <ul class="lvl-0">
 <li class="lvl-2">
@@ -594,7 +642,257 @@
 </tr>
 </tbody>
 </table>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/10/e957152912ce463aa001ac0dda36a695/">https://pengline.cn/2025/10/e957152912ce463aa001ac0dda36a695/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a class="post-meta__tags" href="/tags/MQ%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B/">MQ技术选型</a><a class="post-meta__tags" href="/tags/MQ%E7%89%B9%E6%80%A7/">MQ特性</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/10/7c537a595a0f4075b5c7ed3bb8389716/" title="系统架构技术选型之 DB 篇"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small105211JwvB81759459931.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">系统架构技术选型之 DB 篇</div></div><div class="info-2"><div class="info-item-1">在进行数据库选型时，需结合数据模型、一致性要求、吞吐延迟、扩展性、运维复杂度、生态兼容性等多维度综合判断。</div></div></div></a><a class="pagination-related" href="/2025/10/b1bbe3ca400841b7ad5fb441436b6fea/" title="SPI 的基本原理和使用场景（服务发现）"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">SPI 的基本原理和使用场景（服务发现）</div></div><div class="info-2"><div class="info-item-1">SPI 是 Java 提供的一种“面向接口编程 + 运行时动态绑定”的服务发现机制，允许框架或库在运行时动态加载第三方实现。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/08/6efb20fcd51b42c4a7a358edeb242cf6/" title="DDD 领域模型在订单系统中的应用案例"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204767855163420476772.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-27</div><div class="info-item-2">DDD 领域模型在订单系统中的应用案例</div></div><div class="info-2"><div class="info-item-1">如何在系统中使用 DDD 领域模型，以订单模块为例，充分展示该模型的设计和魅力。</div></div></div></a><a class="pagination-related" href="/2025/09/64e3ec6a2be5436b9bd931ad7a023235/" title="系统架构设计的实施考量和演进过程"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small073833O6Jvi1754869113.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-11</div><div class="info-item-2">系统架构设计的实施考量和演进过程</div></div><div class="info-2"><div class="info-item-1">介绍了架构设计的基本维度和设计考量，以及具体的实施流程和架构演进的详细过程，以电商系统为例。</div></div></div></a><a class="pagination-related" href="/2025/10/7c537a595a0f4075b5c7ed3bb8389716/" title="系统架构技术选型之 DB 篇"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small105211JwvB81759459931.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-10-15</div><div class="info-item-2">系统架构技术选型之 DB 篇</div></div><div class="info-2"><div class="info-item-1">在进行数据库选型时，需结合数据模型、一致性要求、吞吐延迟、扩展性、运维复杂度、生态兼容性等多维度综合判断。</div></div></div></a><a class="pagination-related" href="/2026/04/9e54e62ce6e048df829f436213bd6bca/" title="分布式任务调度（NeoTask）架构设计"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-21</div><div class="info-item-2">分布式任务调度（NeoTask）架构设计</div></div><div class="info-2"><div class="info-item-1">全面阐述 NeoTask 分布式任务调度系统的整体架构设计，涵盖分层架构、核心模块职责、数据流设计、分布式协调机制、高可用保障以及多存储后端支持，呈现从入门到生产的完整技术方案。</div></div></div></a><a class="pagination-related" href="/2026/07/af0a363a828649bbbbfc42583dbfb2a9/" title="基于OpenSearch + Milvus的混合召回策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753762079722175376207982.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-03</div><div class="info-item-2">基于OpenSearch + Milvus的混合召回策略</div></div><div class="info-2"><div class="info-item-1">深入对比分析Milvus与OpenSearch在向量检索领域的架构设计与技术原理，涵盖索引算法（HNSW/IVF/PQ）、量化压缩、硬件加速等核心机制，并结合推荐系统场景给出混合检索架构的实践方案。</div></div></div></a><a class="pagination-related" href="/2026/06/9509f9a6b42748bab6acf320d3419eeb/" title="基于 OpenSearch + 多模态融合的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-18</div><div class="info-item-2">基于 OpenSearch + 多模态融合的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建多模态娱乐视频推荐系统，涵盖视觉/音频/文本三模态特征提取、独立存储与动态权重融合、混合检索与RRF融合、多路召回升级及推理服务扩展，适合推荐系统架构师参考。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9F%BA%E6%9C%AC%E5%AE%9A%E4%BD%8D%E4%B8%8E%E8%AE%BE%E8%AE%A1%E5%93%B2%E5%AD%A6"><span class="toc-number">1.</span> <span class="toc-text">基本定位与设计哲学</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E7%89%B9%E6%80%A7%E5%AF%B9%E6%AF%94"><span class="toc-number">2.</span> <span class="toc-text">核心特性对比</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%9E%E5%90%90%E9%87%8F%E4%B8%8E%E6%80%A7%E8%83%BD"><span class="toc-number">2.1.</span> <span class="toc-text">吞吐量与性能</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B6%88%E6%81%AF%E6%A8%A1%E5%9E%8B%E4%B8%8E%E5%8D%8F%E8%AE%AE"><span class="toc-number">2.2.</span> <span class="toc-text">消息模型与协议</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AF%E9%9D%A0%E6%80%A7%E4%B8%8E%E4%B8%80%E8%87%B4%E6%80%A7"><span class="toc-number">2.3.</span> <span class="toc-text">可靠性与一致性</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A1%BA%E5%BA%8F%E6%B6%88%E6%81%AF%E6%94%AF%E6%8C%81"><span class="toc-number">2.4.</span> <span class="toc-text">顺序消息支持</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BB%B6%E8%BF%9F%E6%B6%88%E6%81%AF%E6%94%AF%E6%8C%81"><span class="toc-number">2.5.</span> <span class="toc-text">延迟消息支持</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E6%80%A7%E4%B8%8E%E8%BF%90%E7%BB%B4"><span class="toc-number">2.6.</span> <span class="toc-text">扩展性与运维</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B8%E5%9E%8B%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">3.</span> <span class="toc-text">典型使用场景</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Kafka-%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">3.1.</span> <span class="toc-text">Kafka 适用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#RabbitMQ-%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">3.2.</span> <span class="toc-text">RabbitMQ 适用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#RocketMQ-%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">3.3.</span> <span class="toc-text">RocketMQ 适用场景</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%AF%AD%E8%A8%80%E4%B8%8E%E7%94%9F%E6%80%81%E6%94%AF%E6%8C%81"><span class="toc-number">4.</span> <span class="toc-text">语言与生态支持</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%80%89%E5%9E%8B%E5%BB%BA%E8%AE%AE%E6%80%BB%E7%BB%93"><span class="toc-number">5.</span> <span class="toc-text">选型建议总结</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+<pre class="mermaid">flowchart TD
+    Q1[是否需要超高吞吐<br>百万级/秒？]
+    Q1 -->|是| K1[Kafka
+日志/流处理/大数据]
+    Q1 -->|否| Q2[是否需要事务消息？]
+    Q2 -->|是| RM1[RocketMQ
+金融/电商/强一致]
+    Q2 -->|否| Q3[是否需要复杂路由？<br>如 Exchange + Binding]
+    Q3 -->|是| R1[RabbitMQ
+企业集成/任务队列]
+    Q3 -->|否| Q4[是否需严格顺序消息？]
+    Q4 -->|是| K2[RocketMQ/Kafka
+分区有序]
+    Q4 -->|否| Q5[是否需延迟消息？]
+    Q5 -->|是| RM2[RocketMQ
+18级延迟]
+    Q5 -->|否| R2[RabbitMQ
+通用可靠队列]
+
+    style K1 fill:#fcf
+    style RM1 fill:#9f9
+    style R1 fill:#9cf</pre>
+<hr>
+<h3 id="各-MQ-的内部架构差异">各 MQ 的内部架构差异</h3>
+<p>除了功能特性，三者的内部架构也决定了它们的优势和局限：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">Kafka</th>
+<th style="text-align:left">RabbitMQ</th>
+<th style="text-align:left">RocketMQ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>存储模型</strong></td>
+<td style="text-align:left">分区日志（分区有序）</td>
+<td style="text-align:left">队列（单机内存+磁盘）</td>
+<td style="text-align:left">分区队列（CommitLog + ConsumerQueue）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>消费模型</strong></td>
+<td style="text-align:left">Pull（消费者主动拉取）</td>
+<td style="text-align:left">Push/Pull 均可</td>
+<td style="text-align:left">Push（长轮询 Pull）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>消息过滤</strong></td>
+<td style="text-align:left">Broker 端不支持</td>
+<td style="text-align:left">Exchange + Binding</td>
+<td style="text-align:left">Tag + SQL 表达式</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>持久化机制</strong></td>
+<td style="text-align:left">顺序写磁盘，零拷贝</td>
+<td style="text-align:left">队列文件 + 确认机制</td>
+<td style="text-align:left">双刷盘策略（同步/异步）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>数据复制</strong></td>
+<td style="text-align:left">ISR（In-Sync Replicas）</td>
+<td style="text-align:left">镜像队列 / Quorum</td>
+<td style="text-align:left">Dledger（Raft）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>适用规模</strong></td>
+<td style="text-align:left">超大规模集群</td>
+<td style="text-align:left">中小规模</td>
+<td style="text-align:left">大规模集群</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Kafka 的<strong>顺序写 + 零拷贝</strong>是其超高吞吐的物理基础；RocketMQ 的 <strong>CommitLog 统一写入 + ConsumerQueue 逻辑队列</strong> 设计同时保证了写入性能和消费灵活性；RabbitMQ 的 <strong>Exchange 路由模型</strong> 则在消息分发灵活性上无人能及。</p>
+</blockquote>
+<h2 id="消息可靠性机制深度解析">消息可靠性机制深度解析</h2>
+<p>消息从生产到消费的完整链路中，每个环节都可能丢失消息。理解三者在各环节的可靠性保障，是选型的关键：</p>
+<pre class="mermaid">flowchart LR
+    subgraph Producer
+        P[生产者] -->|1. 发送| B[Broker]
+    end
+    subgraph Broker
+        B -->|2. 持久化| Store[(存储)]
+        Store -->|3. 复制| Replica[(副本)]
+    end
+    subgraph Consumer
+        Replica -->|4. 推送| C[消费者]
+        C -->|5. ACK| B
+    end
+
+    P -.->|丢失点1| B
+    B -.->|丢失点2| Store
+    Store -.->|丢失点3| Replica
+    Replica -.->|丢失点4| C
+    C -.->|丢失点5| B</pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">环节</th>
+<th style="text-align:left">丢失风险</th>
+<th style="text-align:left">Kafka</th>
+<th style="text-align:left">RabbitMQ</th>
+<th style="text-align:left">RocketMQ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>① 生产端发送</strong></td>
+<td style="text-align:left">网络闪断、Broker 宕机</td>
+<td style="text-align:left"><code>acks=all</code> + 重试 + 幂等 Producer</td>
+<td style="text-align:left">Publisher Confirm（异步回调确认）</td>
+<td style="text-align:left">同步发送 + 发送重试 + 失败回调</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>② Broker 持久化</strong></td>
+<td style="text-align:left">宕机丢数据</td>
+<td style="text-align:left">刷盘策略可配（1ms 刷 / 强制刷）</td>
+<td style="text-align:left">持久化消息写磁盘 + 可选同步刷盘</td>
+<td style="text-align:left">同步刷盘（最快）/ 异步刷盘（最高吞吐）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>③ 副本复制</strong></td>
+<td style="text-align:left">副本落后</td>
+<td style="text-align:left">ISR 机制 + min.insync.replicas</td>
+<td style="text-align:left">镜像队列全量复制 / Quorum Raft</td>
+<td style="text-align:left">Dledger Raft 多数派写入</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>④ 消费端投递</strong></td>
+<td style="text-align:left">消费者宕机未处理</td>
+<td style="text-align:left">自动提交 Offset（可能丢）/ 手动提交</td>
+<td style="text-align:left">自动 ACK（可能丢）/ 手动 ACK</td>
+<td style="text-align:left">消费进度持久化 + 重试队列</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>⑤ 消费确认</strong></td>
+<td style="text-align:left">ACK 丢失重复消费</td>
+<td style="text-align:left">手动提交 + 消费端幂等</td>
+<td style="text-align:left">手动 ACK + requeue</td>
+<td style="text-align:left">消费成功删除 / 失败进重试</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>核心结论</strong>：</p>
+<ul class="lvl-1">
+<li class="lvl-2">要<strong>不丢消息</strong>：Producer 同步发送 + Broker 同步刷盘 + 多副本 + Consumer 手动 ACK</li>
+<li class="lvl-2">要<strong>不重复消息</strong>：消费端必须做幂等（业务主键去重 / 状态机幂等）</li>
+<li class="lvl-2"><strong>完全 Exactly-Once</strong> 在分布式系统中成本极高，通常用&quot;业务幂等&quot;来达到最终 Exactly-Once 效果</li>
+</ul>
+</blockquote>
+<h2 id="死信队列与重试机制对比">死信队列与重试机制对比</h2>
+<p>当消息消费失败时，三种 MQ 的重试和死信策略差异很大：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">Kafka</th>
+<th style="text-align:left">RabbitMQ</th>
+<th style="text-align:left">RocketMQ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>消费失败重试</strong></td>
+<td style="text-align:left">无原生重试，需重新消费（重置 Offset）</td>
+<td style="text-align:left">消费者 NACK + requeue（默认无限重试）</td>
+<td style="text-align:left">消费失败自动进入<strong>重试队列</strong>（按延迟等级递增）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>重试间隔</strong></td>
+<td style="text-align:left">无（直接重投，可能消费堆积）</td>
+<td style="text-align:left">死信队列插件 + TTL 控制</td>
+<td style="text-align:left">默认 18 级延迟重试（5s → 10s → 30s → 1min → 2min …）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>死信队列（DLQ）</strong></td>
+<td style="text-align:left">需要自定义实现（如发到另一个 Topic）</td>
+<td style="text-align:left">原生支持死信 Exchange（DLX）</td>
+<td style="text-align:left">原生支持死信队列（%DLQ% 前缀）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>最大重试次数</strong></td>
+<td style="text-align:left">不限制（需自己控制）</td>
+<td style="text-align:left">可配置（<code>x-delivery-count</code> Header）</td>
+<td style="text-align:left">默认 16 次，超限进入死信队列</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>重试隔离</strong></td>
+<td style="text-align:left">重投到原 Partition</td>
+<td style="text-align:left">重投到原 Queue</td>
+<td style="text-align:left">重试消息存储在独立的重试 Topic 中，不影响正常消费</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>最佳实践</strong>：</p>
+<ul class="lvl-1">
+<li class="lvl-2">对于<strong>可重试的临时错误</strong>（如数据库连接超时）→ 利用 RocketMQ 的重试队列自动重试，或 RabbitMQ 的 requeue</li>
+<li class="lvl-2">对于<strong>不可重试的业务错误</strong>（如订单不存在）→ 直接进入死信队列，人工排查或定时补偿</li>
+<li class="lvl-2">重试应有<strong>最大次数限制</strong>，避免死循环耗尽系统资源</li>
+</ul>
+</blockquote>
+<h2 id="运维监控关注点">运维监控关注点</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">Kafka</th>
+<th style="text-align:left">RabbitMQ</th>
+<th style="text-align:left">RocketMQ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>核心指标</strong></td>
+<td style="text-align:left">Consumer Lag、ISR 状态、磁盘使用率</td>
+<td style="text-align:left">Queue 深度、连接数、内存使用</td>
+<td style="text-align:left">Consume Lag、Tps、消息堆积量</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>监控工具</strong></td>
+<td style="text-align:left">Prometheus + Kafka Exporter + Grafana</td>
+<td style="text-align:left">RabbitMQ 管理 Plugin + Prometheus</td>
+<td style="text-align:left">RocketMQ Console + Prometheus + Grafana</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>告警策略</strong></td>
+<td style="text-align:left">Lag &gt; 阈值、ISR 缩减、磁盘 &gt; 80%</td>
+<td style="text-align:left">Queue 堆积、内存 &gt; 70%、连接断开</td>
+<td style="text-align:left">消费 TPS 突降、堆积 &gt; 阈值、Broker 宕机</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>常见故障</strong></td>
+<td style="text-align:left">Rebalance 频繁（组成员变更）、磁盘写满</td>
+<td style="text-align:left">内存泄漏（Erlang VM）、队列堆积撑爆</td>
+<td style="text-align:left">CommitLog 文件堆积、ConsumeQueue 不一致</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>扩容难点</strong></td>
+<td style="text-align:left">Partition 扩容需重分配（不停机但增加负载）</td>
+<td style="text-align:left">队列绑定节点，跨节点迁移复杂</td>
+<td style="text-align:left">Broker 增加后自动负载均衡</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>无论使用哪种 MQ，<strong>消费堆积监控</strong> 都是第一优先级——堆积量持续增长通常意味着下游消费能力不足或系统故障，需立即排查。</p>
+</blockquote>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/10/e957152912ce463aa001ac0dda36a695/">https://pengline.cn/2025/10/e957152912ce463aa001ac0dda36a695/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a class="post-meta__tags" href="/tags/MQ%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B/">MQ技术选型</a><a class="post-meta__tags" href="/tags/MQ%E7%89%B9%E6%80%A7/">MQ特性</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/10/7c537a595a0f4075b5c7ed3bb8389716/" title="系统架构技术选型之 DB 篇"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1658045160332165804516032.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">系统架构技术选型之 DB 篇</div></div><div class="info-2"><div class="info-item-1">八大类数据库（关系型/键值/文档/列式/图/时序/宽表/分布式）的全景对比与选型指南。从数据模型、一致性模型、吞吐延迟、扩展性、事务支持、运维复杂度等维度逐一剖析 MySQL、PostgreSQL、TiDB、Redis、MongoDB、Elasticsearch、InfluxDB、Neo4j 等主流数据库的核心特性与适用场景。</div></div></div></a><a class="pagination-related" href="/2025/10/b1bbe3ca400841b7ad5fb441436b6fea/" title="SPI 的基本原理和使用场景（服务发现）"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small2223110PsEx1754317391.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">SPI 的基本原理和使用场景（服务发现）</div></div><div class="info-2"><div class="info-item-1">SPI 是 Java 提供的一种“面向接口编程 + 运行时动态绑定”的服务发现机制，允许框架或库在运行时动态加载第三方实现。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/07/af0a363a828649bbbbfc42583dbfb2a9/" title="基于OpenSearch + Milvus的混合召回策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-03</div><div class="info-item-2">基于OpenSearch + Milvus的混合召回策略</div></div><div class="info-2"><div class="info-item-1">深入对比分析Milvus与OpenSearch在向量检索领域的架构设计与技术原理，涵盖索引算法（HNSW/IVF/PQ）、量化压缩、硬件加速等核心机制，并结合推荐系统场景给出混合检索架构的实践方案。</div></div></div></a><a class="pagination-related" href="/2026/06/9509f9a6b42748bab6acf320d3419eeb/" title="基于 OpenSearch + 多模态融合的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1642751157273164275115763.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-18</div><div class="info-item-2">基于 OpenSearch + 多模态融合的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建多模态娱乐视频推荐系统，涵盖视觉/音频/文本三模态特征提取、独立存储与动态权重融合、混合检索与RRF融合、多路召回升级及推理服务扩展，适合推荐系统架构师参考。</div></div></div></a><a class="pagination-related" href="/2026/06/1726f4eec04b4cdf873479019b5c604a/" title="基于 OpenSearch 构建短视频推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-09</div><div class="info-item-2">基于 OpenSearch 构建短视频推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建推荐系统，涵盖三模态（视觉/音频/文本）特征提取与融合、四路召回（I2I/U2I/热搜/探索）、混合检索与RRF融合、滑动窗口用户向量、E&E探索机制、MMR多样性重排等。</div></div></div></a><a class="pagination-related" href="/2026/06/198954be50c24c0483353bb975e882d3/" title="基于 OpenSearch + 文本向量的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144740598175514474060.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-09</div><div class="info-item-2">基于 OpenSearch + 文本向量的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建文本向量推荐系统，涵盖系统架构设计、离线数据处理Pipeline、OpenSearch/Redis/HBase多级存储架构、BERT推理服务部署、双路召回（I2I/U2I）实现、规则排序策略。</div></div></div></a><a class="pagination-related" href="/2025/09/64e3ec6a2be5436b9bd931ad7a023235/" title="系统架构设计的实施考量和演进过程"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small082829wjhIN1756340909.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-11</div><div class="info-item-2">系统架构设计的实施考量和演进过程</div></div><div class="info-2"><div class="info-item-1">全面解析架构设计的核心维度（业务/技术/组织/安全）与设计考量，以电商系统为例阐述从单体架构经 SOA、微服务到云原生乃至 AI 自适应架构的完整演进路径，涵盖架构实施流程、模式选型与最佳实践。</div></div></div></a><a class="pagination-related" href="/2025/08/6efb20fcd51b42c4a7a358edeb242cf6/" title="DDD 领域模型在订单系统中的应用案例"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small161326iKTsw1759047206.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-27</div><div class="info-item-2">DDD 领域模型在订单系统中的应用案例</div></div><div class="info-2"><div class="info-item-1">以电商订单模块为案例深入实践 DDD（领域驱动设计），详细展示限界上下文划分、聚合根与实体设计、值对象建模、领域事件驱动、仓储模式实现等核心战术模式，以及 DDD 在微服务拆分中的落地策略与持久化权衡。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9F%BA%E6%9C%AC%E5%AE%9A%E4%BD%8D%E4%B8%8E%E8%AE%BE%E8%AE%A1%E5%93%B2%E5%AD%A6"><span class="toc-number">1.</span> <span class="toc-text">基本定位与设计哲学</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E7%89%B9%E6%80%A7%E5%AF%B9%E6%AF%94"><span class="toc-number">2.</span> <span class="toc-text">核心特性对比</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%9E%E5%90%90%E9%87%8F%E4%B8%8E%E6%80%A7%E8%83%BD"><span class="toc-number">2.1.</span> <span class="toc-text">吞吐量与性能</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B6%88%E6%81%AF%E6%A8%A1%E5%9E%8B%E4%B8%8E%E5%8D%8F%E8%AE%AE"><span class="toc-number">2.2.</span> <span class="toc-text">消息模型与协议</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AF%E9%9D%A0%E6%80%A7%E4%B8%8E%E4%B8%80%E8%87%B4%E6%80%A7"><span class="toc-number">2.3.</span> <span class="toc-text">可靠性与一致性</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A1%BA%E5%BA%8F%E6%B6%88%E6%81%AF%E6%94%AF%E6%8C%81"><span class="toc-number">2.4.</span> <span class="toc-text">顺序消息支持</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BB%B6%E8%BF%9F%E6%B6%88%E6%81%AF%E6%94%AF%E6%8C%81"><span class="toc-number">2.5.</span> <span class="toc-text">延迟消息支持</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E6%80%A7%E4%B8%8E%E8%BF%90%E7%BB%B4"><span class="toc-number">2.6.</span> <span class="toc-text">扩展性与运维</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B8%E5%9E%8B%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">3.</span> <span class="toc-text">典型使用场景</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Kafka-%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">3.1.</span> <span class="toc-text">Kafka 适用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#RabbitMQ-%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">3.2.</span> <span class="toc-text">RabbitMQ 适用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#RocketMQ-%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">3.3.</span> <span class="toc-text">RocketMQ 适用场景</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%AF%AD%E8%A8%80%E4%B8%8E%E7%94%9F%E6%80%81%E6%94%AF%E6%8C%81"><span class="toc-number">4.</span> <span class="toc-text">语言与生态支持</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%80%89%E5%9E%8B%E5%BB%BA%E8%AE%AE%E6%80%BB%E7%BB%93"><span class="toc-number">5.</span> <span class="toc-text">选型建议总结</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%84-MQ-%E7%9A%84%E5%86%85%E9%83%A8%E6%9E%B6%E6%9E%84%E5%B7%AE%E5%BC%82"><span class="toc-number">5.1.</span> <span class="toc-text">各 MQ 的内部架构差异</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B6%88%E6%81%AF%E5%8F%AF%E9%9D%A0%E6%80%A7%E6%9C%BA%E5%88%B6%E6%B7%B1%E5%BA%A6%E8%A7%A3%E6%9E%90"><span class="toc-number">6.</span> <span class="toc-text">消息可靠性机制深度解析</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%AD%BB%E4%BF%A1%E9%98%9F%E5%88%97%E4%B8%8E%E9%87%8D%E8%AF%95%E6%9C%BA%E5%88%B6%E5%AF%B9%E6%AF%94"><span class="toc-number">7.</span> <span class="toc-text">死信队列与重试机制对比</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%BF%90%E7%BB%B4%E7%9B%91%E6%8E%A7%E5%85%B3%E6%B3%A8%E7%82%B9"><span class="toc-number">8.</span> <span class="toc-text">运维监控关注点</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',

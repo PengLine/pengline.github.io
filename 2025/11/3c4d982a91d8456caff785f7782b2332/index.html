@@ -5,15 +5,17 @@
 <meta property="og:site_name" content="余一叶知秋尽">
 <meta property="og:description" content="MySQL 的执行过程是复杂且高度结构化的流程，从客户端发送 SQL 语句到最终返回结果，涉及多个核心组件的协同工作。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp">
 <meta property="article:published_time" content="2025-11-17T16:00:00.000Z">
-<meta property="article:modified_time" content="2026-09-02T03:27:34.924Z">
+<meta property="article:modified_time" content="2026-09-06T11:05:37.420Z">
 <meta property="article:author" content="余一叶知秋尽">
 <meta property="article:tag" content="MySQL优化器">
 <meta property="article:tag" content="MySQL执行器">
 <meta property="article:tag" content="MySQL执行过程">
+<meta property="article:tag" content="MySQL连接器">
+<meta property="article:tag" content="执行计划">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/11/3c4d982a91d8456caff785f7782b2332/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/11/3c4d982a91d8456caff785f7782b2332/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -151,7 +153,7 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">106</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">531</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">MySQL 语句的执行过程和底层原理</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">MySQL 语句的执行过程和底层原理</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-11-17T16:00:00.000Z" title="发表于 2025-11-18 00:00:00">2025-11-18</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-02T03:27:34.924Z" title="更新于 2026-09-02 11:27:34">2026-09-02</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/MySQL/">MySQL</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>以下以 <strong>MySQL 8.0 InnoDB 引擎</strong> 为例，详细解析一条 SQL 语句（如 <code>SELECT * FROM users WHERE id = 100</code>）的完整执行过程。</p>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">571</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">MySQL 语句的执行过程和底层原理</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">MySQL 语句的执行过程和底层原理</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-11-17T16:00:00.000Z" title="发表于 2025-11-18 00:00:00">2025-11-18</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-06T11:05:37.420Z" title="更新于 2026-09-06 19:05:37">2026-09-06</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/MySQL/">MySQL</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>以下以 <strong>MySQL 8.0 InnoDB 引擎</strong> 为例，详细解析一条 SQL 语句（如 <code>SELECT * FROM users WHERE id = 100</code>）的完整执行过程。</p>
 <blockquote>
 <p>Client → [连接器] → [查询缓存（8.0已移除）] → [分析器] → [优化器] → [执行器] → [存储引擎（InnoDB）]</p>
 </blockquote>
@@ -203,8 +205,7 @@
     U --> V[返回结果给客户端]</pre>
 <h2 id="连接器（Connector）">连接器（Connector）</h2>
 <p>客户端通过 TCP/IP 或 socket 连接到 MySQL。</p>
-<blockquote>
-<ul class="lvl-1">
+<ul class="lvl-0">
 <li class="lvl-2">
 <p>验证用户名和密码；</p>
 </li>
@@ -216,10 +217,9 @@
 </li>
 <li class="lvl-2">
 <p>维持连接（可通过 <code>wait_timeout</code> 控制空闲超时）。</p>
-<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 所有活跃连接</span></span><br><span class="line"><span class="keyword">SHOW</span> PROCESSLIST; </span><br></pre></td></tr></table></figure>
 </li>
 </ul>
-</blockquote>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查看所有活跃连接</span></span><br><span class="line"><span class="keyword">SHOW</span> PROCESSLIST;</span><br></pre></td></tr></table></figure>
 <p><strong>网络通信模型</strong></p>
 <ul class="lvl-0">
 <li class="lvl-2">
@@ -285,7 +285,7 @@
 <p>3、不使用任何表查询。如 select ‘A’;</p>
 <p>4、查询 mysql、information_schema 或 performance_schema 数据库中的表时，不会走查询缓存。</p>
 <p>5、在存储的函数，触发器或事件的主体内执行的查询。</p>
-<p>6、<strong>如果表更改，则使用该表的所有高速缓存查询都变为无效并从缓存中删除，这包括使用 MERGE 映射到已更改表的表的查询。一个表可以被许多类型的语句改变，如 insert、update、delete、truncate rable、alter table、drop table、drop database。</strong></p>
+<p>6、<strong>表结构或表数据变更</strong>：只要表发生变更，涉及该表的所有缓存查询全部失效并被删除，包括使用 MERGE 映射到已变更表的查询。能触发变更的语句非常多：<code>INSERT</code>、<code>UPDATE</code>、<code>DELETE</code>、<code>TRUNCATE TABLE</code>、<code>ALTER TABLE</code>、<code>DROP TABLE</code>、<code>DROP DATABASE</code> 等——一次小写入就可能清空整张表的大量缓存，这正是查询缓存维护代价最高的场景。</p>
 </blockquote>
 <p>上面的失效场景可以看出缓存是很容易失效的，所以如果不是查询次数远大于修改次数的话，使用缓存不仅不能提升查询效率还会拉低效率（每次读取后需要向缓存中保存一份，而缓存又容易被清除）</p>
 <h2 id="分析器（Parser）">分析器（Parser）</h2>
@@ -404,10 +404,23 @@
 </li>
 </ul>
 <h3 id="成本估算">成本估算</h3>
-<p>基于统计信息（行数、索引基数、数据分布）估算 I/O + CPU 成本。选择总成本最低的计划</p>
-<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> u.name, o.total </span><br><span class="line"><span class="keyword">FROM</span> users u <span class="keyword">JOIN</span> orders o <span class="keyword">ON</span> u.id <span class="operator">=</span> o.user_id </span><br><span class="line"><span class="keyword">WHERE</span> u.age <span class="operator">&gt;</span> <span class="number">30</span>;</span><br></pre></td></tr></table></figure>
+<p>基于统计信息（行数、索引基数、数据分布）估算 I/O + CPU 成本，从候选计划中选出总成本最低者。InnoDB 的成本近似模型可表达为：</p>
 <blockquote>
-<p>对此SQL，优化器可能决定：</p>
+<p>$totalCost \approx \sum(读取页数 \times ioCost) + \sum(评估行数 \times cpuCost)$</p>
+<ul class="lvl-1">
+<li class="lvl-2"><strong>IO 成本</strong>：读取一个 16KB 数据页的代价，单价常量见 <code>mysql.engine_cost</code> 表的 <code>io_block_read_cost</code>（默认 1.0）；</li>
+<li class="lvl-2"><strong>CPU 成本</strong>：逐行做条件评估、投影计算的代价，单价常量见 <code>mysql.server_cost</code> 表的 <code>row_evaluate_cost</code>（默认 0.2）。</li>
+</ul>
+<p>注意：<strong>成本是相对值而非真实耗时</strong>，它的全部意义在于候选计划间的比较——全表扫描要顺序读多少页，走二级索引要“索引探针 + 回表随机读”多少次，优化器据此挑选总价最低者，而“便宜”不等于“一定快”（如回表随机 IO 的抖动、缓冲池命中差异）。</p>
+</blockquote>
+<blockquote>
+<p><strong>统计信息是成本估算的地基</strong>：InnoDB 按页采样（8.0 的持久化统计由 <code>innodb_stats_persistent_sample_pages</code> 控制每张表的采样页数）得到索引基数（cardinality）与页数，进而推算“大概要扫多少行”。统计信息一旦陈旧，估算就会严重失真——这是“明明有索引却不用”“执行计划某天突然变差”最常见的根因，解法是先 <code>ANALYZE TABLE</code> 刷新统计信息再观察。</p>
+</blockquote>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> u.name, o.total </span><br><span class="line"><span class="keyword">FROM</span> users u <span class="keyword">JOIN</span> orders o <span class="keyword">ON</span> u.id <span class="operator">=</span> o.user_id </span><br><span class="line"><span class="keyword">WHERE</span> u.age <span class="operator">&gt;</span> <span class="number">30</span>;</span><br></pre></td></tr></table></figure>
+<p><strong>如何窥见优化器的“内心戏”</strong>：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 1. 查看两类成本单价常量</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> mysql.engine_cost;   <span class="comment">-- IO 成本常量（io_block_read_cost）</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> mysql.server_cost;   <span class="comment">-- CPU 成本常量（row_evaluate_cost）</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 2. EXPLAIN FORMAT=JSON：查看最终计划的成本明细（cost_info 里的 read_cost / eval_cost / prefix_cost）</span></span><br><span class="line">EXPLAIN FORMAT<span class="operator">=</span>JSON <span class="keyword">SELECT</span> u.name, o.total </span><br><span class="line"><span class="keyword">FROM</span> users u <span class="keyword">JOIN</span> orders o <span class="keyword">ON</span> u.id <span class="operator">=</span> o.user_id </span><br><span class="line"><span class="keyword">WHERE</span> u.age <span class="operator">&gt;</span> <span class="number">30</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 3. optimizer_trace：完整还原优化器做了哪些候选、为何剪枝</span></span><br><span class="line"><span class="keyword">SET</span> optimizer_trace <span class="operator">=</span> <span class="string">&#x27;enabled=on&#x27;</span>;</span><br><span class="line"><span class="keyword">SELECT</span> u.name, o.total <span class="keyword">FROM</span> users u <span class="keyword">JOIN</span> orders o <span class="keyword">ON</span> u.id <span class="operator">=</span> o.user_id <span class="keyword">WHERE</span> u.age <span class="operator">&gt;</span> <span class="number">30</span>;</span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> information_schema.OPTIMIZER_TRACE\G</span><br><span class="line"><span class="keyword">SET</span> optimizer_trace <span class="operator">=</span> <span class="string">&#x27;enabled=off&#x27;</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>对此 SQL，优化器可能决定：</p>
 <ul class="lvl-1">
 <li class="lvl-2">先用索引扫描 <code>users</code> 表（<code>WHERE age &gt; 30</code>）</li>
 <li class="lvl-2">对每个匹配用户，用 <code>user_id</code> 索引查找 <code>orders</code></li>
@@ -615,19 +628,11 @@
 </tbody>
 </table>
 <blockquote>
+<p><strong>SBR / RBR / MBR 的工程取舍</strong>（与上表一一对应）：</p>
 <ul class="lvl-1">
-<li class="lvl-2">
-<p>基于SQL语句的复制<strong>STATEMENT</strong> (statement-based replication,SBR)<br>
-记录每一条修改数据的sql（减少了binlog日志量，节约了IO，提高性能。但是必须保证所有SQL顺序执行。可能会出现特定函数无法复制的问题）</p>
-</li>
-<li class="lvl-2">
-<p>–基于行的复制(row-based replication,RBR)<br>
-记录所有变更的行数据（会产生大量的日志内容。但不会出现某些情况下存储过程、函数或trigger的调用和触发无法被正确复制的问题）</p>
-</li>
-<li class="lvl-2">
-<p>–混合模式复制(mixed-based replication,MBR)。<br>
-Statement与Row的结合一般的语句修改使用statment格式保存binlog。如一些函数，statement无法完成主从复制的操作，则采用row格式保存binlog</p>
-</li>
+<li class="lvl-2"><strong>SBR（Statement-Based Replication，语句级）</strong>：日志量小、节约 IO，但要求语句可确定性执行——<code>NOW()</code>、<code>UUID()</code> 等非确定性函数、无 ORDER BY 的 <code>LIMIT</code>、触发器副作用等场景，主从执行结果可能不一致；</li>
+<li class="lvl-2"><strong>RBR（Row-Based Replication，行级）</strong>：日志量大但绝对精确，从库直接应用行变更事件，天然适配异构同步（如解析 Binlog 同步到 Kafka / 数仓）；8.0 下基于 ROW 格式还能实现误操作的 Flashback（闪回）回放；</li>
+<li class="lvl-2"><strong>MBR（Mixed-Based Replication，混合）</strong>：由 MySQL 自动判断语句是否“安全”，安全走 STATEMENT、否则转 ROW——兼顾体积与正确性，但格式切换存在不确定性，8.0 生产环境更推荐直接固定 ROW。</li>
 </ul>
 </blockquote>
 <figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">#获取binlog文件列表</span><br><span class="line">mysql&gt; show binary logs;</span><br><span class="line">#查看指定binlog文件的内容</span><br><span class="line">mysql&gt; show binlog events in ‘mysql-bin.000001’;</span><br><span class="line">#通过mysqlbinlog命令可以查看binlog的内容</span><br><span class="line">[root@localhost ~]# mysqlbinlog  /home/mysql/binlog/binlog.000003  | more</span><br></pre></td></tr></table></figure>
@@ -673,7 +678,7 @@ Statement与Row的结合一般的语句修改使用statment格式保存binlog。
 <h4 id="Redo-Log（重做日志）">Redo Log（重做日志）</h4>
 <p><strong>确保事务的持久性（Durability）</strong>：即使数据库宕机，已提交的事务数据也不会丢失。</p>
 <p>redo log记录的是事务执行修改后的新数据，主要保证事务的<strong>持久性</strong>和提高事务提交效率。</p>
-<p>数据库发生意外时用来进行数据恢复，且只能恢复到上次的记录（没有多个版本记录）</p>
+<p>数据库发生意外（崩溃/断电）时，用来将数据恢复到崩溃前的最新一致状态——它是单版本的重放（把已提交但尚未刷盘的修改重新执行一遍），不具备 Undo Log 那种“回到任意历史版本”的能力</p>
 <p><strong>底层原理</strong>：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
@@ -700,7 +705,7 @@ Statement与Row的结合一般的语句修改使用statment格式保存binlog。
 <p>不关心 SQL 语义，只记录页级别的变更（面向存储引擎）。</p>
 </li>
 <li class="lvl-2">
-<p>仅用于 <strong>崩溃恢复</strong>，<strong>不用于数据恢复或复制</strong>。恢复完成后，日志可被覆盖</p>
+<p>仅用于 <strong>崩溃恢复（Crash Recovery）</strong>，不参与主从复制，也不提供逻辑数据恢复能力；恢复完成后，环形空间可被覆盖复用</p>
 </li>
 <li class="lvl-2">
 <p>刷盘策略由 <code>innodb_flush_log_at_trx_commit</code> 控制：</p>
@@ -727,16 +732,16 @@ Statement与Row的结合一般的语句修改使用statment格式保存binlog。
 <p><strong>存储结构和配置</strong>：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>文件名</strong>：<code>ib_logfile0</code>、<code>ib_logfile1</code> …（默认 2 个，可配置）</p>
+<p><strong>文件名</strong>：<code>ib_logfile0</code>、<code>ib_logfile1</code> …（8.0.30 前默认 2 个；8.0.30 起重组为 <code>#innodb_redo</code> 目录下的多个文件）</p>
 </li>
 <li class="lvl-2">
-<p><strong>循环写入</strong>：日志文件是固定大小的环形缓冲区（默认 48MB × 2）；</p>
+<p><strong>循环写入</strong>：日志文件是固定大小的环形缓冲区：8.0.30 之前总容量 = <code>innodb_log_file_size</code>（默认 48MB）× <code>innodb_log_files_in_group</code>（默认 2）；8.0.30 起统一由 <code>innodb_redo_log_capacity</code>（默认 100MB）管理；</p>
 </li>
 <li class="lvl-2">
-<p><strong>Checkpoint 机制</strong>：当 Redo Log 写满时，会触发脏页刷盘，释放日志空间。</p>
+<p><strong>Checkpoint 机制</strong>：当 Redo Log 写满时，会触发脏页刷盘、推进 checkpoint，释放日志空间；</p>
 </li>
 <li class="lvl-2">
-<p>可配置文件数量、大小：<code>innodb_log_files_in_group</code>、<code>innodb_log_file_size</code></p>
+<p>可配置：8.0.30 前用 <code>innodb_log_file_size</code> + <code>innodb_log_files_in_group</code>；8.0.30 起用 <code>innodb_redo_log_capacity</code></p>
 </li>
 <li class="lvl-2">
 <p><strong>不能关闭</strong>（InnoDB 必须启用）</p>
@@ -815,7 +820,8 @@ Statement与Row的结合一般的语句修改使用statment格式保存binlog。
 </li>
 </ol>
 <blockquote>
-<p>假设先写 Binlog 再写 Redo Log： 如果写完 Binlog 后崩溃，Redo Log 没写主库回滚，但从库已执行导致 <strong>主从不一致</strong>。两阶段提交确保：要么都成功，要么都失败。</p>
+<p><strong>为什么必须两阶段</strong>：若不引入 Prepare 中间态，无论先写哪个日志都可能出问题——先写 Redo 再写 Binlog：Redo 落盘后崩溃，主库重放提交了事务，从库却没收到，<strong>主多从少</strong>；先写 Binlog 再写 Redo：Binlog 落盘后崩溃，从库已执行，主库却回滚了事务，<strong>主少从多</strong>。两种顺序都无法保证主从一致。</p>
+<p><strong>崩溃恢复的裁决规则</strong>：恢复时 InnoDB 扫描 Redo Log 中处于 PREPARE 状态的事务，检查 Binlog 中是否存在与之关联的 <strong>XID</strong>（事务编号，由 Server 层生成并写入两份日志）——若 Binlog 已完整记录该事务，则补做 COMMIT；否则执行回滚。即 <strong>Binlog 是两阶段提交的最终仲裁者</strong>，配合 Redo 的 prepare / commit 双状态，实现“要么都成功，要么都失败”。</p>
 </blockquote>
 <table>
 <thead>
@@ -859,7 +865,7 @@ Statement与Row的结合一般的语句修改使用statment格式保存binlog。
 </tr>
 <tr>
 <td>文件名</td>
-<td>ib_logfile*</td>
+<td>ib_logfile*（8.0.30 起 #innodb_redo/）</td>
 <td>undo_*（8.0+）</td>
 <td>mysql-bin.*</td>
 </tr>
@@ -963,80 +969,180 @@ Statement与Row的结合一般的语句修改使用statment格式保存binlog。
 </blockquote>
 <h3 id="更新数据">更新数据</h3>
 <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">UPDATE</span> users <span class="keyword">SET</span> name <span class="operator">=</span> <span class="string">&#x27;张三&#x27;</span> <span class="keyword">WHERE</span> id <span class="operator">=</span> <span class="number">100</span>;</span><br></pre></td></tr></table></figure>
+<p>与查询最大的不同：UPDATE 会真正“动数据”，因此额外牵扯出<strong>行锁、Undo Log、Redo Log、Binlog 与两阶段提交</strong>。下面用时序图还原完整的写入链路（注意参与者分属 Server 层与 InnoDB 引擎层）：</p>
+<pre class="mermaid">sequenceDiagram
+    autonumber
+    participant C as 客户端
+    participant S as Server 层（执行器）
+    participant I as InnoDB 引擎
+    participant B as Binlog
+    C->>S: UPDATE users SET name='张三' WHERE id=100
+    S->>I: 按主键定位 id=100 的行（当前读）
+    I-->>S: 返回行并加 X 记录锁
+    S->>I: 写 Undo Log（旧值 → 回滚 / MVCC 版本链）
+    I->>I: 修改 Buffer Pool 中的数据页（成为脏页）
+    I->>I: 写 Redo Log 并刷盘（状态=PREPARE）
+    S->>B: 写 Binlog 并刷盘（sync_binlog=1 时）
+    S->>I: 提交：Redo Log 标记 COMMIT（innodb_flush_log_at_trx_commit=1）
+    I-->>S: 事务提交完成，释放记录锁
+    S-->>C: 返回受影响行数（1）</pre>
+<p><strong>崩溃点分析</strong>（对照上图的第 6 / 7 / 8 步消息——这是理解“为什么必须两阶段提交”的关键）：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>第 6 步后崩溃</strong>（Redo Log 处于 PREPARE 且已刷盘、Binlog 尚未写入）：恢复时在 Binlog 中找不到该事务的 XID → 判定为未提交 → 回滚。主库从库都没有这条更新，两侧一致；</p>
+</li>
+<li class="lvl-2">
+<p><strong>第 7 步后、第 8 步前崩溃</strong>（Binlog 已刷盘、Redo Log 未标记 COMMIT）：恢复时发现 Binlog 中已存在该事务的 XID → 补做 COMMIT。主库从库都保留这条更新，两侧一致；</p>
+</li>
+<li class="lvl-2">
+<p><strong>第 8 步后崩溃</strong>：事务已完整提交，两份日志一致，按常规流程恢复即可。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>执行步骤细化</strong>：</p>
 <ol>
 <li class="lvl-3">
-<p>连接器：验证连接和权限；</p>
+<p>连接器：验证连接与权限；</p>
 </li>
 <li class="lvl-3">
-<p>分析器：解析 SQL 语法；</p>
+<p>分析器：解析 SQL 语法；优化器：确认走主键索引定位目标行；</p>
 </li>
 <li class="lvl-3">
-<p>优化器：确认用主键索引定位；</p>
+<p>执行器请求 InnoDB 查找 <code>id=100</code> 的行——UPDATE 中的查找是<strong>当前读</strong>（读取最新已提交版本并加锁，而非 MVCC 快照读）；</p>
 </li>
 <li class="lvl-3">
-<p>执行器：</p>
-<ul class="lvl-2">
-<li class="lvl-5">请求 InnoDB 查找 <code>id=100</code> 的行；</li>
-<li class="lvl-5">InnoDB 返回当前行；</li>
-<li class="lvl-5">执行器检查权限，构造新行；</li>
-</ul>
+<p>InnoDB 返回该行并加 <strong>X 记录锁</strong>（阻塞其他写事务直到本事务结束），执行器检查列权限、构造新行；</p>
 </li>
 <li class="lvl-3">
-<p>InnoDB（引擎层）：</p>
-<ul class="lvl-2">
-<li class="lvl-5">加行锁；</li>
-<li class="lvl-5">写 Undo Log（用于回滚和 MVCC）；</li>
-<li class="lvl-5">修改 Buffer Pool 中的页；</li>
-<li class="lvl-5">写 Redo Log（保证崩溃恢复）；</li>
-<li class="lvl-5">提交事务（Redo Log 刷盘）；</li>
-</ul>
+<p>InnoDB 先把旧值写入 <strong>Undo Log</strong>（事务回滚与 MVCC 版本链都靠它）；</p>
 </li>
 <li class="lvl-3">
-<p>返回“受影响行数”。</p>
+<p>InnoDB 修改 Buffer Pool 中的数据页（标记为脏页），并把页级变更写入 <strong>Redo Log</strong>（状态置为 PREPARE）；</p>
+</li>
+<li class="lvl-3">
+<p>Server 层把本次变更写入 <strong>Binlog</strong>（<code>sync_binlog=1</code> 时随提交刷盘）；</p>
+</li>
+<li class="lvl-3">
+<p>InnoDB 收到提交指令，将 Redo Log 标记为 COMMIT 并刷盘（<code>innodb_flush_log_at_trx_commit=1</code>）——<strong>两阶段提交完成</strong>，释放记录锁；</p>
+</li>
+<li class="lvl-3">
+<p>执行器向客户端返回“受影响行数”。</p>
 </li>
 </ol>
 <p><img src="/imgs/db/2012006-20201203220840727-213780904.png" alt="2012006-20201203220840727-213780904" loading='lazy'></p>
 <blockquote>
-<p>更新流程六大关键步骤：</p>
-<table>
-<thead>
-<tr>
-<th>步骤</th>
-<th>组件</th>
-<th>作用</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td><strong>InnoDB</strong></td>
-<td>写 <strong>Undo Log</strong>（逻辑日志，用于回滚和 MVCC 快照）</td>
-</tr>
-<tr>
-<td>2</td>
-<td><strong>InnoDB</strong></td>
-<td>修改 <strong>Buffer Pool</strong> 中的数据页（脏页）</td>
-</tr>
-<tr>
-<td>3</td>
-<td><strong>InnoDB</strong></td>
-<td>写 <strong>Redo Log</strong>（物理日志，保证崩溃恢复）到 Log Buffer</td>
-</tr>
-<tr>
-<td>4~5</td>
-<td><strong>Server 层</strong></td>
-<td>写 <strong>Binlog</strong>（逻辑日志，用于主从复制、Point-in-Time Recovery）</td>
-</tr>
-<tr>
-<td>6</td>
-<td><strong>InnoDB + Server</strong></td>
-<td><strong>两阶段提交（2PC）</strong>： - Prepare 阶段：Redo Log 持久化 - Commit 阶段：Binlog 持久化后，Redo Log 标记 COMMIT</td>
-</tr>
-</tbody>
-</table>
-<p>两阶段提交：确保 <strong>Redo Log 与 Binlog 逻辑一致</strong>。若只写其一，崩溃恢复时可能主从数据不一致。</p>
+<p>一句话回顾 UPDATE 写入链路：<strong>加锁定位（当前读）→ 记旧值（Undo）→ 改缓存页（脏页）→ 记变更（Redo PREPARE）→ 写 Binlog → Redo COMMIT（两阶段提交收尾）</strong>——每一步各司其职，缺一不可。</p>
 </blockquote>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/11/3c4d982a91d8456caff785f7782b2332/">https://pengline.cn/2025/11/3c4d982a91d8456caff785f7782b2332/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/MySQL%E6%89%A7%E8%A1%8C%E8%BF%87%E7%A8%8B/">MySQL执行过程</a><a class="post-meta__tags" href="/tags/MySQL%E6%89%A7%E8%A1%8C%E5%99%A8/">MySQL执行器</a><a class="post-meta__tags" href="/tags/MySQL%E4%BC%98%E5%8C%96%E5%99%A8/">MySQL优化器</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/11/fa52fee6645d46579a0edf46cc50414b/" title="Java 线程休眠、等待、加入、让步的区别"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">Java 线程休眠、等待、加入、让步的区别</div></div><div class="info-2"><div class="info-item-1">线程中“休眠（sleep）、等待（wait）、加入（join）、让步（yield）” 的作用、机制和使用场景各有不同。</div></div></div></a><a class="pagination-related" href="/2025/11/3d935c639e3d43919f965465aaa34286/" title="MySQL 8.0 新增功能函数和使用案例"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144020384175514402028.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">MySQL 8.0 新增功能函数和使用案例</div></div><div class="info-2"><div class="info-item-1">MySQL8 引入了众多新特性和常用功能，如：窗口函数、通用表表达式和索引，尤其是联合索引的最左匹配。</div></div></div></a></nav><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%BF%9E%E6%8E%A5%E5%99%A8%EF%BC%88Connector%EF%BC%89"><span class="toc-number">1.</span> <span class="toc-text">连接器（Connector）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%EF%BC%88Cache%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">缓存（Cache）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%86%E6%9E%90%E5%99%A8%EF%BC%88Parser%EF%BC%89"><span class="toc-number">3.</span> <span class="toc-text">分析器（Parser）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AF%8D%E6%B3%95%E5%88%86%E6%9E%90"><span class="toc-number">3.1.</span> <span class="toc-text">词法分析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AF%AD%E6%B3%95%E5%88%86%E6%9E%90"><span class="toc-number">3.2.</span> <span class="toc-text">语法分析</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BC%98%E5%8C%96%E5%99%A8%EF%BC%88Optimizer%EF%BC%89"><span class="toc-number">4.</span> <span class="toc-text">优化器（Optimizer）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%BB%E8%BE%91%E4%BC%98%E5%8C%96"><span class="toc-number">4.1.</span> <span class="toc-text">逻辑优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%89%A9%E7%90%86%E4%BC%98%E5%8C%96"><span class="toc-number">4.2.</span> <span class="toc-text">物理优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%88%90%E6%9C%AC%E4%BC%B0%E7%AE%97"><span class="toc-number">4.3.</span> <span class="toc-text">成本估算</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%89%A7%E8%A1%8C%E5%99%A8%EF%BC%88Executor%EF%BC%89"><span class="toc-number">5.</span> <span class="toc-text">执行器（Executor）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AD%98%E5%82%A8%E5%BC%95%E6%93%8E%EF%BC%88Engine%EF%BC%89"><span class="toc-number">6.</span> <span class="toc-text">存储引擎（Engine）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AD%98%E5%82%A8%E7%BB%93%E6%9E%84"><span class="toc-number">6.1.</span> <span class="toc-text">存储结构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E6%9C%BA%E5%88%B6%EF%BC%88Buffer-Pool%EF%BC%89"><span class="toc-number">6.2.</span> <span class="toc-text">缓存机制（Buffer Pool）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6"><span class="toc-number">6.3.</span> <span class="toc-text">并发控制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%97%A5%E5%BF%97"><span class="toc-number">6.4.</span> <span class="toc-text">核心日志</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Bin-Log%EF%BC%88%E8%AE%B0%E5%BD%95%E6%97%A5%E5%BF%97%EF%BC%89"><span class="toc-number">6.4.1.</span> <span class="toc-text">Bin Log（记录日志）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Redo-Log%EF%BC%88%E9%87%8D%E5%81%9A%E6%97%A5%E5%BF%97%EF%BC%89"><span class="toc-number">6.4.2.</span> <span class="toc-text">Redo Log（重做日志）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Undo-Log%EF%BC%88%E5%9B%9E%E6%BB%9A%E6%97%A5%E5%BF%97%EF%BC%89"><span class="toc-number">6.4.3.</span> <span class="toc-text">Undo Log（回滚日志）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%89%E5%A4%A7%E6%97%A5%E5%BF%97%E5%8D%8F%E5%90%8C"><span class="toc-number">6.4.4.</span> <span class="toc-text">三大日志协同</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%A4%BA%E4%BE%8B%E8%AF%A6%E8%A7%A3%EF%BC%88Demo%EF%BC%89"><span class="toc-number">7.</span> <span class="toc-text">示例详解（Demo）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9F%A5%E8%AF%A2%E6%95%B0%E6%8D%AE"><span class="toc-number">7.1.</span> <span class="toc-text">查询数据</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9B%B4%E6%96%B0%E6%95%B0%E6%8D%AE"><span class="toc-number">7.2.</span> <span class="toc-text">更新数据</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+<h2 id="实践中的问题与排查">实践中的问题与排查</h2>
+<p>读完组件原理，再看实践中真正会遇到的坑。下面按“一条 SQL 从进来到返回”的链路，给出最常见的几类问题与排查路径。</p>
+<h3 id="1-慢-SQL：先定位，再对症">1. 慢 SQL：先定位，再对症</h3>
+<p>线上 SQL 变慢，不等于优化器选错索引——先分清问题出在哪一层，再动手：</p>
+<pre class="mermaid">flowchart TD
+    A[线上 SQL 变慢] --> B[EXPLAIN 看执行计划]
+    B --> C{type=ALL 或 rows 远超预期?}
+    C -->|是| D[索引缺失或统计信息陈旧<br>→ 建索引 或 ANALYZE TABLE]
+    C -->|否| E{预估行数与实际偏差大?}
+    E -->|是| D
+    E -->|否| F{状态卡在 Waiting for lock?}
+    F -->|是| G[锁等待而非执行慢<br>→ 查 innodb_trx 与锁持有者]
+    F -->|否| H[EXPLAIN ANALYZE 实测算子耗时<br>optimizer_trace 还原成本决策]
+    D --> I[复测验证]
+    G --> I
+    H --> I</pre>
+<p>排查工具链按“由粗到细”排列：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>慢查询日志</strong>：设 <code>long_query_time=1</code>（超过 1 秒记录），配合 <code>mysqldumpslow</code> 聚合同类语句，先找出“高频且慢”的 Top SQL；</p>
+</li>
+<li class="lvl-2">
+<p><strong>EXPLAIN</strong>：看访问路径（type）、预估扫描行数（rows）与额外操作（Extra）——出现 <code>Using filesort</code> / <code>Using temporary</code> 通常是索引设计问题；</p>
+</li>
+<li class="lvl-2">
+<p><strong>EXPLAIN ANALYZE</strong>（8.0.18+）：真实执行并输出每个算子的实际耗时与行数——若 actual rows 与预估 rows 差一个数量级，基本可断定统计信息失真，先 <code>ANALYZE TABLE</code> 再看计划是否回归；</p>
+</li>
+<li class="lvl-2">
+<p><strong>optimizer_trace</strong>：想弄清“为什么优化器选了 A 计划而放弃 B 计划”时使用（详见优化器章节）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>performance_schema</strong>：<code>events_statements_summary_by_digest</code> 可做历史聚合统计，无需改动业务即可观察线上 SQL 模式。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>一个易混淆点</strong>：查询“卡住”不一定是执行慢——<code>Waiting for table metadata lock</code>、<code>Waiting for lock</code> 属于<strong>锁等待</strong>，此时 EXPLAIN 帮不上忙，要看 <code>SHOW ENGINE INNODB STATUS</code> 以及 <code>information_schema.innodb_trx</code> / <code>data_lock_waits</code>，找出锁的持有者与阻塞链。</p>
+<h3 id="2-引擎层：Buffer-Pool-命中率失控">2. 引擎层：Buffer Pool 命中率失控</h3>
+<p>执行器把 IO 压力交给引擎后，引擎的效率取决于内存命中率：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 命中率 ≈ 1 - Innodb_buffer_pool_reads / Innodb_buffer_pool_read_requests</span></span><br><span class="line"><span class="keyword">SHOW</span> <span class="keyword">GLOBAL</span> STATUS <span class="keyword">LIKE</span> <span class="string">&#x27;Innodb_buffer_pool_read%&#x27;</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><code>read_requests</code> 是总读请求次数，<code>reads</code> 是其中真正落到磁盘的次数，两者比值即命中率；</p>
+</li>
+<li class="lvl-2">
+<p>命中率长期低于 99% 时检查两件事：<code>innodb_buffer_pool_size</code> 是否过小（生产建议占物理内存 60%~75%）；是否有周期性全表扫描/大范围扫描“冲刷”热点缓存（LRU 冷热分区可缓解，根治仍需补索引或改写 SQL）；</p>
+</li>
+<li class="lvl-2">
+<p>大表 JOIN、报表类查询尽量路由到从库或专用分析实例，避免污染主库热点缓存。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="3-连接层：打满与断连">3. 连接层：打满与断连</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong><code>Too many connections</code></strong>：<code>max_connections</code> 被耗尽。先 <code>SHOW PROCESSLIST</code> 看是否存在大量 <code>Sleep</code> 连接（连接池未回收）或短连接风暴（每次请求新建连接）；优化方向是应用侧连接池限流 + 服务端适当调大 <code>max_connections</code>（必要时启用线程池 <code>thread_handling=pool-of-threads</code>）；</p>
+</li>
+<li class="lvl-2">
+<p><strong><code>Communications link failure</code></strong>（空闲后首次访问报错）：连接被服务端 <code>wait_timeout</code>（默认 8 小时，云厂商常设得更短）断开。连接池应开启心跳探活（定期 <code>SELECT 1</code>）并设置小于服务端的空闲回收时间；</p>
+</li>
+<li class="lvl-2">
+<p><strong>认证插件不兼容</strong>：8.0 默认 <code>caching_sha2_password</code>，老版本客户端（5.x 驱动）不识别会直接认证失败——优先升级驱动，临时方案是回退 <code>mysql_native_password</code>。</p>
+</li>
+</ul>
+<h3 id="4-日志与统计信息的“隐形坑”">4. 日志与统计信息的“隐形坑”</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>统计信息陈旧导致执行计划漂移</strong>：大版本 DML 后主动 <code>ANALYZE TABLE</code>；对倾斜数据可用 8.0 直方图（<code>ANALYZE TABLE ... UPDATE HISTOGRAM ON col</code>）帮助优化器做更准的估算；</p>
+</li>
+<li class="lvl-2">
+<p><strong>磁盘被 Binlog 撑爆</strong>：轮转（<code>max_binlog_size</code>）与过期清理（<code>binlog_expire_logs_seconds</code>）必须同时配置——这是“数据库突然写不进去”的高频原因之一；</p>
+</li>
+<li class="lvl-2">
+<p><strong>Redo Log 容量不足引发频繁 checkpoint</strong>：8.0.30+ 调大 <code>innodb_redo_log_capacity</code> 可显著减少“写日志等 checkpoint”造成的抖动；</p>
+</li>
+<li class="lvl-2">
+<p><strong>长事务拖住 Undo 与锁</strong>：一个长时间不提交的事务会同时占用锁和阻止 Purge 回收版本，监控 <code>information_schema.innodb_trx</code> 中 <code>trx_started</code> 过久的事务并及时干预。</p>
+</li>
+</ul>
+<h2 id="总结：一条-SQL-的一生">总结：一条 SQL 的一生</h2>
+<p>把全文串成一条主线：</p>
+<pre class="mermaid">flowchart LR
+    A[SQL 语句] --> B[连接器<br>会话 · 认证 · 权限]
+    B --> C[分析器<br>词法/语法 → 抽象语法树]
+    C --> D[优化器<br>成本模型 → 执行计划]
+    D --> E[执行器<br>迭代器驱动 · 权限复核]
+    E --> F[存储引擎<br>Buffer Pool · 锁 · 三大日志]</pre>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>连接器</strong>决定“谁来执行”（会话与权限）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>分析器</strong>解决“是什么”（把文本变成结构化语法树）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>优化器</strong>回答“怎么最快”（成本模型下的执行计划）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>执行器</strong>负责“真去干”（逐行迭代、结果组装与返回）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>存储引擎</strong>处理“数据怎么存”（Buffer Pool、B+ 树、MVCC、三大日志与两阶段提交）。</p>
+</li>
+</ul>
+</blockquote>
+<p>SQL 性能优化的手段，最终都能映射到某一层：<strong>SQL 书写与索引设计作用于优化器的输入，参数调优作用于引擎的物理行为，连接池与缓存作用于链路的首尾两端</strong>。理解执行链路，不是为了背流程，而是为了在问题发生时，能一眼判断出“该去哪一层找答案”。</p>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/11/3c4d982a91d8456caff785f7782b2332/">https://pengline.cn/2025/11/3c4d982a91d8456caff785f7782b2332/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/MySQL%E6%89%A7%E8%A1%8C%E8%BF%87%E7%A8%8B/">MySQL执行过程</a><a class="post-meta__tags" href="/tags/MySQL%E6%89%A7%E8%A1%8C%E5%99%A8/">MySQL执行器</a><a class="post-meta__tags" href="/tags/MySQL%E4%BC%98%E5%8C%96%E5%99%A8/">MySQL优化器</a><a class="post-meta__tags" href="/tags/MySQL%E8%BF%9E%E6%8E%A5%E5%99%A8/">MySQL连接器</a><a class="post-meta__tags" href="/tags/%E6%89%A7%E8%A1%8C%E8%AE%A1%E5%88%92/">执行计划</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small191541nJFVg1758539741.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/11/fa52fee6645d46579a0edf46cc50414b/" title="Java 线程休眠、等待、加入、让步的区别"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204644701163420464439.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">Java 线程休眠、等待、加入、让步的区别</div></div><div class="info-2"><div class="info-item-1">线程中“休眠（sleep）、等待（wait）、加入（join）、让步（yield）” 的作用、机制和使用场景各有不同。</div></div></div></a><a class="pagination-related" href="/2025/11/3d935c639e3d43919f965465aaa34286/" title="MySQL 8.0 新增功能函数和使用案例"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1704300572353170430057255.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">MySQL 8.0 新增功能函数和使用案例</div></div><div class="info-2"><div class="info-item-1">MySQL8 引入了众多新特性和常用功能，如：窗口函数、通用表表达式和索引，尤其是联合索引的最左匹配。</div></div></div></a></nav><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%BF%9E%E6%8E%A5%E5%99%A8%EF%BC%88Connector%EF%BC%89"><span class="toc-number">1.</span> <span class="toc-text">连接器（Connector）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%EF%BC%88Cache%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">缓存（Cache）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%86%E6%9E%90%E5%99%A8%EF%BC%88Parser%EF%BC%89"><span class="toc-number">3.</span> <span class="toc-text">分析器（Parser）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AF%8D%E6%B3%95%E5%88%86%E6%9E%90"><span class="toc-number">3.1.</span> <span class="toc-text">词法分析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AF%AD%E6%B3%95%E5%88%86%E6%9E%90"><span class="toc-number">3.2.</span> <span class="toc-text">语法分析</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BC%98%E5%8C%96%E5%99%A8%EF%BC%88Optimizer%EF%BC%89"><span class="toc-number">4.</span> <span class="toc-text">优化器（Optimizer）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%BB%E8%BE%91%E4%BC%98%E5%8C%96"><span class="toc-number">4.1.</span> <span class="toc-text">逻辑优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%89%A9%E7%90%86%E4%BC%98%E5%8C%96"><span class="toc-number">4.2.</span> <span class="toc-text">物理优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%88%90%E6%9C%AC%E4%BC%B0%E7%AE%97"><span class="toc-number">4.3.</span> <span class="toc-text">成本估算</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%89%A7%E8%A1%8C%E5%99%A8%EF%BC%88Executor%EF%BC%89"><span class="toc-number">5.</span> <span class="toc-text">执行器（Executor）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AD%98%E5%82%A8%E5%BC%95%E6%93%8E%EF%BC%88Engine%EF%BC%89"><span class="toc-number">6.</span> <span class="toc-text">存储引擎（Engine）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AD%98%E5%82%A8%E7%BB%93%E6%9E%84"><span class="toc-number">6.1.</span> <span class="toc-text">存储结构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E6%9C%BA%E5%88%B6%EF%BC%88Buffer-Pool%EF%BC%89"><span class="toc-number">6.2.</span> <span class="toc-text">缓存机制（Buffer Pool）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6"><span class="toc-number">6.3.</span> <span class="toc-text">并发控制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%97%A5%E5%BF%97"><span class="toc-number">6.4.</span> <span class="toc-text">核心日志</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Bin-Log%EF%BC%88%E8%AE%B0%E5%BD%95%E6%97%A5%E5%BF%97%EF%BC%89"><span class="toc-number">6.4.1.</span> <span class="toc-text">Bin Log（记录日志）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Redo-Log%EF%BC%88%E9%87%8D%E5%81%9A%E6%97%A5%E5%BF%97%EF%BC%89"><span class="toc-number">6.4.2.</span> <span class="toc-text">Redo Log（重做日志）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Undo-Log%EF%BC%88%E5%9B%9E%E6%BB%9A%E6%97%A5%E5%BF%97%EF%BC%89"><span class="toc-number">6.4.3.</span> <span class="toc-text">Undo Log（回滚日志）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%89%E5%A4%A7%E6%97%A5%E5%BF%97%E5%8D%8F%E5%90%8C"><span class="toc-number">6.4.4.</span> <span class="toc-text">三大日志协同</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%A4%BA%E4%BE%8B%E8%AF%A6%E8%A7%A3%EF%BC%88Demo%EF%BC%89"><span class="toc-number">7.</span> <span class="toc-text">示例详解（Demo）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9F%A5%E8%AF%A2%E6%95%B0%E6%8D%AE"><span class="toc-number">7.1.</span> <span class="toc-text">查询数据</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9B%B4%E6%96%B0%E6%95%B0%E6%8D%AE"><span class="toc-number">7.2.</span> <span class="toc-text">更新数据</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E8%B7%B5%E4%B8%AD%E7%9A%84%E9%97%AE%E9%A2%98%E4%B8%8E%E6%8E%92%E6%9F%A5"><span class="toc-number">8.</span> <span class="toc-text">实践中的问题与排查</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E6%85%A2-SQL%EF%BC%9A%E5%85%88%E5%AE%9A%E4%BD%8D%EF%BC%8C%E5%86%8D%E5%AF%B9%E7%97%87"><span class="toc-number">8.1.</span> <span class="toc-text">1. 慢 SQL：先定位，再对症</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E5%BC%95%E6%93%8E%E5%B1%82%EF%BC%9ABuffer-Pool-%E5%91%BD%E4%B8%AD%E7%8E%87%E5%A4%B1%E6%8E%A7"><span class="toc-number">8.2.</span> <span class="toc-text">2. 引擎层：Buffer Pool 命中率失控</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E8%BF%9E%E6%8E%A5%E5%B1%82%EF%BC%9A%E6%89%93%E6%BB%A1%E4%B8%8E%E6%96%AD%E8%BF%9E"><span class="toc-number">8.3.</span> <span class="toc-text">3. 连接层：打满与断连</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-%E6%97%A5%E5%BF%97%E4%B8%8E%E7%BB%9F%E8%AE%A1%E4%BF%A1%E6%81%AF%E7%9A%84%E2%80%9C%E9%9A%90%E5%BD%A2%E5%9D%91%E2%80%9D"><span class="toc-number">8.4.</span> <span class="toc-text">4. 日志与统计信息的“隐形坑”</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93%EF%BC%9A%E4%B8%80%E6%9D%A1-SQL-%E7%9A%84%E4%B8%80%E7%94%9F"><span class="toc-number">9.</span> <span class="toc-text">总结：一条 SQL 的一生</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',

@@ -1,21 +1,23 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>MySQL 自增主键的原理和执行流程 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="自增主键是 MySQL 中特殊的列属性，用于自动生成唯一的递增值。本文从原理机制、使用方式等方面详细说明。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>MySQL 自增主键的原理和执行流程 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="深入剖析 MySQL 自增主键的计数器与分配机制、三种自增锁模式（innodb_autoinc_lock_mode）及完整执行流程，解读 ID 空洞的成因与影响，并给出主从复制、双主架构与分布式场景下的替代方案。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="MySQL 自增主键的原理和执行流程">
 <meta property="og:url" content="https://pengline.cn/2025/11/1b5dccbef2e144a8964580cb70ed0227/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="自增主键是 MySQL 中特殊的列属性，用于自动生成唯一的递增值。本文从原理机制、使用方式等方面详细说明。">
+<meta property="og:description" content="深入剖析 MySQL 自增主键的计数器与分配机制、三种自增锁模式（innodb_autoinc_lock_mode）及完整执行流程，解读 ID 空洞的成因与影响，并给出主从复制、双主架构与分布式场景下的替代方案。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1755143910372175514391020.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1753762079722175376207982.webp">
 <meta property="article:published_time" content="2025-11-08T16:00:00.000Z">
-<meta property="article:modified_time" content="2025-11-20T10:25:58.745Z">
+<meta property="article:modified_time" content="2026-09-06T11:10:52.306Z">
 <meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="AUTO_INCREMENT">
 <meta property="article:tag" content="ID空洞问题">
 <meta property="article:tag" content="MySQL自增主键">
-<meta property="article:tag" content="MySQL计数器">
+<meta property="article:tag" content="innodb_autoinc_lock_mode">
+<meta property="article:tag" content="主从复制">
+<meta property="article:tag" content="自增计数器">
 <meta property="article:tag" content="自增锁模式">
-<meta property="article:tag" content="表级自增锁">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1755143910372175514391020.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/11/1b5dccbef2e144a8964580cb70ed0227/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1753762079722175376207982.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/11/1b5dccbef2e144a8964580cb70ed0227/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -153,13 +155,17 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">106</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">531</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1755143910372175514391020.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">MySQL 自增主键的原理和执行流程</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">MySQL 自增主键的原理和执行流程</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-11-08T16:00:00.000Z" title="发表于 2025-11-09 00:00:00">2025-11-09</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2025-11-20T10:25:58.745Z" title="更新于 2025-11-20 18:25:58">2025-11-20</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/MySQL/">MySQL</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>MySQL 的自增主键（<strong>AUTO_INCREMENT</strong>）是一种非常常用的主键生成策略，尤其适用于<strong>整数类型</strong>（如 <code>INT</code>、<code>BIGINT</code>、<code>SMALLINT</code>、<code>TINYINT</code>）主键字段，且具有唯一性和连续性。</p>
-<p>MySQL 的自增主键是一种<strong>高效、简单、可靠</strong>的主键生成机制，特别适合单机或主从架构下的业务场景。但在分布式、高并发或需要全局唯一 ID 的系统中，需结合其他方案（如雪花 ID、分布式 ID 服务）。</p>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">571</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1753762079722175376207982.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">MySQL 自增主键的原理和执行流程</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">MySQL 自增主键的原理和执行流程</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-11-08T16:00:00.000Z" title="发表于 2025-11-09 00:00:00">2025-11-09</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-06T11:10:52.306Z" title="更新于 2026-09-06 19:10:52">2026-09-06</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/MySQL/">MySQL</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>MySQL 的自增主键（<strong>AUTO_INCREMENT</strong>）是一种非常常用的主键生成策略，尤其适用于<strong>整数类型</strong>（如 <code>INT</code>、<code>BIGINT</code>、<code>SMALLINT</code>、<code>TINYINT</code>）主键字段，具有<strong>自动生成、单调递增、天然有序</strong>的特性。</p>
+<blockquote>
+<p>本文按<strong>三层递进</strong>展开：<br>
+① <strong>核心原理</strong>——计数器存在哪、如何分配、如何保证并发下的唯一性；<br>
+② <strong>执行流程</strong>——一条 INSERT 语句从解析到落盘，在 InnoDB 内部经历了什么；<br>
+③ <strong>边界与方案</strong>——ID 空洞从哪来、是否要处理、主从/双主怎么配置，以及分布式场景为何必须换用雪花 ID、号段等方案。</p>
+</blockquote>
+<p>自增主键是<strong>高效、简单、可靠</strong>的主键生成机制，特别适合单机或主从架构下的业务场景。但它也有清晰的天花板：<strong>多实例无法保证全局唯一、事务回滚会产生空洞、<code>INT</code> 会耗尽</strong>——这些限制与应对方案将在文末逐一展开。</p>
 <p>基本用法：</p>
 <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">CREATE TABLE</span> users (</span><br><span class="line">    # 一张表只能有一个 AUTO_INCREMENT 字段</span><br><span class="line">    id <span class="type">INT</span> AUTO_INCREMENT <span class="keyword">PRIMARY KEY</span>,</span><br><span class="line">    name <span class="type">VARCHAR</span>(<span class="number">50</span>),</span><br><span class="line">    email <span class="type">VARCHAR</span>(<span class="number">100</span>)</span><br><span class="line">);</span><br></pre></td></tr></table></figure>
-<p><strong>特别说明</strong>：long 长度是不可能用完的。</p>
-<p>​		每毫秒一百万条数据，也需要 292 年才能用完（292.47 * 365 * 24 * 60 * 60 * 1000 * 1000000）</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// hutool实现的雪花算法</span></span><br><span class="line"><span class="comment">//参数1：workerId 终端ID</span></span><br><span class="line"><span class="comment">//参数2：dataCenterId 数据中心id</span></span><br><span class="line"><span class="type">Snowflake</span> <span class="variable">snowflake</span> <span class="operator">=</span> IdUtil.createSnowflake(<span class="number">1</span>,<span class="number">1</span>);</span><br><span class="line"><span class="type">long</span> <span class="variable">id</span> <span class="operator">=</span> snowflake.nextId();</span><br><span class="line">System.out.println(<span class="string">&quot;雪花算法1（每次生成一个新对象）实现：&quot;</span>+id);</span><br></pre></td></tr></table></figure>
+<p><strong>特别说明</strong>：<code>BIGINT</code>（long）的容量在可预见的未来内是<strong>不可能用完</strong>的——即使每毫秒插入一百万条记录，也需要 <strong>292 年</strong>才能耗尽（292.47 × 365 × 24 × 60 × 60 × 1000 × 1000000）。因此实际工程中只需关注 <code>INT</code>（上限 21.47 亿）是否可能触顶，而<strong>真正需要放弃自增主键的场景是分布式多实例</strong>，替代方案（雪花算法等）见文末「分布式场景的替代方案」章节。</p>
 <p><strong>innodb为什么要用自增id作为主键</strong>？</p>
 <blockquote>
 <p>由于数据存储、分页都是顺序存储，如索引叶子节点顺序连接。如果使用自增主键，每次插入新记录就会顺序添加到当前索引节点的后续位置，当一页16k写满，就会自动开辟一个新的页。</p>
@@ -168,9 +174,8 @@
 <h2 id="核心原理">核心原理</h2>
 <p>自增主键功能的实现主要包含 ID计数器 和并发控制，保证ID的原子性、唯一性。</p>
 <h3 id="计数器">计数器</h3>
-<p>MySQL 为每个包含自增列的表维护一个计数器，存储在内存和磁盘上。</p>
-<p>每个使用 <code>AUTO_INCREMENT</code> 的表在 MySQL 内部都会维护一个<strong>计数器</strong>，记录下一个将要分配的值。</p>
-<p>该计数器的值<strong>存储在内存中</strong>（对 InnoDB 来说，在 MySQL 8.0 之前存储在数据字典表中，8.0+ 存储在重做日志和系统表空间中，支持持久化）。</p>
+<p>MySQL 为每个包含自增列的表维护一个<strong>计数器</strong>（counter），记录下一个将要分配的值。</p>
+<p>该计数器的值<strong>存储在内存中</strong>以保证分配速度，并依引擎差异决定是否持久化（对 InnoDB 而言：MySQL 8.0 之前仅存于内存、依赖启动时扫描 <code>MAX(id)</code> 重建；8.0+ 随<strong>重做日志与系统表空间</strong>持久化，重启后能精确恢复）。</p>
 <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查看自增计数器的当前值</span></span><br><span class="line"><span class="keyword">SELECT</span></span><br><span class="line">	AUTO_INCREMENT </span><br><span class="line"><span class="keyword">FROM</span></span><br><span class="line">	information_schema.TABLES </span><br><span class="line"><span class="keyword">WHERE</span></span><br><span class="line">	TABLE_SCHEMA <span class="operator">=</span> <span class="string">&#x27;test&#x27;</span> </span><br><span class="line">	<span class="keyword">AND</span> TABLE_NAME <span class="operator">=</span> <span class="string">&#x27;test&#x27;</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 返回刚插入的自增ID</span></span><br><span class="line"><span class="keyword">SELECT</span> LAST_INSERT_ID();  </span><br></pre></td></tr></table></figure>
 <p>不同的引擎对于自增值的保存策略不同：</p>
 <blockquote>
@@ -190,7 +195,7 @@
 </ul>
 </blockquote>
 <h3 id="分配逻辑">分配逻辑</h3>
-<p>插入记录时，若未提供主键值，MySQL 会：</p>
+<p>插入记录时，若未提供主键值，MySQL 会执行一次“读取 → 赋值 → 递增”的原子操作：</p>
 <ol>
 <li class="lvl-3">
 <p>读取当前 <code>AUTO_INCREMENT</code> 计数器值；</p>
@@ -202,6 +207,17 @@
 <p>将计数器 +1，准备为下次分配。</p>
 </li>
 </ol>
+<pre class="mermaid">flowchart LR
+    A[INSERT 未指定 id] --> B[读取内存中的计数器<br>auto_increment = N]
+    B --> C[N 作为新记录主键<br>写入聚簇索引]
+    C --> D[计数器 +1<br>写回内存]
+    D --> E[下次分配时得到 N+1]
+
+    style B fill:#e3f2fd,stroke:#1976d2
+    style D fill:#fff8e1,stroke:#f57f17</pre>
+<blockquote>
+<p><strong>关键语义</strong>：计数器的递增发生在<strong>分配时</strong>而非提交时，因此并发插入的会话拿到的 ID 必然互不相同——这正是“唯一性”的来源。代价是：一旦分配就<strong>不会回收</strong>（事务回滚、插入失败均不退还），这也是 ID 空洞的根源（详见后文「ID 空洞问题」）。</p>
+</blockquote>
 <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 修改已有表的自增起始值</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> users AUTO_INCREMENT <span class="operator">=</span> <span class="number">1000</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 设置全局自增步长（需要在配置文件中设置）</span></span><br><span class="line"><span class="comment">-- [mysqld]</span></span><br><span class="line"><span class="comment">-- auto_increment_increment = 2    -- 每次增加2</span></span><br><span class="line"><span class="comment">-- auto_increment_offset = 1       -- 从1开始</span></span><br></pre></td></tr></table></figure>
 <h3 id="并发控制">并发控制</h3>
 <ul class="lvl-0">
@@ -244,6 +260,28 @@
 </table>
 </li>
 </ul>
+<blockquote>
+<p>三种模式的<strong>锁粒度决策路径</strong>可以浓缩为下图——核心分水岭在于：能否在语句执行前确定插入行数，以及是否愿意为并发放弃主从一致性：</p>
+</blockquote>
+<pre class="mermaid">flowchart TD
+    A[插入语句到达] --> B{innodb_autoinc_lock_mode 取何值?}
+
+    B -->|0 传统模式| C[持有 AUTO-INC 表锁<br>直到语句结束]
+    C --> C1[其他会话的插入全部阻塞<br>ID 严格连续 主从必然一致]
+
+    B -->|1 连续模式 默认| D{能否预知插入行数?}
+    D -->|简单插入 单行 INSERT| E[取号后立即释放锁<br>不阻塞其他会话]
+    D -->|批量插入 INSERT SELECT| F[预估行数一次性预分配<br>持有表锁到语句结束]
+    E --> E1[性能与一致性兼顾<br>官方默认推荐]
+    F --> E1
+
+    B -->|2 交错模式| G[每次取号即释放<br>互斥量保护计数器]
+    G --> G1[并发最高<br>但 ID 可能不连续<br>statement 复制下主从易不一致]
+
+    style C fill:#ffebee,stroke:#f44336
+    style E fill:#e8f5e9,stroke:#4caf50
+    style F fill:#fff8e1,stroke:#ff9800
+    style G fill:#e3f2fd,stroke:#1976d2</pre>
 <h2 id="执行流程">执行流程</h2>
 <p><strong>新的自增值生成算法是：从auto_increment_offset（初始值）开始，以auto_increment_increment（步长）为步长，持续叠加，直到找到第一个大于X的值，作为新的自增值</strong></p>
 <p>1.如果插入数据时id字段指定为0、null或未指定值，那么就把这个表当前的AUTO_INCREMENT值填到自增字段。</p>
@@ -254,6 +292,28 @@
 <p>2.如果X&gt;=Y，就需要把当前自增值修改为新的自增值</p>
 </blockquote>
 <p><strong>执行流程如下</strong>：</p>
+<pre class="mermaid">flowchart TD
+    A[INSERT 语句解析] --> B{是否显式指定 id 值?}
+
+    B -->|否 id 为 NULL 或 0| C[读取计数器当前值 N<br>作为新记录主键]
+    B -->|是| D{该 id 是否已存在于表中?}
+    D -->|存在| E[报错 主键冲突]
+    D -->|不存在| F[直接使用指定 id 写入<br>跳过自增机制]
+    F --> F2[若指定 id 大于当前计数器<br>则自动将计数器调整为 id+1]
+
+    C --> G[根据 innodb_autoinc_lock_mode 取号]
+    G --> G1[简单插入: 互斥量快速取号<br>批量插入: 表锁预分配]
+    G1 --> H[N 作为主键写入聚簇索引末尾<br>计数器 +1 不随事务回滚]
+    F2 --> H
+
+    H --> I{事务是否回滚?}
+    I -->|是| J[已分配的自增值不回收<br>后续插入继续 +1 产生空洞]
+    I -->|否| K[提交 插入成功]
+
+    style C fill:#e8f5e9,stroke:#4caf50
+    style F fill:#e8f5e9,stroke:#4caf50
+    style E fill:#ffebee,stroke:#f44336
+    style J fill:#fff8e1,stroke:#ff9800</pre>
 <p><code>insert into t values(null, 1, 1); </code>  插入第一条数据</p>
 <ol>
 <li class="lvl-3">
@@ -322,33 +382,35 @@
 <p>任何包含 <code>AUTO_INCREMENT</code> 的 <code>INSERT</code> 语句（包括 <code>INSERT ... SELECT</code>、<code>LOAD DATA</code> 等）会<strong>获取一个表级 AUTO-INC 锁</strong>；</p>
 <p><strong>该锁一直持有到整个语句执行完毕才释放</strong>；即使是简单的单行插入，也会阻塞其他并发插入。</p>
 </blockquote>
-<p>MySQL5.1.22 版本后引入了一个新策略，新增参数<code>innodb_autoinc_lock_mode</code>，默认值是1</p>
+<p>MySQL5.1.22 版本后引入了一个新策略，新增参数<code>innodb_autoinc_lock_mode</code>，默认值是1。三种模式的宏观差异已在「核心原理-并发控制」给出，这里聚焦 <strong>mode=1 连续模式</strong>的锁内部机制（它是对 5.0 旧策略的主要优化）：</p>
 <blockquote>
-<ol>
-<li class="lvl-3">
-<p><code>innodb_autoinc_lock_mode=0</code>，表示采用之前MySQL5.0版本的策略，即语句执行结束后才释放锁。</p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>简单插入</strong>（单行 INSERT、可预知行数）：申请完自增值就立即释放锁，<strong>甚至在语句执行完之前</strong>——取号与写数据解耦，互不影响；</p>
 </li>
-<li class="lvl-3">
-<p><code>innodb_autoinc_lock_mode=1</code></p>
-<ul class="lvl-3">
-<li class="lvl-5">简单插入（普通insert语句）：<strong>申请完自增值就立即释放锁</strong>（甚至在语句执行完之前）；</li>
-<li class="lvl-5">批量插入（insert … select）：锁持有到语句结束后才被释放。
-<ul class="lvl-5">
-<li class="lvl-7">InnoDB 会 <strong>在语句开始时尝试估算需要多少行</strong>，然后 <strong>一次性分配足够多的自增值</strong></li>
-<li class="lvl-7"><strong>整个语句持有 AUTO-INC 表锁</strong>，直到语句结束；</li>
-</ul>
+<li class="lvl-2">
+<p><strong>批量插入</strong>（<code>INSERT ... SELECT</code>、<code>LOAD DATA</code>）：InnoDB 会在语句开始时<strong>尝试估算需要多少行</strong>，然后<strong>一次性分配足够多的自增值</strong>，整个语句持有 AUTO-INC 表锁直到语句结束；</p>
+</li>
+<li class="lvl-2">
+<p><strong>因此，即使事务未提交，其他会话也可以继续申请新的自增值</strong>（自增锁不跟随事务）。</p>
 </li>
 </ul>
-<p>因此，<strong>即使事务未提交，其他会话也可以继续申请新的自增值</strong>。</p>
-</li>
-<li class="lvl-3">
-<p><code>innodb_autoinc_lock_mode=2</code>，所有申请自增主键的动作都是申请后就释放锁。</p>
-<ol>
-<li class="lvl-6">对于<strong>简单插入</strong>，在语句执行前就能确定插入行数的语句，预分配所需数量的自增值（如 2 行就申请 2 个）；</li>
-<li class="lvl-6">对于<strong>批量插入</strong>数据的语句，MySQL通过 <strong>原子计数器</strong>， 按需一次性分配所需数量。多个并发语句的 ID 可能交错， ID 可能出现不连续。</li>
-</ol>
-</li>
-</ol>
+</blockquote>
+<pre class="mermaid">sequenceDiagram
+    participant A as 会话 A 批量插入<br>INSERT...SELECT
+    participant B as 会话 B 单行插入
+    participant L as AUTO-INC 表锁
+
+    Note over A,L: mode=1 连续模式下的典型竞争
+    A->>L: 预估 10000 行，申请表级锁
+    L-->>A: 持锁，一次性分配 10000 个自增值<br>（语句结束才释放）
+
+    Note over B: 单行 INSERT 走轻量互斥量路径<br>无需等待 A 释放表锁
+    B->>B: 立即取号，随即释放
+
+    A->>L: 语句执行完毕，释放表锁</pre>
+<blockquote>
+<p><strong>对比 mode=2 交错模式</strong>：所有取号动作都只依赖原子计数器（互斥量），申请即释放，多语句 ID 可能交错、不连续——换来的是极致并发，代价是 <code>statement</code> 格式复制下主从易不一致。</p>
 </blockquote>
 <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查看当前模式（默认值是1）</span></span><br><span class="line"><span class="keyword">SHOW</span> VARIABLES <span class="keyword">LIKE</span> <span class="string">&#x27;innodb_autoinc_lock_mode&#x27;</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 设置（需在 my.cnf 中配置，重启生效）</span></span><br><span class="line">[mysqld]</span><br><span class="line">innodb_autoinc_lock_mode <span class="operator">=</span> <span class="number">1</span></span><br></pre></td></tr></table></figure>
 <blockquote>
@@ -384,54 +446,180 @@
 </tr>
 </tbody>
 </table>
-<h2 id="应用与不足">应用与不足</h2>
+<h2 id="应用限制与边界">应用限制与边界</h2>
+<p>自增主键并非万能，使用前需要清醒认识它的四条边界：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>不适用于分布式系统</strong>：多个 MySQL 实例无法保证全局唯一（需用雪花算法、UUID 等）；</p>
+<p><strong>不适用于分布式系统</strong>：多个 MySQL 实例各自维护独立计数器，无法保证全局唯一（需用雪花算法、UUID、号段模式等，见文末「分布式场景的替代方案」）；</p>
 </li>
 <li class="lvl-2">
-<p><strong>可能不连续</strong>：事务回滚、批量插入失败、手动指定值等都会导致 ID 跳跃；</p>
+<p><strong>ID 可能不连续</strong>：事务回滚、批量插入失败、手动指定值等都会导致跳跃，<strong>不要把自增 ID 当作业务连续编号</strong>展示给用户；</p>
 </li>
 <li class="lvl-2">
-<p><strong>有上限</strong>：如 <code>INT</code> 最大为 2147483647，超限会报错（可改用 <code>BIGINT</code>）；</p>
+<p><strong>数值有上限</strong>：如 <code>INT</code> 最大为 2147483647（约 21.47 亿），触顶后继续插入会报主键溢出错误，需预判容量改用 <code>BIGINT</code>；</p>
 </li>
 <li class="lvl-2">
-<p><strong>重复风险</strong>：在极端情况（如手动设置 <code>AUTO_INCREMENT</code> 值小于当前最大值）或旧版本 MySQL 重启可能重复（8.0+ 已解决）。</p>
+<p><strong>极端情况存在重复风险</strong>：如手动把 <code>AUTO_INCREMENT</code> 设置为小于当前最大值的数、或 5.7 及以前版本重启后按 <code>MAX(id)+1</code> 重建计数器（若最大行恰好被删，该值会被复用），8.0+ 已通过持久化计数器解决。</p>
 </li>
 </ul>
-<h3 id="支持多主键">支持多主键</h3>
-<p>mysql 可以存在多个主键。但是唯一性是多个主键的组合（组合索引）。</p>
-<p>单个键不再有唯一性，且只能有一个自增键</p>
+<h2 id="复合主键与自增列的位置约束">复合主键与自增列的位置约束</h2>
+<blockquote>
+<p><strong>澄清一个常见误区</strong>：MySQL 中一张表<strong>只能有一个主键</strong>（PRIMARY KEY），不存在“多个主键”。日常所说的“多个主键”实际是<strong>复合主键</strong>——由多列共同组成唯一约束，其中单列不再单独具备唯一性，且整张表<strong>只能有一个 <code>AUTO_INCREMENT</code> 列</strong>。</p>
+</blockquote>
+<p><strong>自增列加入复合主键的两条硬性规则</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>自增列必须是<strong>某个索引的第一列（最左列）</strong>，否则建表直接报错 <code>ERROR 1075: Incorrect table definition; there can be only one auto column and it must be defined as a key</code>；</p>
+</li>
+<li class="lvl-3">
+<p>若业务上需要频繁按业务维度（如 user_id）检索，应额外为 user_id 建立普通索引，否则复合主键只能从最左前缀开始匹配。</p>
+</li>
+</ol>
 <img src="/imgs/db/image-20240628171248382.png" alt="image-20240628171248382" style="zoom:67%;" loading='lazy'>
-<h3 id="空洞问题">空洞问题</h3>
-<p><strong>唯一键冲突和事务回滚都会导致自增主键id不连续</strong>，造成ID浪费的情况</p>
+<h2 id="ID-空洞问题">ID 空洞问题</h2>
+<p>自增 ID <strong>只保证递增唯一、不保证连续</strong>——空洞（跳跃）是设计使然，而非故障。先看一段直观演示：</p>
+<p><strong>唯一键冲突和事务回滚都会导致自增主键 id 不连续</strong>，造成 ID 浪费的情况</p>
 <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 插入数据</span></span><br><span class="line"><span class="keyword">INSERT INTO</span> users (name) <span class="keyword">VALUES</span> (<span class="string">&#x27;用户1&#x27;</span>);  <span class="comment">-- id=1</span></span><br><span class="line"><span class="keyword">INSERT INTO</span> users (name) <span class="keyword">VALUES</span> (<span class="string">&#x27;用户2&#x27;</span>);  <span class="comment">-- id=2</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 删除一条记录</span></span><br><span class="line"><span class="keyword">DELETE</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> id <span class="operator">=</span> <span class="number">2</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 再插入新记录</span></span><br><span class="line"><span class="keyword">INSERT INTO</span> users (name) <span class="keyword">VALUES</span> (<span class="string">&#x27;用户3&#x27;</span>);  <span class="comment">-- id=3，不是2</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 回滚事务也会产生空洞</span></span><br><span class="line"><span class="keyword">START</span> TRANSACTION;</span><br><span class="line"><span class="keyword">INSERT INTO</span> users (name) <span class="keyword">VALUES</span> (<span class="string">&#x27;用户4&#x27;</span>);  <span class="comment">-- id=4</span></span><br><span class="line"><span class="keyword">ROLLBACK</span>;</span><br><span class="line"><span class="keyword">INSERT INTO</span> users (name) <span class="keyword">VALUES</span> (<span class="string">&#x27;用户5&#x27;</span>);  <span class="comment">-- id=5</span></span><br></pre></td></tr></table></figure>
-<p>重置自增值</p>
-<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 重置自增值为当前最大值+1</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> users AUTO_INCREMENT <span class="operator">=</span> <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 清空表并重置自增值</span></span><br><span class="line"><span class="keyword">TRUNCATE</span> <span class="keyword">TABLE</span> users;</span><br></pre></td></tr></table></figure>
-<h3 id="主从复制">主从复制</h3>
-<p>在复制环境中，需要确保自增值的一致性：</p>
-<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 设置自增偏移和步长，避免多主复制冲突</span></span><br><span class="line"><span class="comment">-- 服务器1配置：</span></span><br><span class="line">auto_increment_increment <span class="operator">=</span> <span class="number">2</span></span><br><span class="line">auto_increment_offset <span class="operator">=</span> <span class="number">1</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 服务器2配置：</span></span><br><span class="line">auto_increment_increment <span class="operator">=</span> <span class="number">2</span></span><br><span class="line">auto_increment_offset <span class="operator">=</span> <span class="number">2</span></span><br></pre></td></tr></table></figure>
-<h3 id="实际应用">实际应用</h3>
+<p><strong>空洞的四大来源</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">来源</th>
+<th style="text-align:left">机制</th>
+<th style="text-align:left">示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">事务回滚</td>
+<td style="text-align:left">自增值在分配时即递增，回滚不回收</td>
+<td style="text-align:left"><code>START TRANSACTION; INSERT ...; ROLLBACK;</code></td>
+</tr>
+<tr>
+<td style="text-align:left">唯一键冲突</td>
+<td style="text-align:left">已分配 id 但插入失败（如重复唯一键），计数器不退还</td>
+<td style="text-align:left">插入重复 email 报错后，下一条 id 已 +1</td>
+</tr>
+<tr>
+<td style="text-align:left">DELETE 删除</td>
+<td style="text-align:left">删除行后计数器不回退，新插入继续 +1</td>
+<td style="text-align:left">删除 id=2，下一条仍是 3 而非 2</td>
+</tr>
+<tr>
+<td style="text-align:left">批量插入预分配</td>
+<td style="text-align:left"><code>INSERT ... SELECT</code> 按预估行数一次性预留，实际行数少于预估时剩余作废</td>
+<td style="text-align:left">预估 10000 行实际插入 9990 行，末尾产生空洞</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>为什么 InnoDB 不回收空洞？</strong><br>
+计数器的核心语义是“保证并发分配互不重复”。若允许回退，分配前就必须重新计算（加锁扫描 <code>MAX(id)</code>），会破坏连续模式/交错模式下轻量取号的设计。因此 <strong>InnoDB 计数器只增不减</strong>，空洞是并发性能换来的代价。</p>
+<p>对比 <strong>MyISAM</strong>：其自增值记录在表头，若删除了当前最大值所在的行，下一次插入会<strong>复用该值</strong>——看似“无空洞”，但重启后若并发插入则可能重复或错乱，可靠性反而不如 InnoDB。这也解释了为何 InnoDB 成为默认引擎后，ID 不复用成为常态。</p>
+</blockquote>
+<p><strong>重置自增值</strong>（仅用于测试或数据清理场景）：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 表内无数据时：将自增值重置为 1</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> users AUTO_INCREMENT <span class="operator">=</span> <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 清空表并重置自增值（同时释放表空间，保留表结构）</span></span><br><span class="line"><span class="keyword">TRUNCATE</span> <span class="keyword">TABLE</span> users;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><strong>两个易错点</strong>：</p>
+<ol>
+<li class="lvl-3"><code>ALTER TABLE ... AUTO_INCREMENT = N</code> 只能<strong>调大</strong>：若 N ≤ 当前 <code>MAX(id) + 1</code>，InnoDB 会静默忽略，实际仍从 <code>MAX(id) + 1</code> 继续——想“缩小”只能清空表或重建表；</li>
+<li class="lvl-3"><code>TRUNCATE</code> 会<strong>清空全部数据且不可回滚</strong>，仅适合测试/临时表；生产环境清理数据请先备份。</li>
+</ol>
+</blockquote>
+<h2 id="主从复制与双主架构">主从复制与双主架构</h2>
+<p><strong>单主多从</strong>（一主一从/一主多从）场景下，从库通过 binlog 同步主库的数据与自增状态，业务无需任何特殊配置；真正需要关注的是<strong>双主互备 / 多主写入</strong>——多个节点都可能执行写入，若都从 1 开始自增，必然产生主键冲突。</p>
+<p><strong>双主架构的标准解法：用 offset / increment 把各节点的 ID 空间“切分”开</strong>：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 服务器1配置：生成奇数 ID（1, 3, 5, ...）</span></span><br><span class="line">auto_increment_increment <span class="operator">=</span> <span class="number">2</span></span><br><span class="line">auto_increment_offset <span class="operator">=</span> <span class="number">1</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 服务器2配置：生成偶数 ID（2, 4, 6, ...）</span></span><br><span class="line">auto_increment_increment <span class="operator">=</span> <span class="number">2</span></span><br><span class="line">auto_increment_offset <span class="operator">=</span> <span class="number">2</span></span><br></pre></td></tr></table></figure>
+<pre class="mermaid">flowchart LR
+    subgraph A1[应用集群 A]
+        A2[写请求] --> M1[MySQL 节点 1<br>offset = 1 increment = 2<br>生成 1 3 5 ...]
+    end
+    subgraph B1[应用集群 B]
+        B2[写请求] --> M2[MySQL 节点 2<br>offset = 2 increment = 2<br>生成 2 4 6 ...]
+    end
+    M1 -->|复制| M2
+    M2 -->|复制| M1
+
+    style M1 fill:#e8f5e9,stroke:#4caf50
+    style M2 fill:#e8f5e9,stroke:#4caf50</pre>
+<blockquote>
+<p>该方案的两个注意点：</p>
+<ul class="lvl-1">
+<li class="lvl-2"><strong>步长与节点数匹配</strong>：N 个互备节点需配置 <code>increment = N</code>、<code>offset</code> 分别取 1…N；后续扩容需要重新规划号段，迁移成本高——节点数不稳定的架构建议直接上号段/雪花方案；</li>
+<li class="lvl-2"><strong>复制格式建议用 <code>ROW</code></strong>：<code>statement</code> 格式在并发插入下取号顺序不可控，双主极易产生 ID 冲突（与前文 <code>mode=2</code> 的隐患同理）。</li>
+</ul>
+</blockquote>
+<h2 id="分布式场景的替代方案">分布式场景的替代方案</h2>
+<p>自增计数器的状态<strong>只存在于单个 MySQL 实例</strong>，无法在多实例间共享。当业务需要<strong>全局唯一 ID</strong>（分库分表、微服务多写、跨机房部署）时，主流的替代方案对比如下：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">方案</th>
+<th style="text-align:left">实现要点</th>
+<th style="text-align:left">优点</th>
+<th style="text-align:left">缺点</th>
+<th style="text-align:left">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>雪花算法</strong></td>
+<td style="text-align:left">64 位 long：1 位符号 + 41 位毫秒时间戳 + 10 位机器 ID + 12 位序列号</td>
+<td style="text-align:left">趋势递增、无中心依赖、高性能</td>
+<td style="text-align:left">依赖机器时钟，回拨可能产生重复</td>
+<td style="text-align:left">分布式 ID 的主流选择</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>号段模式</strong></td>
+<td style="text-align:left">由 DB 批量发放号段（如每次 1000），应用内存中逐号分配</td>
+<td style="text-align:left">简单可靠、DB 压力小</td>
+<td style="text-align:left">号段耗尽时需再次请求 DB，存在间隙</td>
+<td style="text-align:left">订单号等可预测量场景</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>UUID</strong></td>
+<td style="text-align:left">128 位随机字符串</td>
+<td style="text-align:left">生成零依赖、离线可用</td>
+<td style="text-align:left">无序且长，作主键导致聚簇索引页分裂严重</td>
+<td style="text-align:left">非索引字段、离线生成</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Redis INCR</strong></td>
+<td style="text-align:left">利用 Redis 单线程原子自增</td>
+<td style="text-align:left">实现最简单、并发高</td>
+<td style="text-align:left">引入额外组件，与 DB 存在双写一致性问题</td>
+<td style="text-align:left">小规模、ID 要求不严格的场景</td>
+</tr>
+</tbody>
+</table>
+<p><strong>雪花算法落地示例</strong>（Hutool 封装）：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// hutool实现的雪花算法</span></span><br><span class="line"><span class="comment">// 参数1：workerId  终端ID（0~31）</span></span><br><span class="line"><span class="comment">// 参数2：dataCenterId 数据中心id（0~31）</span></span><br><span class="line"><span class="type">Snowflake</span> <span class="variable">snowflake</span> <span class="operator">=</span> IdUtil.createSnowflake(<span class="number">1</span>, <span class="number">1</span>);</span><br><span class="line"><span class="type">long</span> <span class="variable">id</span> <span class="operator">=</span> snowflake.nextId();</span><br><span class="line">System.out.println(<span class="string">&quot;雪花算法生成 ID：&quot;</span> + id);</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><strong>设计启示</strong>：雪花 ID 的 64 位结构中，41 位时间戳保证了<strong>趋势递增</strong>——作为 <code>BIGINT</code> 主键插入时依然近似顺序追加，仍能享受聚簇索引顺序写入的红利，不会重蹈 UUID 导致索引页频繁分裂的覆辙。这也是它替代自增主键后的核心优势。</p>
+</blockquote>
+<h2 id="实践建议与排查">实践建议与排查</h2>
+<p><strong>日常开发建议</strong>：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p>分表场景下的自增ID，设置不同的起始值，如：第二张表 <code>AUTO_INCREMENT = 1000000;</code></p>
+<p><strong>类型选择</strong>：预估数据量级后选择合适的整数类型，避免自增值耗尽导致插入失败。粗略估算：日增 10 万、预计运行 10 年，总量约 3.65 亿，<code>INT</code> 临界够用，但建议直接上 <code>BIGINT</code> 留足余量；</p>
 </li>
 <li class="lvl-2">
-<p>复合主键中的自增设置 <code>CREATE TABLE orders ( user_id INT, order_seq INT AUTO_INCREMENTPRIMARY KEY ( user_id, order_seq ) );</code></p>
+<p><strong>批量插入</strong>：尽量使用批量插入（多行 VALUES / <code>INSERT ... SELECT</code>），减少自增锁的获取次数与网络往返；</p>
 </li>
 <li class="lvl-2">
-<p>选择合适的自增类型，避免自增值耗尽，导致自增失败</p>
+<p><strong>分表场景</strong>：不同分表设置不同起始值（如第二张表 <code>AUTO_INCREMENT = 1000000</code>）可避免 ID 撞车，但仅适用于<strong>写死数量的静态分表</strong>；动态扩容建议直接用雪花/号段方案；</p>
 </li>
 <li class="lvl-2">
-<p>尽量使用批量插入方式，可以减少自增锁的获取次数</p>
-</li>
-<li class="lvl-2">
-<p>自增值不连续排查</p>
-<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查找空洞</span></span><br><span class="line"><span class="keyword">SELECT</span></span><br><span class="line">	t1.id <span class="operator">+</span> <span class="number">1</span> <span class="keyword">AS</span> missing_id </span><br><span class="line"><span class="keyword">FROM</span></span><br><span class="line">	test t1</span><br><span class="line">	<span class="keyword">LEFT</span> <span class="keyword">JOIN</span> test t2 <span class="keyword">ON</span> t1.id <span class="operator">+</span> <span class="number">1</span> <span class="operator">=</span> t2.id </span><br><span class="line"><span class="keyword">WHERE</span></span><br><span class="line">	t2.id <span class="keyword">IS</span> <span class="keyword">NULL</span> </span><br><span class="line">	<span class="keyword">AND</span> t1.id <span class="operator">&lt;</span> ( <span class="keyword">SELECT</span> <span class="built_in">MAX</span>( id ) <span class="keyword">FROM</span> test );</span><br></pre></td></tr></table></figure>
-<p>将会查出所有丢失的所有ID（最近一条）</p>
+<p><strong>复合主键自增</strong>：自增列必须放在复合主键的最左列，或为其单独建立索引，例如：</p>
 </li>
 </ul>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/11/1b5dccbef2e144a8964580cb70ed0227/">https://pengline.cn/2025/11/1b5dccbef2e144a8964580cb70ed0227/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/MySQL%E8%87%AA%E5%A2%9E%E4%B8%BB%E9%94%AE/">MySQL自增主键</a><a class="post-meta__tags" href="/tags/MySQL%E8%AE%A1%E6%95%B0%E5%99%A8/">MySQL计数器</a><a class="post-meta__tags" href="/tags/ID%E7%A9%BA%E6%B4%9E%E9%97%AE%E9%A2%98/">ID空洞问题</a><a class="post-meta__tags" href="/tags/%E8%87%AA%E5%A2%9E%E9%94%81%E6%A8%A1%E5%BC%8F/">自增锁模式</a><a class="post-meta__tags" href="/tags/%E8%A1%A8%E7%BA%A7%E8%87%AA%E5%A2%9E%E9%94%81/">表级自增锁</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1755143910372175514391020.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/11/3d935c639e3d43919f965465aaa34286/" title="MySQL 8.0 新增功能函数和使用案例"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144020384175514402028.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">MySQL 8.0 新增功能函数和使用案例</div></div><div class="info-2"><div class="info-item-1">MySQL8 引入了众多新特性和常用功能，如：窗口函数、通用表表达式和索引，尤其是联合索引的最左匹配。</div></div></div></a><a class="pagination-related" href="/2025/11/0c17e5dc04ae4994b411db081a7c82d6/" title="LangChain 框架功能详解和使用案例"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1712590480744171259048056.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">LangChain 框架功能详解和使用案例</div></div><div class="info-2"><div class="info-item-1">开源框架 LangChain，旨在简化基于大语言模型构建应用程序的过程。集成了记忆机制、工具调用和智能决策等。</div></div></div></a></nav><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E5%8E%9F%E7%90%86"><span class="toc-number">1.</span> <span class="toc-text">核心原理</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%A1%E6%95%B0%E5%99%A8"><span class="toc-number">1.1.</span> <span class="toc-text">计数器</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E9%85%8D%E9%80%BB%E8%BE%91"><span class="toc-number">1.2.</span> <span class="toc-text">分配逻辑</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6"><span class="toc-number">1.3.</span> <span class="toc-text">并发控制</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%89%A7%E8%A1%8C%E6%B5%81%E7%A8%8B"><span class="toc-number">2.</span> <span class="toc-text">执行流程</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BC%98%E5%8C%96%E8%87%AA%E5%A2%9E%E9%94%81"><span class="toc-number">3.</span> <span class="toc-text">优化自增锁</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BA%94%E7%94%A8%E4%B8%8E%E4%B8%8D%E8%B6%B3"><span class="toc-number">4.</span> <span class="toc-text">应用与不足</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%94%AF%E6%8C%81%E5%A4%9A%E4%B8%BB%E9%94%AE"><span class="toc-number">4.1.</span> <span class="toc-text">支持多主键</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%A9%BA%E6%B4%9E%E9%97%AE%E9%A2%98"><span class="toc-number">4.2.</span> <span class="toc-text">空洞问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6"><span class="toc-number">4.3.</span> <span class="toc-text">主从复制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%9E%E9%99%85%E5%BA%94%E7%94%A8"><span class="toc-number">4.4.</span> <span class="toc-text">实际应用</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 正确：自增列作为复合主键第一列</span></span><br><span class="line"><span class="keyword">CREATE TABLE</span> orders (</span><br><span class="line">    order_seq <span class="type">INT</span> AUTO_INCREMENT,</span><br><span class="line">    user_id   <span class="type">INT</span>,</span><br><span class="line">    <span class="keyword">PRIMARY KEY</span> (order_seq, user_id)</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 错误：自增列位于复合索引第二列，报 ERROR 1075</span></span><br><span class="line"><span class="comment">-- CREATE TABLE orders (</span></span><br><span class="line"><span class="comment">--     user_id   INT,</span></span><br><span class="line"><span class="comment">--     order_seq INT AUTO_INCREMENT,</span></span><br><span class="line"><span class="comment">--     PRIMARY KEY (user_id, order_seq)</span></span><br><span class="line"><span class="comment">-- );</span></span><br></pre></td></tr></table></figure>
+<p><strong>自增值不连续（空洞）排查</strong>——找出表中缺失的 ID 段：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查找空洞（列出每个缺口的第一条缺失 id）</span></span><br><span class="line"><span class="keyword">SELECT</span> t1.id <span class="operator">+</span> <span class="number">1</span> <span class="keyword">AS</span> missing_id</span><br><span class="line"><span class="keyword">FROM</span> test t1</span><br><span class="line"><span class="keyword">LEFT</span> <span class="keyword">JOIN</span> test t2 <span class="keyword">ON</span> t1.id <span class="operator">+</span> <span class="number">1</span> <span class="operator">=</span> t2.id</span><br><span class="line"><span class="keyword">WHERE</span> t2.id <span class="keyword">IS</span> <span class="keyword">NULL</span></span><br><span class="line">  <span class="keyword">AND</span> t1.id <span class="operator">&lt;</span> (<span class="keyword">SELECT</span> <span class="built_in">MAX</span>(id) <span class="keyword">FROM</span> test);</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>该查询返回的是<strong>每个空洞区间的最小缺失 ID</strong>（若 id 为 1…10、20…30，将返回 11），而非“最近一条”。日常运维还应监控自增值水位：定期巡检 <code>information_schema.TABLES.AUTO_INCREMENT</code>，当它接近整数类型上限（如 <code>INT</code> 的 21.47 亿）时提前告警、扩容或切换类型。</p>
+</blockquote>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/11/1b5dccbef2e144a8964580cb70ed0227/">https://pengline.cn/2025/11/1b5dccbef2e144a8964580cb70ed0227/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/MySQL%E8%87%AA%E5%A2%9E%E4%B8%BB%E9%94%AE/">MySQL自增主键</a><a class="post-meta__tags" href="/tags/AUTO-INCREMENT/">AUTO_INCREMENT</a><a class="post-meta__tags" href="/tags/ID%E7%A9%BA%E6%B4%9E%E9%97%AE%E9%A2%98/">ID空洞问题</a><a class="post-meta__tags" href="/tags/%E8%87%AA%E5%A2%9E%E9%94%81%E6%A8%A1%E5%BC%8F/">自增锁模式</a><a class="post-meta__tags" href="/tags/innodb-autoinc-lock-mode/">innodb_autoinc_lock_mode</a><a class="post-meta__tags" href="/tags/%E8%87%AA%E5%A2%9E%E8%AE%A1%E6%95%B0%E5%99%A8/">自增计数器</a><a class="post-meta__tags" href="/tags/%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6/">主从复制</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1753762079722175376207982.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/11/3d935c639e3d43919f965465aaa34286/" title="MySQL 8.0 新增功能函数和使用案例"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1704300572353170430057255.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">MySQL 8.0 新增功能函数和使用案例</div></div><div class="info-2"><div class="info-item-1">MySQL8 引入了众多新特性和常用功能，如：窗口函数、通用表表达式和索引，尤其是联合索引的最左匹配。</div></div></div></a><a class="pagination-related" href="/2025/11/0c17e5dc04ae4994b411db081a7c82d6/" title="LangChain 框架功能详解和使用案例"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746446968174574644625.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">LangChain 框架功能详解和使用案例</div></div><div class="info-2"><div class="info-item-1">开源框架 LangChain，旨在简化基于大语言模型构建应用程序的过程。集成了记忆机制、工具调用和智能决策等。</div></div></div></a></nav><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E5%8E%9F%E7%90%86"><span class="toc-number">1.</span> <span class="toc-text">核心原理</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%A1%E6%95%B0%E5%99%A8"><span class="toc-number">1.1.</span> <span class="toc-text">计数器</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E9%85%8D%E9%80%BB%E8%BE%91"><span class="toc-number">1.2.</span> <span class="toc-text">分配逻辑</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6"><span class="toc-number">1.3.</span> <span class="toc-text">并发控制</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%89%A7%E8%A1%8C%E6%B5%81%E7%A8%8B"><span class="toc-number">2.</span> <span class="toc-text">执行流程</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BC%98%E5%8C%96%E8%87%AA%E5%A2%9E%E9%94%81"><span class="toc-number">3.</span> <span class="toc-text">优化自增锁</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BA%94%E7%94%A8%E9%99%90%E5%88%B6%E4%B8%8E%E8%BE%B9%E7%95%8C"><span class="toc-number">4.</span> <span class="toc-text">应用限制与边界</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%8D%E5%90%88%E4%B8%BB%E9%94%AE%E4%B8%8E%E8%87%AA%E5%A2%9E%E5%88%97%E7%9A%84%E4%BD%8D%E7%BD%AE%E7%BA%A6%E6%9D%9F"><span class="toc-number">5.</span> <span class="toc-text">复合主键与自增列的位置约束</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#ID-%E7%A9%BA%E6%B4%9E%E9%97%AE%E9%A2%98"><span class="toc-number">6.</span> <span class="toc-text">ID 空洞问题</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6%E4%B8%8E%E5%8F%8C%E4%B8%BB%E6%9E%B6%E6%9E%84"><span class="toc-number">7.</span> <span class="toc-text">主从复制与双主架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E5%9C%BA%E6%99%AF%E7%9A%84%E6%9B%BF%E4%BB%A3%E6%96%B9%E6%A1%88"><span class="toc-number">8.</span> <span class="toc-text">分布式场景的替代方案</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E8%B7%B5%E5%BB%BA%E8%AE%AE%E4%B8%8E%E6%8E%92%E6%9F%A5"><span class="toc-number">9.</span> <span class="toc-text">实践建议与排查</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',

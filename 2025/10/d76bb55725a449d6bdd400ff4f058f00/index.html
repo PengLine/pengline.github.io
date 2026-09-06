@@ -1,20 +1,23 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Redis 数据持久化策略和原理机制 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="Redis 提供了两种主要的持久化机制，用于将内存中的数据保存到磁盘，以防止服务重启或宕机时数据丢失。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Redis 数据持久化策略和原理机制 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="深入剖析 Redis 持久化的底层原理：RDB 快照的 fork 与写时复制（COW）、AOF 命令追加与 fsync 策略、重写双缓冲机制、混合持久化的文件结构，以及 fork 阻塞、丢数据、文件损坏等生产问题的解决方案。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Redis 数据持久化策略和原理机制">
 <meta property="og:url" content="https://pengline.cn/2025/10/d76bb55725a449d6bdd400ff4f058f00/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="Redis 提供了两种主要的持久化机制，用于将内存中的数据保存到磁盘，以防止服务重启或宕机时数据丢失。">
+<meta property="og:description" content="深入剖析 Redis 持久化的底层原理：RDB 快照的 fork 与写时复制（COW）、AOF 命令追加与 fsync 策略、重写双缓冲机制、混合持久化的文件结构，以及 fork 阻塞、丢数据、文件损坏等生产问题的解决方案。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1634204767855163420476772.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp">
 <meta property="article:published_time" content="2025-10-19T16:00:00.000Z">
-<meta property="article:modified_time" content="2025-10-20T11:51:17.463Z">
+<meta property="article:modified_time" content="2026-09-06T09:05:47.480Z">
 <meta property="article:author" content="余一叶知秋尽">
 <meta property="article:tag" content="AOF持久化">
+<meta property="article:tag" content="AOF重写">
 <meta property="article:tag" content="RDB持久化">
 <meta property="article:tag" content="Redis">
 <meta property="article:tag" content="Redis持久化">
+<meta property="article:tag" content="写时复制">
+<meta property="article:tag" content="混合持久化">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1634204767855163420476772.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/10/d76bb55725a449d6bdd400ff4f058f00/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/10/d76bb55725a449d6bdd400ff4f058f00/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -152,12 +155,26 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">106</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">531</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1634204767855163420476772.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Redis 数据持久化策略和原理机制</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Redis 数据持久化策略和原理机制</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-10-19T16:00:00.000Z" title="发表于 2025-10-20 00:00:00">2025-10-20</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2025-10-20T11:51:17.463Z" title="更新于 2025-10-20 19:51:17">2025-10-20</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/Redis/">Redis</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>Redis 提供了两种主要的持久化机制，4.0 之后还引入了 <strong>混合持久化（RDB + AOF）</strong> 的方式，结合两者优点:</p>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">571</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Redis 数据持久化策略和原理机制</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Redis 数据持久化策略和原理机制</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-10-19T16:00:00.000Z" title="发表于 2025-10-20 00:00:00">2025-10-20</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-06T09:05:47.480Z" title="更新于 2026-09-06 17:05:47">2026-09-06</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/Redis/">Redis</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>Redis 提供了两种基础持久化机制——<strong>RDB 快照</strong>与 <strong>AOF 日志</strong>——4.0 之后引入的<strong>混合持久化</strong>则是二者的深度融合，兼顾恢复速度与数据安全。</p>
+<blockquote>
+<p><strong>阅读导览</strong>：<br>
+① <strong>RDB</strong>——“定期给内存拍一张全量快照”，理解 fork + 写时复制（COW）的底层原理，以及 fork 阻塞的成因与应对；<br>
+② <strong>AOF</strong>——“把每次写操作按顺序追加为命令日志”，理解追加 / 同步 / 重写三段式流水线，以及 fsync 三种策略的取舍；<br>
+③ <strong>混合持久化</strong>——“RDB 头部 + AOF 尾部”的复合文件结构，如何兼得快速恢复与最少丢数据；<br>
+④ <strong>生产实践</strong>——每种方案会遇到什么典型故障（阻塞、丢数据、文件损坏），以及业界标准的解决手段。</p>
+</blockquote>
+<p>三种机制的直观区别：</p>
 <blockquote>
 <ul class="lvl-1">
-<li class="lvl-2"><strong>RDB机制（Redis DataBase）</strong>（快照二进制）在<strong>指定时间间隔快照存储</strong>，将某一时刻的内存快照数据以二进制方式写入磁盘。</li>
-<li class="lvl-2"><strong>AOF机制（Append Only File）</strong>（命令追加）<strong>记录每次对服务器写操作</strong>，将所有的操作命令按顺序记录下来，追加到特殊的文件中。当服务器重启的时候会重新执行这些命令来恢复原始的数据，以redis协议追加保存每次写的操作到文件末尾，Redis还能对AOF文件进行后台重写，使得AOF文件的体积不至于过大.</li>
-<li class="lvl-2"><strong>混合机制</strong>: （同时开启两种持久化方式）将当前的数据以RDB方式写入文件，再将操作命令以AOF方式写入文件。 在这种情况下, 当redis重启的时候会优先载入AOF文件来恢复原始数据,因为在通常情况下AOF文件保存的数据集要比RDB文件保存的数据集要完整.</li>
+<li class="lvl-2">
+<p><strong>RDB（Redis DataBase）</strong>：在指定时间间隔将内存中的<strong>数据集快照</strong>以<strong>压缩二进制</strong>写入磁盘（默认 <code>dump.rdb</code>）。文件紧凑、恢复极快，但两次快照之间的写入会全部丢失；</p>
+</li>
+<li class="lvl-2">
+<p><strong>AOF（Append Only File）</strong>：以 <strong>RESP 协议文本</strong>逐条<strong>追加记录写操作命令</strong>，重启时按序重放命令即可重建数据。数据更安全，但文件体积大、纯重放恢复慢，因此需要定期“重写”压缩；</p>
+</li>
+<li class="lvl-2">
+<p><strong>混合持久化（RDB + AOF preamble）</strong>：<strong>AOF 重写时先写入一段 RDB 全量快照，再续写增量命令</strong>，形成“RDB 头 + AOF 尾”的复合文件。重启时先秒级载入 RDB 部分，再重放尾部少量命令——注意它与“同时开启 RDB 和 AOF”是两个完全不同的概念，后者只是两套机制并行工作，文件仍是各自独立的。</p>
+</li>
 </ul>
 </blockquote>
 <h2 id="RDB（Redis-DataBase）"><a target="_blank" rel="external nofollow noopener noreferrer" href="https://cloud.tencent.com/developer/article/2392018">RDB</a>（Redis DataBase）</h2>
@@ -209,7 +226,28 @@
 </li>
 </ul>
 <h3 id="快照原理">快照原理</h3>
-<p>在指定的时间间隔内将内存中的数据集快照写入磁盘，实际操作过程是fork一个子进程，先将数据集写入临时文件，写入成功后，再替换之前的文件，用二进制压缩存储。</p>
+<p>RDB 的本质可以概括为 <strong>fork + 写时复制 + 原子替换</strong> 三步：主进程 fork 出子进程，子进程基于 fork 时刻的内存快照将数据集写入<strong>临时文件</strong>，写入成功后通过 <code>rename</code> 系统调用<strong>原子替换</strong>旧 RDB 文件——整个过程主进程只需承担 fork 瞬间的短暂阻塞，其余时间照常服务读写请求。</p>
+<pre class="mermaid">sequenceDiagram
+    participant M as Redis 主进程
+    participant C as 子进程<br>（BGSAVE）
+    participant OS as 操作系统
+    participant Disk as 磁盘
+
+    Note over M: 满足 save 条件或收到 BGSAVE 命令
+    M->>OS: fork() —— 复制页表与任务结构<br>父子共享物理内存页
+    OS-->>M: 返回子进程 PID<br>（微秒 ~ 毫秒级，内存越大越慢）
+    Note over M: 主进程恢复服务，继续处理写命令
+
+    M->>C: 由子进程接管持久化
+    C->>Disk: 遍历内存数据集<br>写入临时文件 temp-xxx.rdb
+
+    Note over M,OS: 期间主进程的写命令触发 COW：<br>被修改的内存页复制一份给主进程<br>子进程看到的仍是 fork 时刻的旧数据
+    M->>OS: 执行 SET / LPUSH 等写命令
+    OS-->>C: 数据页已隔离，互不干扰
+
+    C-->>M: 发送完成信号
+    M->>Disk: rename 临时文件 → dump.rdb<br>（原子替换，旧文件被覆盖）</pre>
+<p>这里要特别注意一个<strong>常见的认知误区</strong>：子进程并非父进程内存的“深拷贝”。在 fork 完成的一瞬间，父子进程共享同一批物理内存页，只是页表各自独立；只有在父进程执行写操作、触发<strong>写时复制</strong>之后，被修改的页才会真正分裂为两份。因此，一个 10GB 的实例做 BGSAVE，并不会瞬间多占用 10GB 内存。</p>
 <p><img src="/imgs/db/388326-20170726161552843-904424952.png" alt="img" loading='lazy'></p>
 <p>Redis 借助了操作系统提供的<strong>写时复制技术</strong>（Copy-On-Write, COW），可以让在执行快照的同时，正常处理写操作。</p>
 <p>Linux中<code>fork()</code>是使用写时复制的页实现的，所以它唯一的代价是：<strong>复制父进程的页表</strong>以及<strong>为子进程创建任务结构</strong>所需的时间和内存。</p>
@@ -238,6 +276,23 @@
 <h4 id="写时复制">写时复制</h4>
 <p><strong>写时复制 (Copy-On-Write, COW)</strong><br>
 在 fork 子进程的瞬间，父子进程共享同一片内存数据。当父进程要修改某一片数据时（比如执行了一个 SET 命令），操作系统会将被修改的<strong>内存页</strong>复制一份，确保子进程的数据不受影响。这使得 fork 操作非常快速，并且大部分情况下内存消耗不会翻倍。</p>
+<pre class="mermaid">flowchart TD
+    A[fork 瞬间：父子进程<br>共享全部物理内存页] --> B[父进程执行写命令<br>需要修改内存页 P]
+    B --> C{页 P 当前是否被<br>多个进程共享?}
+    C -->|是| D[操作系统复制页 P 为 P'<br>父进程在 P' 上写入<br>子进程仍持有原页 P]
+    C -->|否| E[仅父进程持有<br>直接原地写入]
+    D --> F[其余未修改的页继续共享<br>总内存不会翻倍]
+    E --> F
+
+    style D fill:#e8f5e9,stroke:#4caf50
+    style F fill:#fff8e1,stroke:#ff9800</pre>
+<blockquote>
+<p><strong>COW 的工程启示</strong>：RDB 持久化期间，父进程的<strong>写越多，COW 复制的页就越多</strong>，实际内存占用峰值也越高。因此：</p>
+<ol>
+<li class="lvl-3">尽量避免在 BGSAVE 期间执行大 Key 删除、<code>FLUSHDB</code> 等一次性大量写入/释放内存的操作（会瞬间复制大量页，导致内存毛刺）；</li>
+<li class="lvl-3">监控 <code>INFO persistence</code> 中的 <code>rdb_changes_since_last_save</code> 与 RSS 内存，评估快照窗口期的写放大。</li>
+</ol>
+</blockquote>
 <blockquote>
 <p>拓展：JDK的 <code>CopyOnWriteArrayList </code>和 <code>CopyOnWriteArraySet </code>容器也使用到了写时复制技术。</p>
 </blockquote>
@@ -281,6 +336,36 @@
 <blockquote>
 <p>子进程需要通过fork操作，从主线程中创建出来。子进程在创建后不会再阻塞主线程，但是，<strong>fork这个创建过程本身会阻塞主线程</strong>，而且主线程内存越大，阻塞时间越长。</p>
 <p>RDB 每次在 fork 子进程来执行 RDB 快照数据文件生成的时候，如果数据文件特别大，可能会导致对客户端提供的服务暂停数毫秒，或者甚至数秒。</p>
+</blockquote>
+<p><strong>fork 阻塞的三大诱因与对应调优手段</strong>（生产必读）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">诱因</th>
+<th style="text-align:left">底层原理</th>
+<th style="text-align:left">调优手段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>实例内存过大</strong></td>
+<td style="text-align:left">fork 需要复制父进程的<strong>页表</strong>，页表大小与内存占用成正比（约每 1GB 数据对应 1MB+ 页表），内存越大 fork 越慢</td>
+<td style="text-align:left">控制单实例内存上限（如 ≤ 10GB）；超大实例优先考虑集群分片，或错峰执行 BGSAVE</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>内存过度分配被禁用</strong></td>
+<td style="text-align:left">系统默认 <code>vm.overcommit_memory=0</code> 时，fork 要预留子进程全部内存的页表空间，内存紧张时 fork 直接失败</td>
+<td style="text-align:left">设置 <code>vm.overcommit_memory=1</code>，允许内核过度分配，避免 fork 失败</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>透明大页 THP 开启</strong></td>
+<td style="text-align:left">COW 以 2MB 的 THP 页为单位复制，而非 4KB 普通页——写放大 512 倍，COW 期间内存飙升</td>
+<td style="text-align:left">关闭 THP：<code>echo never &gt; /sys/kernel/mm/transparent_hugepage/enabled</code>，并写入开机自启脚本</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>监控手段</strong>：<code>INFO persistence</code> 返回的 <code>latest_fork_usec</code> 记录最近一次 fork 耗时（微秒），<code>rdb_last_bgsave_status</code> 记录最近一次 BGSAVE 结果；建议将两者接入告警，fork 超过 1 秒即需介入处理。</p>
 </blockquote>
 <h3 id="持久化配置">持久化配置</h3>
 <p>Redis会将数据集的快照dump到dump.rdb文件中。</p>
@@ -334,20 +419,39 @@
 </li>
 </ul>
 <h3 id="追加原理">追加原理</h3>
-<p>AOF 的工作流程可以概括为：<strong>命令追加、文件写入、文件同步</strong>。</p>
+<p>AOF 的工作流程可以概括为 <strong>三段式流水线：命令追加（append）→ 文件写入（write）→ 文件同步（fsync）</strong>：</p>
+<pre class="mermaid">flowchart LR
+    A[执行写命令<br>SET / LPUSH / DEL] --> B[以 RESP 协议格式<br>追加到内存 AOF 缓冲区]
+    B --> C{appendfsync 策略<br>决定何时刷盘}
+    C -->|always| D[每条命令执行完<br>立即 fsync 落盘]
+    C -->|everysec| E[每秒将缓冲内容<br>fsync 落盘一次<br>（默认推荐，兼顾性能与安全）]
+    C -->|no| G[仅 write 不主动 fsync<br>由操作系统决定刷盘时机]
+    D --> H[磁盘 AOF 文件]
+    E --> H
+    G --> H
+
+    style D fill:#ffebee,stroke:#f44336
+    style E fill:#e8f5e9,stroke:#4caf50
+    style G fill:#fff8e1,stroke:#ff9800</pre>
 <ol>
 <li class="lvl-3">
-<p><strong>命令记录</strong>：修改和新增命令执行后，都会以 Redis 协议格式追加到服务器内部的 <strong>AOF 缓冲区</strong>。</p>
+<p><strong>命令记录（append）</strong>：修改类命令执行成功后，立即以 RESP 协议格式追加到服务器内部的 <strong>AOF 缓冲区</strong>——纯内存操作、纳秒级完成，这是 AOF 保持高性能的关键；</p>
 </li>
 <li class="lvl-3">
-<p><strong>写入与同步策略</strong>：根据配置的 <strong><code>appendfsync</code></strong> 策略，决定何时将缓冲区的内容写入并同步到 AOF 磁盘文件。</p>
+<p><strong>文件写入（write）</strong>：由事件循环将缓冲区内容写入操作系统内核的<strong>页缓存（page cache）</strong>——此时数据仍在内存，进程崩溃不丢（内核还活着），但<strong>主机断电</strong>会全部丢失；</p>
+</li>
+<li class="lvl-3">
+<p><strong>文件同步（fsync）</strong>：真正调用 <code>fsync</code> 把页缓存刷入磁盘，三者差异如下：</p>
 <ul class="lvl-2">
-<li class="lvl-5"><strong><code>always</code></strong>：每次写命令都立即同步到磁盘。<strong>数据最安全，不会丢失任何命令，但性能最差</strong>。</li>
-<li class="lvl-5"><strong><code>everysec</code></strong>：每秒同步一次。这是<strong>默认推荐</strong>的策略，是一种折中方案。在性能和数据安全之间取得了很好的平衡，最多丢失1秒钟的数据。</li>
-<li class="lvl-5"><strong><code>no</code></strong>：由操作系统决定何时同步。性能最好，但数据丢失风险最高。</li>
+<li class="lvl-5"><strong><code>always</code></strong>：每次写命令都同步落盘，<strong>数据最安全（最多丢一条命令），但性能最差</strong>——每条写命令都要等待磁盘 IO 完成；</li>
+<li class="lvl-5"><strong><code>everysec</code></strong>：每秒批量 fsync 一次。<strong>默认推荐</strong>，在性能与安全间取得平衡，最多丢失 1 秒数据（严格说是“1 秒内积压 + 页缓存中未刷盘的部分”，见下方解读）；</li>
+<li class="lvl-5"><strong><code>no</code></strong>：只 write 不主动 fsync，由操作系统决定刷盘时机。性能最好，但宕机/断电时可能丢失数秒甚至数十秒数据。</li>
 </ul>
 </li>
 </ol>
+<blockquote>
+<p><strong>为什么“写入页缓存”与“fsync 落盘”必须分开看待？</strong> 这是理解 AOF 安全性的关键：<code>write</code> 之后、<code>fsync</code> 之前，数据只存在于内核页缓存。进程崩溃时内核仍在运行，页缓存不会丢；但<strong>主机断电</strong>时页缓存整体蒸发。因此 <code>everysec</code> 的实际丢失上限是“1 秒的缓冲积压 + 尚未刷盘的页缓存”，金融级场景应使用 <code>always</code>，或叠加混合持久化与主从多副本兜底。</p>
+</blockquote>
 <h4 id="重写机制">重写机制</h4>
 <p>随着命令不断写入，AOF 文件会越来越大。为了解决这个问题，Redis 提供了 <strong>AOF 重写</strong> 机制。</p>
 <ul class="lvl-0">
@@ -373,6 +477,31 @@
 <p>为了解决这种数据不一致问题，Redis服务器设置了一个<strong>AOF重写缓冲区</strong>（aof_rewrite_buf_blocks）。</p>
 <p>AOF重写缓存区在AOF重写时开始启用。</p>
 </blockquote>
+<pre class="mermaid">sequenceDiagram
+    participant F as 父进程（主线程）
+    participant C as 子进程（重写）
+    participant B1 as 常规 AOF 缓冲区
+    participant B2 as AOF 重写缓冲区
+    participant Old as 旧 AOF 文件
+    participant New as 新 AOF 文件
+
+    Note over F: 触发 BGREWRITEAOF 或满足自动重写条件
+    F->>C: fork 子进程（持有此刻的内存快照）
+    F->>B2: 开启 AOF 重写缓冲区
+
+    C->>New: 遍历 fork 时的数据<br>生成“最小命令集”写入新文件
+
+    loop 重写期间到达的每个写命令
+        F->>B1: 追加命令（维持旧文件正常持久化）
+        F->>B2: 同时追加命令（等待并入新文件）
+    end
+    B1->>Old: 按 appendfsync 策略正常刷盘
+
+    C-->>F: 重写完成，发送信号
+    F->>B2: 取出重写期间积压的全部命令
+    B2->>New: 追加到新 AOF 文件尾部<br>（补齐 fork 之后的变化）
+    F->>New: rename 原子替换旧 AOF 文件
+    Note over F: 最后的同步追加会短暂阻塞主进程<br>但积压量通常很小，耗时极短</pre>
 <p><strong>执行步骤</strong>：</p>
 <img src="/imgs/db/ece3e71e6bf272521dbece0b2fba22b1.png" alt="img" style="zoom:67%;" loading='lazy'>
 <ol>
@@ -435,6 +564,18 @@
 <p><strong>No</strong>，操作系统控制写回：每个写命令执行完，只是先把日志写到AOF文件的内存缓冲区，由操作系统决定何时将缓冲区内容写回磁盘。</p>
 </li>
 </ul>
+<p><strong>延伸：为什么 Redis 用“写后日志”，而 MySQL 用“写前日志（WAL）”？</strong></p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>MySQL / WAL（Write-Ahead Logging）</strong>：先写 redo log、后改数据页。数据页是随机写、日志是顺序写，日志先行保证“崩溃时总能按日志重放”，因此它优先保证的是<strong>故障可恢复性</strong>，代价是每条事务多一次磁盘写入；</p>
+</li>
+<li class="lvl-2">
+<p><strong>Redis / 写后日志</strong>：先执行命令改内存，成功后再追加记录。Redis 的数据本身就在内存，日志的作用是<strong>重建数据而非恢复数据页</strong>，没有“数据页未落盘”的问题，没必要先写日志；若改成先写日志，每条写命令都要等磁盘落盘才能返回，吞吐将断崖式下跌；</p>
+</li>
+<li class="lvl-2">
+<p><strong>代价对称</strong>：Redis 为高性能付出的代价是——命令已执行、日志未落盘时宕机，该命令丢失（<code>always</code> 除外）；以及日志追加慢时会阻塞<strong>下一条</strong>写命令（本文“AOF 阻塞”一节详述）。</p>
+</li>
+</ul>
 </blockquote>
 <h3 id="持久化配置-2">持久化配置</h3>
 <p>在Redis的配置文件中存在三种同步方式，通过 <code>appendfsync</code> 配置控制写入磁盘的频率：：</p>
@@ -457,6 +598,15 @@
 <p><strong>“先拍一张快照，然后记录之后的指令”</strong></p>
 </blockquote>
 <p>最终生成的新的 AOF 文件是一个“<strong>RDB头部 + AOF尾部</strong>”的混合体。半部分是 RDB 二进制格式，后半部分是 AOF 命令文本。</p>
+<pre class="mermaid">flowchart LR
+    subgraph AOF混合文件[appendonly.aof —— 单个复合文件]
+        direction LR
+        A[RDB 二进制段<br>全量数据快照<br>体积大但加载极快] --> B[AOF 命令段<br>重写期间的增量命令<br>量少，重放开销极小]
+    end
+
+    style A fill:#e3f2fd,stroke:#1976d2
+    style B fill:#e8f5e9,stroke:#4caf50</pre>
+<p>启动恢复时，Redis 只需<strong>加载一次 RDB 快照 + 重放尾部少量命令</strong>，既避开了纯 AOF 全量重放的海量 IO，又保留了 AOF 接近零丢失的数据安全等级。</p>
 <ul class="lvl-0">
 <li class="lvl-2">
 <p><strong>结合了 RDB 和 AOF 的优点</strong>：</p>
@@ -466,9 +616,130 @@
 </ul>
 </li>
 </ul>
+<p><strong>Redis 启动时的数据恢复路径</strong>——核心原则是**“优先 AOF”**：</p>
+<pre class="mermaid">flowchart TD
+    A[Redis 启动] --> B{AOF 功能开启?<br>appendonly yes}
+
+    B -->|是| C{AOF 文件存在<br>且非空?}
+    C -->|是| D[加载 AOF 文件恢复<br>混合格式则先载 RDB 段<br>再重放 AOF 段]
+    C -->|否| E[空数据集启动<br>或作为从库等待主库全量同步]
+
+    B -->|否| F{RDB 文件存在?<br>dump.rdb}
+    F -->|是| G[加载 RDB 文件恢复]
+    F -->|否| E
+
+    style D fill:#e8f5e9,stroke:#4caf50
+    style G fill:#fff8e1,stroke:#ff9800</pre>
+<blockquote>
+<p><strong>为什么优先加载 AOF？</strong> 因为 AOF（含混合文件）记录的写入状态通常比 RDB 更新——RDB 是“上一次快照”，AOF 是“每一条命令”，前者可能落后几分钟，后者最多落后秒级。两种都开启时若优先加载 RDB，等于主动放弃了 AOF 的高安全性。</p>
+</blockquote>
 <figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 开启 AOF</span></span><br><span class="line">appendonly yes</span><br><span class="line"></span><br><span class="line"><span class="comment"># 使用混合持久化</span></span><br><span class="line">aof-use-rdb-preamble yes</span><br><span class="line"></span><br><span class="line"><span class="comment"># AOF 同步策略使用每秒一次</span></span><br><span class="line">appendfsync everysec</span><br><span class="line"></span><br><span class="line"><span class="comment"># 可选的 RDB 备份，作为多一重保障</span></span><br><span class="line">save 900 1</span><br><span class="line">save 300 10</span><br><span class="line">save 60 10000</span><br></pre></td></tr></table></figure>
+<h2 id="Redis-7-的演进：Multi-Part-AOF（多部分-AOF）">Redis 7 的演进：Multi-Part AOF（多部分 AOF）</h2>
+<p>上述“单一大文件 + 重写缓冲区”模型有一个结构性痛点：重写期间父进程需要维护一块<strong>重写缓冲区</strong>，并在子进程结束时把积压命令同步追加到新文件——机制复杂，且最后的同步追加会短暂阻塞主进程。</p>
+<p>Redis 7.0 起，AOF 被重构为<strong>多部分文件模型</strong>，从根上解决了该问题：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">组成</th>
+<th style="text-align:left">文件名示例</th>
+<th style="text-align:left">作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>Base 基准文件</strong></td>
+<td style="text-align:left"><code>appendonly.aof.1.base.rdb</code></td>
+<td style="text-align:left">全量数据快照（RDB 或纯命令格式，取决于 <code>aof-use-rdb-preamble</code>）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Incr 增量文件</strong></td>
+<td style="text-align:left"><code>appendonly.aof.1.incr.aof</code></td>
+<td style="text-align:left">重写之后新到达的增量命令（可以存在多个）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Manifest 清单</strong></td>
+<td style="text-align:left"><code>appendonly.aof.manifest</code></td>
+<td style="text-align:left">记录各文件顺序与状态的清单，启动时按清单依次加载</td>
+</tr>
+</tbody>
+</table>
+<pre class="mermaid">flowchart LR
+    subgraph manifest[appendonly.aof.manifest 清单]
+        M1[base.aof.1.rdb] --- M2[incr.aof.1.aof]
+    end
+    M1 --> R[加载 RDB 全量数据]
+    M2 --> A[重放增量命令]
+    R --> D[内存数据重建完成]
+    A --> D</pre>
+<p><strong>重写机制随之简化</strong>：触发重写时，Redis 基于当前数据生成<strong>新的 Base 文件</strong>，同时新建一个空的 Incr 文件承接新命令——重写期间到达的写命令<strong>直接追加到独立 Incr 文件</strong>，不再需要“双写缓冲 + 最后同步追加”，旧文件则通过 manifest 原子切换后异步删除。</p>
+<blockquote>
+<p><strong>对运维的影响</strong>：升级 Redis 7 后，目录下会同时出现多个 <code>.base</code> / <code>.incr</code> / <code>.manifest</code> 文件——备份时应<strong>连同 manifest 一起打包</strong>，只拷贝单个 <code>.incr</code> 文件无法恢复数据。</p>
+</blockquote>
+<h2 id="生产实践：四大典型故障与解决方案">生产实践：四大典型故障与解决方案</h2>
+<p>持久化机制理解得再透彻，最终都要落到“线上出了问题怎么处理”。以下是四大高频故障的标准处置流程：</p>
+<h3 id="故障一：大实例-fork-引发秒级阻塞">故障一：大实例 fork 引发秒级阻塞</h3>
+<p><strong>故障现场</strong>：某实例内存 30GB，每次 BGSAVE 时客户端超时率飙升，监控显示 <code>latest_fork_usec</code> 超过 800ms。</p>
+<p><strong>根因</strong>：fork 需复制 30GB 数据对应的全部页表项（数千万条），期间主线程被挂起；若系统开启 THP，COW 阶段还会以 2MB 大页复制，进一步放大内存抖动。</p>
+<p><strong>处置与预防</strong>：</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p>关闭 THP 并设置 <code>vm.overcommit_memory=1</code>（重启生效）；</p>
+</li>
+<li class="lvl-3">
+<p>单实例内存控制在 10GB 以内，超出则拆分实例或启用集群；</p>
+</li>
+<li class="lvl-3">
+<p>固定每日低峰执行 BGSAVE，避免与 AOF 重写、主从全量重同步同时发生。</p>
+</li>
+</ol>
+</blockquote>
+<h3 id="故障二：磁盘故障导致-Redis-拒绝写入">故障二：磁盘故障导致 Redis 拒绝写入</h3>
+<p><strong>故障现场</strong>：磁盘写满后，客户端写入报错 <code>MISCONF Redis is configured to save RDB snapshots...</code>。</p>
+<p><strong>根因</strong>：默认开启 <code>stop-writes-on-bgsave-error yes</code>，当 BGSAVE 失败（磁盘满/权限错误）时，Redis 出于“避免快照失败还持续产生无法持久化的写入”的考虑，会<strong>拒绝所有写命令</strong>。</p>
+<p><strong>处置与预防</strong>：</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p>先清理磁盘空间或修复挂载，执行 <code>BGSAVE</code> 确认成功；</p>
+</li>
+<li class="lvl-3">
+<p>若磁盘为临时故障且业务不可中断，可临时 <code>CONFIG SET stop-writes-on-bgsave-error no</code>，但必须同步排查持久化失败根因，否则重启后数据会丢失；</p>
+</li>
+<li class="lvl-3">
+<p>监控 <code>INFO persistence</code> 的 <code>rdb_last_bgsave_status</code>，失败即告警。</p>
+</li>
+</ol>
+</blockquote>
+<h3 id="故障三：everysec-下数据“多丢了一点”">故障三：everysec 下数据“多丢了一点”</h3>
+<p><strong>故障现场</strong>：使用默认 <code>everysec</code>，宕机后恢复发现丢失了不止 1 秒的数据。</p>
+<p><strong>根因</strong>：<code>everysec</code> 的语义是“每秒 fsync 一次”，但数据从“写入页缓存”到“fsync 落盘”之间存在时间窗；若发生的是<strong>主机断电</strong>而非进程崩溃，页缓存全部丢失，实际丢失量 = 1 秒积压 + 页缓存中未刷盘部分。</p>
+<p><strong>处置与预防</strong>：</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p>明确业务容忍度：允许秒级丢失用 <code>everysec</code>；不允许任何丢失用 <code>always</code>；</p>
+</li>
+<li class="lvl-3">
+<p>关键数据叠加主从多副本与定期 RDB 备份——持久化只是第一道防线，跨机副本才是真正的兜底；</p>
+</li>
+<li class="lvl-3">
+<p>对 AOF 目录使用 SSD，缩短 fsync 与页缓存回写延迟。</p>
+</li>
+</ol>
+</blockquote>
+<h3 id="故障四：AOF-文件损坏与-FLUSHALL-误操作">故障四：AOF 文件损坏与 FLUSHALL 误操作</h3>
+<p><strong>故障现场一（文件损坏）</strong>：机房断电后重启，Redis 提示 AOF 文件尾部截断无法加载。</p>
+<p><strong>处置</strong>：AOF 采用“追加写”，损坏通常只发生在文件末尾，可使用官方工具修复——<code>redis-check-aof --fix appendonly.aof</code> 会截除不完整的尾部命令，随后即可正常启动（仅丢失末尾极少量数据）。</p>
+<p><strong>故障现场二（误操作）</strong>：误执行 <code>FLUSHALL</code> 清空了全库。</p>
+<p><strong>处置</strong>：只要 FLUSHALL 命令还未被后续重写“洗掉”，可以立即停服，<strong>删除 AOF 文件末尾的 FLUSHALL 命令记录后重启</strong>，即可恢复到误操作前的状态（RDB 快照则无法做到这一点，因为它记录的是“上一张照片”，之后的数据本来就不在里面）。</p>
+<blockquote>
+<p>两个现场的共同启示：<strong>AOF 的追加写模型天然具备“可裁剪性”</strong>，这是它比 RDB 更适合承载核心业务数据的原因之一；但任何修复都应以“先完整备份损坏文件”为前提。</p>
+</blockquote>
 <h2 id="比较和建议">比较和建议</h2>
-<p>如果两个都配了优先加载<strong>AOF</strong></p>
+<blockquote>
+<p>核心结论先行：<strong>同时开启 RDB 与 AOF 时，Redis 重启必定优先加载 AOF</strong>——因为 AOF 记录的数据状态远比 RDB 快照更新（详见上文「启动恢复路径」）。</p>
+</blockquote>
 <ul class="lvl-0">
 <li class="lvl-2">
 <p><strong>RDB</strong> 像是一次<strong>全量拍照</strong>，速度快，文件小，但可能会丢数据。</p>
@@ -552,7 +823,7 @@
 </tr>
 </tbody>
 </table>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/10/d76bb55725a449d6bdd400ff4f058f00/">https://pengline.cn/2025/10/d76bb55725a449d6bdd400ff4f058f00/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Redis/">Redis</a><a class="post-meta__tags" href="/tags/Redis%E6%8C%81%E4%B9%85%E5%8C%96/">Redis持久化</a><a class="post-meta__tags" href="/tags/RDB%E6%8C%81%E4%B9%85%E5%8C%96/">RDB持久化</a><a class="post-meta__tags" href="/tags/AOF%E6%8C%81%E4%B9%85%E5%8C%96/">AOF持久化</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1634204767855163420476772.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/10/e1f7c62a56da4173a8c13b2fcfd7f7b9/" title="几种规则引擎系统的使用指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">几种规则引擎系统的使用指南</div></div><div class="info-2"><div class="info-item-1">规则引擎是一种降低组件复杂业务逻辑的框架，它将业务规则与程序代码解耦，使得业务人员可以独立管理和更新规则。</div></div></div></a><a class="pagination-related" href="/2025/10/1cd851cd23aa40929133d1d020c76d0c/" title="物联网 MQTT 协议详解及使用场景"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1751961512420175196151245.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">物联网 MQTT 协议详解及使用场景</div></div><div class="info-2"><div class="info-item-1">MQTT 是一种轻量级的消息传输协议，广泛用于物联网应用，一种简洁且稳定的遥测数据传输方式。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/08/65a671b1723e48818f080dda25a3730f/" title="Redis 过期数据的删除和淘汰策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-26</div><div class="info-item-2">Redis 过期数据的删除和淘汰策略</div></div><div class="info-2"><div class="info-item-1">设置过期时间的key如何清除，以及未设置过期时间的key如何淘汰</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#RDB%EF%BC%88Redis-DataBase%EF%BC%89"><span class="toc-number">1.</span> <span class="toc-text">RDB（Redis DataBase）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%98%E7%BC%BA%E7%82%B9%E5%92%8C%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">1.1.</span> <span class="toc-text">优缺点和适用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BF%AB%E7%85%A7%E5%8E%9F%E7%90%86"><span class="toc-number">1.2.</span> <span class="toc-text">快照原理</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%86%99%E6%97%B6%E5%A4%8D%E5%88%B6"><span class="toc-number">1.2.1.</span> <span class="toc-text">写时复制</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%BB%E5%8A%A8%E8%A7%A6%E5%8F%91"><span class="toc-number">1.2.2.</span> <span class="toc-text">主动触发</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%87%AA%E5%8A%A8%E8%A7%A6%E5%8F%91"><span class="toc-number">1.2.3.</span> <span class="toc-text">自动触发</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%85%B6%E4%BB%96%E8%A7%A6%E5%8F%91"><span class="toc-number">1.2.4.</span> <span class="toc-text">其他触发</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#RDB-%E9%98%BB%E5%A1%9E"><span class="toc-number">1.3.</span> <span class="toc-text">RDB 阻塞</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E9%85%8D%E7%BD%AE"><span class="toc-number">1.4.</span> <span class="toc-text">持久化配置</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#AOF%EF%BC%88Append-Only-File%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">AOF（Append Only File）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%98%E7%BC%BA%E7%82%B9%E5%92%8C%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF-2"><span class="toc-number">2.1.</span> <span class="toc-text">优缺点和适用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%BD%E5%8A%A0%E5%8E%9F%E7%90%86"><span class="toc-number">2.2.</span> <span class="toc-text">追加原理</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%87%8D%E5%86%99%E6%9C%BA%E5%88%B6"><span class="toc-number">2.2.1.</span> <span class="toc-text">重写机制</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%87%8D%E5%86%99%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="toc-number">2.2.2.</span> <span class="toc-text">重写缓冲区</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#AOF-%E9%98%BB%E5%A1%9E"><span class="toc-number">2.3.</span> <span class="toc-text">AOF 阻塞</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E9%85%8D%E7%BD%AE-2"><span class="toc-number">2.4.</span> <span class="toc-text">持久化配置</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%8C%81%E4%B9%85%E5%8C%96%EF%BC%88RDB-AOF%EF%BC%89"><span class="toc-number">3.</span> <span class="toc-text">混合持久化（RDB + AOF）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%AF%94%E8%BE%83%E5%92%8C%E5%BB%BA%E8%AE%AE"><span class="toc-number">4.</span> <span class="toc-text">比较和建议</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/10/d76bb55725a449d6bdd400ff4f058f00/">https://pengline.cn/2025/10/d76bb55725a449d6bdd400ff4f058f00/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Redis/">Redis</a><a class="post-meta__tags" href="/tags/Redis%E6%8C%81%E4%B9%85%E5%8C%96/">Redis持久化</a><a class="post-meta__tags" href="/tags/RDB%E6%8C%81%E4%B9%85%E5%8C%96/">RDB持久化</a><a class="post-meta__tags" href="/tags/AOF%E6%8C%81%E4%B9%85%E5%8C%96/">AOF持久化</a><a class="post-meta__tags" href="/tags/%E6%B7%B7%E5%90%88%E6%8C%81%E4%B9%85%E5%8C%96/">混合持久化</a><a class="post-meta__tags" href="/tags/%E5%86%99%E6%97%B6%E5%A4%8D%E5%88%B6/">写时复制</a><a class="post-meta__tags" href="/tags/AOF%E9%87%8D%E5%86%99/">AOF重写</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/10/e1f7c62a56da4173a8c13b2fcfd7f7b9/" title="几种规则引擎系统的使用指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small211845B4zPN1756646325.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">几种规则引擎系统的使用指南</div></div><div class="info-2"><div class="info-item-1">规则引擎是一种降低组件复杂业务逻辑的框架，它将业务规则与程序代码解耦，使得业务人员可以独立管理和更新规则。</div></div></div></a><a class="pagination-related" href="/2025/10/1cd851cd23aa40929133d1d020c76d0c/" title="物联网 MQTT 协议详解及使用场景"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">物联网 MQTT 协议详解及使用场景</div></div><div class="info-2"><div class="info-item-1">MQTT 是一种轻量级的消息传输协议，广泛用于物联网应用，一种简洁且稳定的遥测数据传输方式。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/01/4c3bfb375d2e49448ccc3898e4bf57ac/" title="Redis 大 Key 问题和优化方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-01-07</div><div class="info-item-2">Redis 大 Key 问题和优化方案</div></div><div class="info-2"><div class="info-item-1">深入剖析 Redis 大 Key 的定义标准与危害成因，系统性讲解大 Key 的检测手段（--bigkeys/memory usage）与治理方案（拆分、压缩、异步删除、渐进删除），以及预防大 Key 产生的最佳实践。</div></div></div></a><a class="pagination-related" href="/2025/08/65a671b1723e48818f080dda25a3730f/" title="Redis 过期数据的删除和淘汰策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204644701163420464439.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-26</div><div class="info-item-2">Redis 过期数据的删除和淘汰策略</div></div><div class="info-2"><div class="info-item-1">深入剖析 Redis 过期键的惰性删除与定期删除机制、内存淘汰算法（LRU/LFU/TTL/Random）与 8 种 maxmemory-policy 策略，以及过期删除对主从复制和持久化的影响。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#RDB%EF%BC%88Redis-DataBase%EF%BC%89"><span class="toc-number">1.</span> <span class="toc-text">RDB（Redis DataBase）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%98%E7%BC%BA%E7%82%B9%E5%92%8C%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">1.1.</span> <span class="toc-text">优缺点和适用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BF%AB%E7%85%A7%E5%8E%9F%E7%90%86"><span class="toc-number">1.2.</span> <span class="toc-text">快照原理</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%86%99%E6%97%B6%E5%A4%8D%E5%88%B6"><span class="toc-number">1.2.1.</span> <span class="toc-text">写时复制</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%BB%E5%8A%A8%E8%A7%A6%E5%8F%91"><span class="toc-number">1.2.2.</span> <span class="toc-text">主动触发</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%87%AA%E5%8A%A8%E8%A7%A6%E5%8F%91"><span class="toc-number">1.2.3.</span> <span class="toc-text">自动触发</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%85%B6%E4%BB%96%E8%A7%A6%E5%8F%91"><span class="toc-number">1.2.4.</span> <span class="toc-text">其他触发</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#RDB-%E9%98%BB%E5%A1%9E"><span class="toc-number">1.3.</span> <span class="toc-text">RDB 阻塞</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E9%85%8D%E7%BD%AE"><span class="toc-number">1.4.</span> <span class="toc-text">持久化配置</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#AOF%EF%BC%88Append-Only-File%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">AOF（Append Only File）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%98%E7%BC%BA%E7%82%B9%E5%92%8C%E9%80%82%E7%94%A8%E5%9C%BA%E6%99%AF-2"><span class="toc-number">2.1.</span> <span class="toc-text">优缺点和适用场景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%BD%E5%8A%A0%E5%8E%9F%E7%90%86"><span class="toc-number">2.2.</span> <span class="toc-text">追加原理</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%87%8D%E5%86%99%E6%9C%BA%E5%88%B6"><span class="toc-number">2.2.1.</span> <span class="toc-text">重写机制</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%87%8D%E5%86%99%E7%BC%93%E5%86%B2%E5%8C%BA"><span class="toc-number">2.2.2.</span> <span class="toc-text">重写缓冲区</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#AOF-%E9%98%BB%E5%A1%9E"><span class="toc-number">2.3.</span> <span class="toc-text">AOF 阻塞</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E9%85%8D%E7%BD%AE-2"><span class="toc-number">2.4.</span> <span class="toc-text">持久化配置</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%8C%81%E4%B9%85%E5%8C%96%EF%BC%88RDB-AOF%EF%BC%89"><span class="toc-number">3.</span> <span class="toc-text">混合持久化（RDB + AOF）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Redis-7-%E7%9A%84%E6%BC%94%E8%BF%9B%EF%BC%9AMulti-Part-AOF%EF%BC%88%E5%A4%9A%E9%83%A8%E5%88%86-AOF%EF%BC%89"><span class="toc-number">4.</span> <span class="toc-text">Redis 7 的演进：Multi-Part AOF（多部分 AOF）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%94%9F%E4%BA%A7%E5%AE%9E%E8%B7%B5%EF%BC%9A%E5%9B%9B%E5%A4%A7%E5%85%B8%E5%9E%8B%E6%95%85%E9%9A%9C%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">5.</span> <span class="toc-text">生产实践：四大典型故障与解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%85%E9%9A%9C%E4%B8%80%EF%BC%9A%E5%A4%A7%E5%AE%9E%E4%BE%8B-fork-%E5%BC%95%E5%8F%91%E7%A7%92%E7%BA%A7%E9%98%BB%E5%A1%9E"><span class="toc-number">5.1.</span> <span class="toc-text">故障一：大实例 fork 引发秒级阻塞</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%85%E9%9A%9C%E4%BA%8C%EF%BC%9A%E7%A3%81%E7%9B%98%E6%95%85%E9%9A%9C%E5%AF%BC%E8%87%B4-Redis-%E6%8B%92%E7%BB%9D%E5%86%99%E5%85%A5"><span class="toc-number">5.2.</span> <span class="toc-text">故障二：磁盘故障导致 Redis 拒绝写入</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%85%E9%9A%9C%E4%B8%89%EF%BC%9Aeverysec-%E4%B8%8B%E6%95%B0%E6%8D%AE%E2%80%9C%E5%A4%9A%E4%B8%A2%E4%BA%86%E4%B8%80%E7%82%B9%E2%80%9D"><span class="toc-number">5.3.</span> <span class="toc-text">故障三：everysec 下数据“多丢了一点”</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%85%E9%9A%9C%E5%9B%9B%EF%BC%9AAOF-%E6%96%87%E4%BB%B6%E6%8D%9F%E5%9D%8F%E4%B8%8E-FLUSHALL-%E8%AF%AF%E6%93%8D%E4%BD%9C"><span class="toc-number">5.4.</span> <span class="toc-text">故障四：AOF 文件损坏与 FLUSHALL 误操作</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%AF%94%E8%BE%83%E5%92%8C%E5%BB%BA%E8%AE%AE"><span class="toc-number">6.</span> <span class="toc-text">比较和建议</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',

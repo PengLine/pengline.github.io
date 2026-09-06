@@ -1,22 +1,26 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Redis 常见数据结构和数据类型 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="Redis 内部使用了多种高效的数据结构来实现其丰富的数据类型（String、List、Hash、Set、Sorted Set 等）。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Redis 常见数据结构和数据类型 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="深入剖析 Redis 的“类型-编码-数据结构”三层对象模型：SDS、压缩列表、快速列表、字典与渐进式 rehash、跳表、整数集合的底层原理与编码切换规则，以及 String&#x2F;Hash&#x2F;Set&#x2F;ZSet 的实践选型与问题规避。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Redis 常见数据结构和数据类型">
 <meta property="og:url" content="https://pengline.cn/2025/12/fb61cae088544f86a4209a47b2ca6a3d/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="Redis 内部使用了多种高效的数据结构来实现其丰富的数据类型（String、List、Hash、Set、Sorted Set 等）。">
+<meta property="og:description" content="深入剖析 Redis 的“类型-编码-数据结构”三层对象模型：SDS、压缩列表、快速列表、字典与渐进式 rehash、跳表、整数集合的底层原理与编码切换规则，以及 String&#x2F;Hash&#x2F;Set&#x2F;ZSet 的实践选型与问题规避。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp">
 <meta property="article:published_time" content="2025-12-06T16:00:00.000Z">
-<meta property="article:modified_time" content="2026-09-02T03:53:39.757Z">
+<meta property="article:modified_time" content="2026-09-06T11:02:38.327Z">
 <meta property="article:author" content="余一叶知秋尽">
-<meta property="article:tag" content="Redis字典">
 <meta property="article:tag" content="Redis数据类型">
 <meta property="article:tag" content="Redis数据结构">
-<meta property="article:tag" content="Redis跳表">
-<meta property="article:tag" content="压缩列表">
-<meta property="article:tag" content="快速列表">
+<meta property="article:tag" content="Redis编码">
+<meta property="article:tag" content="SDS">
+<meta property="article:tag" content="intset">
+<meta property="article:tag" content="listpack">
+<meta property="article:tag" content="quicklist">
+<meta property="article:tag" content="ziplist">
+<meta property="article:tag" content="渐进式rehash">
+<meta property="article:tag" content="跳表">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/12/fb61cae088544f86a4209a47b2ca6a3d/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/12/fb61cae088544f86a4209a47b2ca6a3d/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -154,8 +158,30 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">106</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">531</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Redis 常见数据结构和数据类型</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Redis 常见数据结构和数据类型</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-12-06T16:00:00.000Z" title="发表于 2025-12-07 00:00:00">2025-12-07</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-02T03:53:39.757Z" title="更新于 2026-09-02 11:53:39">2026-09-02</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/Redis/">Redis</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p><strong>数据类型</strong>：是用户在使用 Redis 命令时看到的逻辑类型（如 String, List, Set 等）。</p>
-<p><strong>数据结构</strong>：是 Redis 内部为了实现这些数据类型而采用的底层物理存储方式（如 SDS, ZipList, SkipList 等）。</p>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">571</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Redis 常见数据结构和数据类型</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Redis 常见数据结构和数据类型</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-12-06T16:00:00.000Z" title="发表于 2025-12-07 00:00:00">2025-12-07</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-06T11:02:38.327Z" title="更新于 2026-09-06 19:02:38">2026-09-06</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/Redis/">Redis</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>Redis 的存储体系可以拆成三个层次来理解——<strong>类型（Type）</strong> 是用户看到的样子，<strong>数据结构</strong> 是内存里的真实形态，<strong>编码（Encoding）</strong> 是连接二者的适配器。理解这套“一变多态”的模型，是读懂全文的前提：</p>
+<blockquote>
+<p><strong>三个易混淆概念先厘清</strong>（面试高频）：</p>
+<ul class="lvl-1">
+<li class="lvl-2"><strong>数据类型（Type）</strong>：用户通过命令看到的逻辑类型——String / List / Hash / Set / ZSet / Stream 等，用 <code>TYPE key</code> 查看；</li>
+<li class="lvl-2"><strong>数据结构</strong>：底层物理存储结构——SDS、ziplist、listpack、quicklist、dict、intset、skiplist 等，由 Redis 内部自动选择；</li>
+<li class="lvl-2"><strong>编码（Encoding）</strong>：连接二者的“适配器”，同一类型在不同规模/内容下会切换不同编码——用 <code>OBJECT ENCODING key</code> 查看，是排查内存问题的第一把钥匙。</li>
+</ul>
+</blockquote>
+<h2 id="Redis-的对象模型：type-encoding-ptr">Redis 的对象模型：type / encoding / ptr</h2>
+<p>Redis 中每个键值对象都是一个 <strong>redisObject</strong>，它用“逻辑类型 + 编码 + 指针”三个字段解耦了用户视图与物理实现：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">redisObject</span> &#123;</span></span><br><span class="line">    <span class="type">unsigned</span> type:<span class="number">4</span>;      <span class="comment">// 数据类型：OBJ_STRING / OBJ_LIST / OBJ_HASH ...</span></span><br><span class="line">    <span class="type">unsigned</span> encoding:<span class="number">4</span>;  <span class="comment">// 编码：OBJ_ENCODING_INT / EMBSTR / RAW / QUICKLIST ...</span></span><br><span class="line">    <span class="type">unsigned</span> lru:<span class="number">24</span>;      <span class="comment">// LRU / LFU 时钟（内存淘汰决策用）</span></span><br><span class="line">    <span class="type">void</span> *ptr;            <span class="comment">// 指向底层数据结构的指针</span></span><br><span class="line">&#125; robj;</span><br></pre></td></tr></table></figure>
+<pre class="mermaid">flowchart TD
+    K[redisObject 对象] --> T[type 字段<br>String / Hash / List / Set / ZSet]
+    K --> E[encoding 字段<br>int / embstr / raw / listpack / skiplist ...]
+    K --> P[ptr 指针]
+    E -->|决定创建/切换| D[底层数据结构<br>SDS / dict / quicklist / intset ...]
+    T -.->|不直接绑定| D
+
+    style E fill:#fff8e1,stroke:#ff9800
+    style D fill:#e8f5e9,stroke:#4caf50</pre>
+<blockquote>
+<p>图中隐含的设计思想是 <strong>“一变多态”</strong>：同一个 String 类型，可以是一个 8 字节整数（int 编码）、一段 ≤ 44 字节的短字符串（embstr），也可以是一个巨型字节数组（raw）；数据规模增长时编码自动升级、并<strong>只升不降</strong>（除非重建对象）。后文将逐一展开每种结构的原理与切换规则。</p>
+</blockquote>
 <h2 id="数据结构">数据结构</h2>
 <table>
 <thead>
@@ -168,51 +194,56 @@
 <tbody>
 <tr>
 <td style="text-align:left"><strong>SDS</strong> (Simple Dynamic String)</td>
-<td style="text-align:left">动态字符串，预分配空间，避免缓冲区溢出，获取长度 O(1)。</td>
+<td style="text-align:left">动态字符串：记录长度与容量、空间预分配、二进制安全、长度 O(1)。</td>
 <td style="text-align:left">String</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>LinkedList</strong></td>
-<td style="text-align:left">双向链表，节点分散，内存不连续。</td>
-<td style="text-align:left">List (旧版)</td>
+<td style="text-align:left"><strong>linkedlist</strong></td>
+<td style="text-align:left">双向链表：节点分散、内存不连续，每个节点指针开销大。</td>
+<td style="text-align:left">List（历史版本，已弃用）</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>ZipList</strong></td>
-<td style="text-align:left">压缩列表，内存连续，节省空间，但修改复杂度高。</td>
-<td style="text-align:left">List, Hash, ZSet (数据少时)</td>
+<td style="text-align:left"><strong>ziplist</strong></td>
+<td style="text-align:left">压缩列表：内存连续、节省空间，但存在连锁更新的极端风险。</td>
+<td style="text-align:left">List / Hash / ZSet（7.0 前小数据）</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>QuickList</strong></td>
-<td style="text-align:left">双向链表 + 压缩列表的结合体。链表节点是 ZipList。</td>
-<td style="text-align:left">List (3.2+)</td>
+<td style="text-align:left"><strong>quicklist</strong></td>
+<td style="text-align:left">双向链表 + 紧凑段的结合体，节点内是 ziplist / listpack。</td>
+<td style="text-align:left">List（3.2+）</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>Dict</strong></td>
-<td style="text-align:left">哈希表，渐进式 Rehash。</td>
-<td style="text-align:left">Hash, Set, ZSet, 全局字典</td>
+<td style="text-align:left"><strong>listpack</strong></td>
+<td style="text-align:left">紧凑列表：ziplist 的继任者，无连锁更新、内存更省。</td>
+<td style="text-align:left">List / Hash / ZSet（7.0+ 小数据）</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>IntSet</strong></td>
-<td style="text-align:left">整数集合，数组结构，自动排序去重。</td>
-<td style="text-align:left">Set (仅整数且少)</td>
+<td style="text-align:left"><strong>dict</strong></td>
+<td style="text-align:left">哈希表：SipHash 散列 + 拉链法 + 渐进式 rehash。</td>
+<td style="text-align:left">Hash / Set / ZSet / 全局键空间</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>SkipList</strong> (跳表)</td>
-<td style="text-align:left">多层索引链表，查找效率 O(logN)，实现简单。</td>
-<td style="text-align:left">ZSet (数据多时)</td>
+<td style="text-align:left"><strong>intset</strong></td>
+<td style="text-align:left">整数集合：升序数组 + 二分查找，插入越界时整体升级。</td>
+<td style="text-align:left">Set（全整数且数量少）</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>Trie / Radix Tree</strong></td>
-<td style="text-align:left">前缀树，用于 Stream 的 ID 存储。</td>
+<td style="text-align:left"><strong>skiplist</strong></td>
+<td style="text-align:left">跳表：多层索引链表，查找 O(log N)，范围查询友好。</td>
+<td style="text-align:left">ZSet（数据多时，与 dict 配合）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>rax</strong>（基数树）</td>
+<td style="text-align:left">压缩前缀树：对高重合前缀的顺序 ID 极为友好。</td>
 <td style="text-align:left">Stream</td>
 </tr>
 </tbody>
 </table>
 <blockquote>
-<p><em>注：Redis 7.0 引入了 <strong>ListPack</strong> 逐渐替代 ZipList，以解决 ZipList 在极端情况下的性能问题。</em></p>
+<p><em>注：Redis 7.0 引入 listpack 逐渐替代 ziplist，以解决 ziplist 在极端情况下的连锁更新问题；3.2 之前 List 曾直接使用 ziplist 作为整表编码，3.2 起仅作为 quicklist 的节点内部结构。</em></p>
 </blockquote>
 <h3 id="动态字符串（SDS）">动态字符串（SDS）</h3>
-<p>Redis 的字符串类型（String）底层使用 SDS。</p>
+<p>String 类型的主要底层实现：当值是不可解析为整数的字符串时，Redis 都以 SDS 承载字节内容。</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
@@ -230,7 +261,7 @@
 </ul>
 </blockquote>
 <h3 id="双向链表（linkedlist）">双向链表（linkedlist）</h3>
-<p>早期用于 List 类型（现已在小数据量时优先使用 quicklist）。</p>
+<p>List 类型最早的底层实现之一（Redis 3.2 之前与 ziplist 按元素规模二选一），3.2 起被 quicklist 取代。</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
@@ -244,23 +275,57 @@
 </li>
 </ul>
 </blockquote>
-<h3 id="哈希表（hash-dict）">哈希表（hash / dict）</h3>
-<p>当元素较多时，Hash 类型，无序集合使用Set 类型。</p>
+<h3 id="哈希表（dict）">哈希表（dict）</h3>
+<p>当元素较多时，Hash 类型与 Set 类型都会采用哈希表编码（hashtable）。</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
-<p>平均 O(1) 的查找、插入、删除。</p>
+<p>平均 O(1) 的查找、插入、删除（哈希冲突严重时退化 O(N)）；</p>
 </li>
 <li class="lvl-2">
-<p>使用拉链法解决冲突。</p>
+<p>使用<strong>拉链法</strong>解决冲突：每个桶（bucket）挂一条链表，新节点头插；</p>
 </li>
 <li class="lvl-2">
-<p>支持渐进式 rehash（避免阻塞）。</p>
+<p>通过<strong>渐进式 rehash</strong> 完成扩容/缩容，全程不阻塞主线程。</p>
 </li>
 </ul>
 </blockquote>
+<p><strong>渐进式 rehash 的底层机制</strong>：dict 内部同时维护两张哈希表 ht[0] 与 ht[1]。当负载因子触发阈值时，ht[1] 先申请新空间，随后<strong>把迁移动作打散到每一次增删改查中</strong>——<code>rehashidx</code> 游标每处理一个命令就向后推进一个桶，全部迁完后交换 ht[0]/ht[1] 指针并释放旧表。</p>
+<pre class="mermaid">flowchart LR
+    A[ht0 负载因子超阈值] -->|申请 2 倍容量<br>rehashidx 置 0| B[ht1 新表就绪]
+    B --> C[每次增删改查<br>顺带迁移一个桶]
+    C --> D[新写入只进 ht1<br>ht0 只减不增]
+    D --> E[迁移完成<br>交换指针 释放旧表]
+
+    style B fill:#fff8e1,stroke:#ff9800
+    style E fill:#e8f5e9,stroke:#4caf50</pre>
+<p><strong>触发条件与工程注意</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">条件</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">扩容</td>
+<td style="text-align:left">负载因子（used/size）≥ 1</td>
+<td style="text-align:left">无 BGSAVE/BGREWRITEAOF 子进程时；<strong>有子进程时阈值放宽到 ≥ 5</strong>，避免 rehash 与 COW 叠加导致内存翻倍</td>
+</tr>
+<tr>
+<td style="text-align:left">缩容</td>
+<td style="text-align:left">负载因子 &lt; 0.1</td>
+<td style="text-align:left">元素大量删除后自动收缩，释放内存</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>实践提示</strong>：查询键时会先查 ht[0]、未命中再查 ht[1]，所以 rehash 中途不会漏数据；但 rehash 期间内存峰值 = 新旧两表之和，超大 Hash 的扩容瞬间可能吃掉大量内存——这是“大 Hash 键”需要拆分（如按业务字段拆小 Hash）的底层原因之一。</p>
+</blockquote>
 <h3 id="压缩列表（ziplist）">压缩列表（ziplist）</h3>
-<p>用于小规模的 List、Hash 和 Sorted Set。</p>
+<p>曾用于小规模的 List / Hash / ZSet（Redis 7.0 之前），是 listpack 的前身。</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
@@ -274,15 +339,23 @@
 </li>
 </ul>
 </blockquote>
-<p><strong>触发条件</strong>（默认配置）：</p>
+<p><strong>历史触发条件</strong>（Redis 7.0 之前各类型使用 ziplist 时的默认配置；现代版本由 listpack 及对应 <code>*-max-listpack-*</code> 参数接管）：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p>List 元素数量 ≤ 512 且每个元素大小 ≤ 64 字节。</p>
+<p>List 元素数量 ≤ 512 且每个元素大小 ≤ 64 字节（Redis 3.2 之前，受 <code>list-max-ziplist-size</code> 控制）；</p>
 </li>
 <li class="lvl-2">
-<p>Hash 元素数量 ≤ 512 且所有 field/value 长度 ≤ 64 字节。</p>
+<p>Hash 字段数 ≤ 512 且所有 field/value 长度 ≤ 64 字节（受 <code>hash-max-ziplist-entries</code> / <code>hash-max-ziplist-value</code> 控制）；</p>
+</li>
+<li class="lvl-2">
+<p>ZSet 成员数 ≤ 128 且成员长度 ≤ 64 字节（受 <code>zset-max-ziplist-entries</code> / <code>zset-max-ziplist-value</code> 控制）。</p>
 </li>
 </ul>
+<p><strong>ziplist 的致命缺陷——连锁更新（Cascade Update）</strong>：</p>
+<p>ziplist 的每个条目都要用 <code>prevlen</code> 字段记录<strong>前一个条目占用的字节数</strong>（小于 254 字节用 1 字节记录，否则用 5 字节）。当某个条目被修改、长度膨胀到 254 字节以上时，它的 <code>prevlen</code> 从 1 字节变为 5 字节，会<strong>挤压后续条目</strong>；后续条目若也因此越过 254 字节阈值，又会继续挤压下下个条目……形成<strong>链式反应</strong>，最坏情况下单次插入的时间复杂度退化为 O(N²)，主线程可能被拖入秒级卡顿。</p>
+<blockquote>
+<p><strong>触发连锁更新的数据特征</strong>：大量长度恰好位于 253 ~ 254 字节临界附近的条目。这类数据平时极少见，但一旦出现（如批量导入长度雷同的日志片段），Redis 会出现难以解释的<strong>写延迟毛刺</strong>——这正是 Redis 7.0 引入 listpack 取代 ziplist 的直接原因。</p>
+</blockquote>
 <h3 id="快速列表（quicklist）">快速列表（quicklist）</h3>
 <p>Redis 3.2+ 中 List 的底层实现。由 <strong>ziplist</strong>（或 Redis 7.0+ 的 <strong>listpack</strong>）组成的双向链表。</p>
 <blockquote>
@@ -329,7 +402,7 @@
 </ul>
 </blockquote>
 <h3 id="整数集合（intset）">整数集合（intset）</h3>
-<p>当 Set 中所有元素都是整数且数量较少时使用。</p>
+<p>当 Set 中所有成员都是整数且数量不超过 <code>set-max-intset-entries</code>（默认 512）时使用。</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
@@ -339,25 +412,38 @@
 <p>节省内存，支持二分查找（O(log N)）。</p>
 </li>
 <li class="lvl-2">
-<p><strong>升级机制</strong>：插入非整数或超出当前整数类型范围时，自动转为 hashtable。</p>
+<p><strong>升级机制</strong>：插入非整数时自动升级为 hashtable；插入超出当前位宽范围的整数时（如 int16 → int32 → int64），内部整体扩容重写，两种升级都不可逆。</p>
 </li>
 </ul>
 </blockquote>
 <h2 id="数据类型">数据类型</h2>
-<p>五种常用基本数据类型</p>
+<p>如果说“数据结构”一节回答的是<strong>内部长什么样</strong>，本节则回答<strong>每种类型对外提供什么语义、何时用哪种编码</strong>——同一类型在不同数据规模下自动切换编码（且只升不降），是理解 Redis 内存模型的关键。</p>
+<p>五种常用基本数据类型（速览，底层机制见下方各小节）：</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
-<p><strong>String</strong>: 字符串（二进制安全（可以存图片、序列化对象等），一个key最大存512MB）</p>
-</li>
-<li class="lvl-2">
-<p><strong>Hash</strong>: 散列键值对，对象序列化后存储<br>
-<code>ZipList</code> (数据少时) 或 <code>Dict</code> (哈希表，数据多时)</p>
-</li>
-<li class="lvl-2">
-<p><strong>List</strong>: 列表，按插入顺序排序，支持两端 push/pop。（有序双向链表、可重复，增删快查询慢）</p>
-<p>Redis 3.2 之前是 <code>LinkedList</code> 或 <code>ZipList</code>；3.2 之后是 <strong><code>QuickList</code></strong> (双向链表 + 压缩列表)。【排行榜、消息队列、栈】</p>
+<p><strong>String</strong>：二进制安全的字节串，单 key 最大 512MB（可存图片、序列化对象等）</p>
 <ul class="lvl-3">
+<li class="lvl-4">编码：<code>int</code>（整数值）/ <code>embstr</code>（≤ 44 字节短串）/ <code>raw</code>（长串），三者只升不降</li>
+<li class="lvl-4">典型：缓存、计数器（INCR）、分布式锁（SET NX EX）、限流</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>Hash</strong>：散列键值对，适合对象字段级存储与部分更新</p>
+<ul class="lvl-3">
+<li class="lvl-4">编码：<code>listpack</code>（字段少且短，Redis 7 起替代 ziplist）→ <code>hashtable</code>（dict，数据多时）</li>
+<li class="lvl-4">典型：对象缓存、购物车、计数聚合（HINCRBY）</li>
+</ul>
+</li>
+<li class="lvl-2">
+<p><strong>List</strong>：有序可重复列表，支持两端 push/pop（有序双向、增删快查询慢）</p>
+<ul class="lvl-3">
+<li class="lvl-4">
+<p>编码：3.2 之前是 <code>linkedlist</code> / <code>ziplist</code>；3.2 之后统一为 <strong>quicklist</strong>（双向链表 + 节点内 listpack）</p>
+</li>
+<li class="lvl-4">
+<p>典型：【排行榜、消息队列、栈】</p>
+</li>
 <li class="lvl-4">
 <p><code>lpush list:1 0 1 2 3 4 5 6</code>    添加7个数到列表</p>
 </li>
@@ -365,14 +451,19 @@
 <p><code>rpop list:1</code>  从右边弹出一个（队列）</p>
 </li>
 <li class="lvl-4">
-<p><code>lpop list:1</code>  从左边弹出一个 （栈）</p>
+<p><code>lpop list:1</code>  从左边弹出一个（栈）</p>
 </li>
 </ul>
 </li>
 <li class="lvl-2">
-<p><strong>Set</strong>: 集合（hash实现，无序、不可重复，支持<strong>交集、并集和差集</strong>操作）</p>
-<p><code>IntSet</code> (整数且数量少) 或 <code>Dict</code> (哈希表)。【共同好友、点赞签到打卡、统计访问IP、好友推荐（交集）】</p>
+<p><strong>Set</strong>：无序、不可重复集合，支持<strong>交集、并集、差集</strong>运算</p>
 <ul class="lvl-3">
+<li class="lvl-4">
+<p>编码：<code>intset</code>（全整数且数量 ≤ 512）或 <code>hashtable</code>（dict）</p>
+</li>
+<li class="lvl-4">
+<p>典型：【共同好友、点赞签到打卡、统计访问IP、好友推荐（交集）】</p>
+</li>
 <li class="lvl-4">
 <p><code>sadd sign:2020-01-16 1 2 3 4 5 6 7 8</code>    添加某天签到用户的ID，8个</p>
 </li>
@@ -380,37 +471,40 @@
 <p><code>smembers sign:2020-01-16</code>   列出某天所有签到用户的ID</p>
 </li>
 <li class="lvl-4">
-<p><code>spop sign:2020-01-16</code>   随机列出一个某天签到用户的ID</p>
+<p><code>spop sign:2020-01-16</code>   随机弹出一个某天签到用户的ID（抽奖去重）</p>
 </li>
 </ul>
 </li>
 <li class="lvl-2">
-<p><strong>Sorted Set</strong>: 有序集合（有序的set，底层结构为跳跃表和hash）<br>
-<code>ZipList</code> (数据少时) 或 <strong><code>SkipList</code> (跳表) + <code>Dict</code></strong> (数据多时)。</p>
+<p><strong>Sorted Set</strong>：有序集合，member 唯一、score 可重复，按 score 排序</p>
+<ul class="lvl-3">
+<li class="lvl-4">编码：<code>listpack</code>（成员少且短）→ <code>skiplist + dict</code>（数据多时）</li>
+<li class="lvl-4">典型：【排行榜、延时队列、滑动窗口限流】</li>
+</ul>
 </li>
 </ul>
 </blockquote>
-<p>其他数据类型</p>
+<p>其他数据类型（多依附于上述基础类型或模块实现）</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
-<p><strong>bitmap</strong>（位图）</p>
+<p><strong>bitmap</strong>（位图）：本质是 String 之上的位数组视图（详见下文）</p>
 <ul class="lvl-3">
 <li class="lvl-4"><code>bitop and continue:site site:2020-01-18 site:2020-01-17</code>    计算某段时间内，都签到的用户数量</li>
 <li class="lvl-4"><code>bitcount site:2020-01-17 0 100</code>       统计某一天网站的签到数量</li>
 </ul>
 </li>
 <li class="lvl-2">
-<p>hyperloglog（基数统计）</p>
+<p><strong>hyperloglog</strong>（基数统计）：概率算法，约 12KB 固定内存即可统计亿级 UV（标准误差 0.81%），代价是<strong>不能反查具体元素</strong></p>
 </li>
 <li class="lvl-2">
-<p><strong>Stream</strong>（消息队列）</p>
+<p><strong>Stream</strong>（消息队列）：基于基数树（rax）的追加式日志，支持消费组与 ACK 确认，弥补 List 队列无确认机制的短板</p>
 </li>
 <li class="lvl-2">
-<p><strong>bitfield</strong>（位域，批量的bit位操作）</p>
+<p><strong>bitfield</strong>（位域，批量的bit位操作）：本质是 String 位运算的批量原子接口</p>
 </li>
 <li class="lvl-2">
-<p><strong>geo</strong>（地理空间）</p>
+<p><strong>geo</strong>（地理空间）：底层为 ZSet + geohash 编码，附近的人、两点距离皆由其支撑</p>
 </li>
 </ul>
 </blockquote>
@@ -428,17 +522,17 @@
 <tbody>
 <tr>
 <td>String</td>
-<td>raw / int / embstr</td>
-<td>SDS / long / embstr（优化的 SDS）</td>
+<td>int / embstr / raw</td>
+<td>long / 紧凑 SDS（embstr）/ 标准 SDS</td>
 </tr>
 <tr>
 <td>List</td>
 <td>quicklist</td>
-<td>quicklist（listpack + 双向链表）</td>
+<td>quicklist（节点内为 listpack）</td>
 </tr>
 <tr>
 <td>Hash</td>
-<td>ziplist / listpack / hashtable</td>
+<td>listpack / hashtable</td>
 <td>listpack（小数据）或 dict</td>
 </tr>
 <tr>
@@ -448,178 +542,455 @@
 </tr>
 <tr>
 <td>Sorted Set</td>
-<td>ziplist / listpack / skiplist+dict</td>
+<td>listpack / skiplist+dict</td>
 <td>listpack（小数据）或 skiplist+dict</td>
 </tr>
 </tbody>
 </table>
-<h3 id="String（SDS）">String（SDS）</h3>
-<p>SDS是Redis中的一种字符串类型，它是一种二进制安全的字符串，由简单动态字符串（SDS）实现。SDS支持多种数据结构。</p>
+<h3 id="String（int-embstr-raw）">String（int / embstr / raw）</h3>
+<p>String 虽是最基础的类型，内部却远不止“一种字符串”——Redis 会根据值的内容与长度，把它归入 <strong>int / embstr / raw</strong> 三种编码之一，用 <code>OBJECT ENCODING key</code> 可以一眼看穿：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">编码</th>
+<th style="text-align:left">适用条件</th>
+<th style="text-align:left">底层形态</th>
+<th style="text-align:left">内存行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>int</strong></td>
+<td style="text-align:left">值能被解析为 long 整数（如 <code>10086</code>）</td>
+<td style="text-align:left">long 整数</td>
+<td style="text-align:left">直接存放在 redisObject.ptr 中，<strong>零额外堆分配</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>embstr</strong></td>
+<td style="text-align:left">字符串长度 ≤ 44 字节</td>
+<td style="text-align:left">紧凑型 SDS</td>
+<td style="text-align:left">redisObject 与 SDS 头尾相连，一次 malloc 完成</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>raw</strong></td>
+<td style="text-align:left">字符串长度 &gt; 44 字节</td>
+<td style="text-align:left">标准 SDS</td>
+<td style="text-align:left">redisObject 与 SDS 分两次分配</td>
+</tr>
+</tbody>
+</table>
 <blockquote>
-<ul class="lvl-1">
+<p><strong>为什么阈值恰好是 44 字节</strong>：Redis 的内存由 jemalloc 管理，它对 64 字节以内的小块有专属内存桶。一个 embstr 对象由 redisObject（16 字节）+ sdshdr8 头部（len/alloc/flags 共 3 字节）+ 结尾 <code>\0</code>（1 字节）构成，固定开销合计 20 字节——64 减去 20，恰好剩下 44 字节给数据本身，使总占用始终不越出 64 字节桶，<strong>一字节都不浪费</strong>。</p>
+</blockquote>
+<p><strong>编码切换的“单向车道”规则</strong>：</p>
+<ul class="lvl-0">
 <li class="lvl-2">
-<p>SDS可以动态增加内存空间，避免了静态数组的大小限制。</p>
+<p>写入整数 → <strong>int</strong>；写入 ≤ 44 字节的短串 → <strong>embstr</strong>；写入长串 → <strong>raw</strong>；</p>
 </li>
 <li class="lvl-2">
-<p>SDS会检查内存是否足够，避免了缓冲区溢出的问题。</p>
+<p>对 int 执行 <code>APPEND</code> 等字符串拼接、对 embstr 执行任何<strong>修改型命令</strong>（<code>APPEND</code> / <code>SETRANGE</code> / <code>GETSET</code>），都会直接落入 raw——因为 embstr 是只读优化，结构上根本没有预留修改接口；</p>
 </li>
 <li class="lvl-2">
-<p>SDS可以避免C字符串常见的问题，比如缓冲区溢出和内存泄露等。</p>
-</li>
-<li class="lvl-2">
-<p>SDS的常数复杂度获取字符串长度和杜绝缓冲区溢出可以避免使用strlen和strcat函数时的一些问题。</p>
-</li>
-<li class="lvl-2">
-<p>SDS的空间预分配和惰性空间释放两种策略可以减少修改字符串的内存重新分配次数。</p>
-</li>
-<li class="lvl-2">
-<p>SDS是二进制安全的，因为它不是以空字符串来判断字符串是否结束，而是以len属性表示的长度来判断字符串是否结束。</p>
+<p>编码<strong>只升不降</strong>：一旦进入 raw 便不会退回 embstr / int，除非删除后重建 key。</p>
 </li>
 </ul>
+<blockquote>
+<p>int 编码的价值不止于省内存：<code>INCR / DECR / INCRBY</code> 在 int 编码上直接操作 long 整数，免去字符串解析即可完成原子自增——这是 Redis 做计数器、限流器高性能的底层原因之一。</p>
 </blockquote>
+<p><strong>SDS 的结构演进</strong>：早期 SDS 头部是固定 <code>int free + int len + char buf[]</code>（共 8 字节头），对短字符串浪费明显；Redis 3.2 起按字符串长度把头部细分为 <code>sdshdr5 / 8 / 16 / 32 / 64</code> 五档，长度字段从 1 字节到 8 字节自适应（后缀数字即 len/alloc 所占位宽），Redis 7 又移除了不再使用的 sdshdr5。由此，一个 10 字节的短串也只需 3 字节头部，再叠加上述 44 字节阈值，短 value 场景的内存效率被压榨到了极致。下文的 C 结构即早期版本的示意：</p>
 <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sdshdr</span>&#123;</span></span><br><span class="line">    <span class="comment">//int 记录buf数组中未使用字节的数量 如上图free为0代表未使用字节的数量为0</span></span><br><span class="line">    <span class="type">int</span> <span class="built_in">free</span>;</span><br><span class="line">    <span class="comment">//int 记录buf数组中已使用字节的数量即sds的长度 如上图len为5代表未使用字节的数量为5</span></span><br><span class="line">    <span class="type">int</span> len;</span><br><span class="line">    <span class="comment">//字节数组用于保存字符串 sds遵循了c字符串以空字符结尾的惯例目的是为了重用c字符串函数库里的函数</span></span><br><span class="line">    <span class="type">char</span> buf[];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>SDS 的二进制安全、空间预分配、惰性释放等设计细节已在上文“动态字符串（SDS）”一节展开，此处不再重复。</p>
+</blockquote>
+<p><strong>实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>超大 Value</strong>：String 上限虽达 512MB，但超过 10KB 的 value 在网络序列化、AOF 持久化、主从全量同步时都会显著放大延迟——大文本 / 大 JSON 应拆块存入 List / Hash，或改用对象存储、Redis 只留引用；</p>
+</li>
+<li class="lvl-2">
+<p><strong>频繁 APPEND 大字符串</strong>：raw 编码每次 APPEND 都可能触发扩容 realloc 与整段 memcpy，写入吞吐会断崖式下跌；日志追加类场景优先使用 Stream（XADD）或按时间分 key；</p>
+</li>
+<li class="lvl-2">
+<p><strong>计数溢出</strong>：<code>INCR</code> 达到 long 上限（9223372036854775807）会报错——热点计数可预置<strong>分片计数器</strong>（key 后缀编号分片）再异步汇总；</p>
+</li>
+<li class="lvl-2">
+<p><strong>SETNX 锁的原子性陷阱</strong>：<code>SETNX</code> 后再补 <code>EXPIRE</code> 是两步操作，中途宕机会造成死锁——务必用 <code>SET key value EX seconds NX</code> 一步完成；释放锁时用 Lua 脚本比对持有者标识，防止误删他人锁。</p>
+</li>
+</ul>
 <h3 id="List（快速列表）">List（快速列表）</h3>
 <p>quicklist 实际上是 zipList 和 linkedList 的混合体：将 linkedList 按段切分，每一段使用 zipList 来紧凑存储，多个 zipList 之间使用双向指针串接起来。</p>
 <p>相对于链表它压缩了内存</p>
 <img src="/imgs/db/QuickList.png" alt="img" style="zoom:77%;" loading='lazy'>
 <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> *<span class="title">prev</span>;</span>     <span class="comment">//上一个node节点</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">quicklistNode</span> *<span class="title">next</span>;</span>     <span class="comment">//下一个node</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">char</span> *zl;            <span class="comment">//保存的数据 压缩前ziplist 压缩后压缩的数据</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> sz;             <span class="comment">/* ziplist size in bytes */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> count : <span class="number">16</span>;     <span class="comment">/* count of items in ziplist */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> encoding : <span class="number">2</span>;   <span class="comment">/* RAW==1 or LZF==2 */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> container : <span class="number">2</span>;  <span class="comment">/* NONE==1 or ZIPLIST==2 */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> recompress : <span class="number">1</span>; <span class="comment">/* was this node previous compressed? */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> attempted_compress : <span class="number">1</span>; <span class="comment">/* node can&#x27;t compress; too small */</span></span><br><span class="line">    <span class="type">unsigned</span> <span class="type">int</span> extra : <span class="number">10</span>; <span class="comment">/* more bits to steal for future usage */</span></span><br><span class="line">&#125; quicklistNode;</span><br></pre></td></tr></table></figure>
-<h3 id="Hash（字典-压缩列表）"><a target="_blank" rel="external nofollow noopener noreferrer" href="https://blog.csdn.net/mccand1234/article/details/93411326">Hash</a>（字典+压缩列表）</h3>
-<p>哈希对象的底层存储可以使用ziplist（压缩列表）和hashtable。</p>
 <blockquote>
-<p>当hash对象可以同时满足一下两个条件时，哈希对象使用ziplist编码。</p>
+<p><strong>分段阈值与 LZF 压缩（两个高频面试点）</strong>：</p>
 <ul class="lvl-1">
-<li class="lvl-2">哈希对象保存的所有键值对的键和值的字符串长度都小于64字节</li>
-<li class="lvl-2">哈希对象保存的键值对数量小于512个</li>
+<li class="lvl-2"><code>list-max-listpack-size</code>（默认 -2，即单节点约 8KB）：决定每个节点内 listpack 的容量上限——太大则单段插入的内存搬迁成本高，太小则节点指针开销占比回升；</li>
+<li class="lvl-2"><code>list-compress-depth</code>（默认 0）：配置为 1 表示首尾各 1 个节点保持不压缩、其余中间节点全部 <strong>LZF 压缩</strong>——消息队列类“两端写、中间读”的场景可显著节省内存，代价是访问中间节点需要先解压。</li>
 </ul>
 </blockquote>
-<p>通过挂链解决冲突</p>
+<p><strong>实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>LRANGE 全量拉取</strong>：对十万级 List 执行 <code>LRANGE list 0 -1</code> 会一次性返回全部元素、撑爆网络缓冲区，应分页拉取或配合 <code>LLEN</code> 控制规模；</p>
+</li>
+<li class="lvl-2">
+<p><strong>长列表的无界增长</strong>：持续 LPUSH 而不消费会让 List 无限膨胀，消费端读取后应及时 <code>LTRIM</code> 裁剪，或用 <code>RPOPLPUSH</code> 转入备份列表再删除；删除超大 List 同样使用 <code>UNLINK</code> 异步回收；</p>
+</li>
+<li class="lvl-2">
+<p><strong>中间插入成本</strong>：元素集中于中间频繁插入时，单个 listpack 段仍可能触发内存搬迁——可把列表按业务拆短（每个 key 限长），或用 ZSet 加 score 模拟更灵活的顺序结构；</p>
+</li>
+<li class="lvl-2">
+<p><strong>队列语义的边界</strong>：List 做消息队列没有 ACK 与消费组概念，消费中途崩溃消息即丢失——可靠性要求高的场景应升级为 Stream（见后文）。</p>
+</li>
+</ul>
+<h3 id="Hash（哈希表-紧凑编码）"><a target="_blank" rel="external nofollow noopener noreferrer" href="https://blog.csdn.net/mccand1234/article/details/93411326">Hash</a>（哈希表 + 紧凑编码）</h3>
+<p>Hash 是“对象字段级存储”的主力类型，底层在 <strong>listpack</strong>（Redis 7 起，此前为 ziplist）与 <strong>hashtable（dict）</strong> 两种编码间自动切换：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">编码</th>
+<th style="text-align:left">触发条件（默认配置）</th>
+<th style="text-align:left">底层结构</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>listpack</strong></td>
+<td style="text-align:left">所有 field/value 长度均 ≤ 64 字节（<code>hash-max-listpack-value</code>）且字段数 ≤ 512（<code>hash-max-listpack-entries</code>）</td>
+<td style="text-align:left">连续内存紧凑排列，一次分配</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>hashtable</strong></td>
+<td style="text-align:left">任一 field/value 超过 64 字节，或字段数超过 512</td>
+<td style="text-align:left">dict：字段哈希到桶，拉链解决冲突</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>即：当哈希对象<strong>同时满足</strong>“键值对的键与值长度都小于 64 字节”与“键值对数量小于 512 个”两个条件时使用紧凑编码。任意条件被打破即升级为 hashtable，且<strong>只升不降</strong>——这解释了为何“存到一半变大的 Hash”内存会突然上涨：listpack 的全部元素要整体搬迁进新分配的 dict，搬迁期间新旧结构并存。</p>
+</blockquote>
+<p><strong>hashtable 编码的底层形态</strong>：本质是前文详述的 dict——每个 field 经 <strong>SipHash</strong> 散列到桶，桶内用拉链法挂接冲突字段；元素规模增长后由<strong>渐进式 rehash</strong> 平滑扩容，全程不阻塞主线程（机制详见上文“哈希表（dict）”一节）。</p>
 <img src="/imgs/db/20190623214252310.png" alt="img" style="zoom: 80%;" loading='lazy'>
-<h3 id="Set（字典）">Set（字典）</h3>
-<h3 id="zSet（跳跃表）">zSet（跳跃表）</h3>
+<blockquote>
+<p>上图为 dict 的拉链结构示意：下方数组即桶表，每个桶头挂一条单向链表，冲突字段沿链表向后查找。</p>
+</blockquote>
+<p><strong>实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>大 Hash 的连锁风险</strong>：Hash 达到百万字段后，<code>HGETALL</code> 一次性返回全部字段（网络与序列化双重阻塞）、rehash 期间新旧两表并存（内存峰值翻倍）、<code>DEL</code> 释放内存同样耗时——应按业务维度拆分为<strong>多个小 Hash</strong>（如按用户 ID 或业务字段分片），这正是上文“大 Hash 键需要拆分”的落地姿势；</p>
+</li>
+<li class="lvl-2">
+<p><strong>field 无法独立设置 TTL</strong>：Hash 的过期只能作用到整个 key；业务需要字段级过期时，可用“Hash 存值 + ZSet 存字段过期时间戳”的双写结构，由定时任务扫描 ZSet 删除过期字段；</p>
+</li>
+<li class="lvl-2">
+<p><strong>避免整体序列化进 String</strong>：若业务只改动对象的一个字段却用 String 全量读改写，会产生严重写放大与网络开销——Hash 的字段级命令（HSET / HINCRBY / HGET）正是为此设计；</p>
+</li>
+<li class="lvl-2">
+<p><strong>HSCAN 替代 HGETALL</strong>：必须遍历大 Hash 时，务必使用 <code>HSCAN</code> 游标分批迭代，配合 <code>COUNT</code> 控制每批返回量。</p>
+</li>
+</ul>
+<h3 id="Set（intset-哈希表）">Set（intset + 哈希表）</h3>
+<p>Set 的底层只有两种编码：<strong>intset</strong>（成员全为整数且数量不多）或 <strong>hashtable</strong>（成员含字符串 / 数量超限），自动选择逻辑如下：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">条件</th>
+<th style="text-align:left">编码</th>
+<th style="text-align:left">底层结构</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">成员全部是整数，且数量 ≤ 512（<code>set-max-intset-entries</code>）</td>
+<td style="text-align:left"><strong>intset</strong></td>
+<td style="text-align:left">连续内存、升序排列的整数数组</td>
+</tr>
+<tr>
+<td style="text-align:left">出现非整数成员，或数量 &gt; 512</td>
+<td style="text-align:left"><strong>hashtable</strong></td>
+<td style="text-align:left">dict：键为成员，value 统一为 NULL</td>
+</tr>
+</tbody>
+</table>
+<p><strong>intset 的底层机制</strong>：本质是<strong>一段连续内存上的升序整数数组</strong>，靠二分查找实现 O(log N) 的成员判定。intset 内部同时声明了 <code>int16_t / int32_t / int64_t</code> 三种视图，当插入的元素超出当前视图的表示范围时，触发<strong>整体升级</strong>——重新分配空间并把全部存量元素按新类型逐一重写（O(N)），升级后<strong>只升不降</strong>：即使把大整数全部删光，也不会退回小类型，除非重建该 key。</p>
+<p><strong>hashtable 编码的细节</strong>：Set 复用的就是前文 Hash 所用的 dict，只是 value 恒为 NULL；因此 Set 同样享有渐进式 rehash，不会因扩容出现长时间阻塞。</p>
+<blockquote>
+<p><strong>intset 升级的正确类比</strong>：它与 String 的 int→embstr→raw 一样遵循“只升不降”——这是 Redis 以空间换时间、拒绝过度设计的典型体现：升级场景极少触发，为其实现降级逻辑纯属浪费。</p>
+</blockquote>
+<p><strong>实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>SMEMBERS 拉全量</strong>：对十万级成员的 Set 执行 <code>SMEMBERS</code> 会把全量成员一次性序列化返回，主线程与网络双双承压——改用 <code>SSCAN</code> 游标分批迭代；</p>
+</li>
+<li class="lvl-2">
+<p><strong>SINTER / SUNION 计算风暴</strong>：集合间运算复杂度与参与集合的规模乘积相关（O(N×M)），高频交集可用 <code>SINTERSTORE</code> 把结果<strong>物化</strong>为独立 key，避免每次请求都现场计算；</p>
+</li>
+<li class="lvl-2">
+<p><strong>大 Set 的删除阻塞</strong>：<code>DEL</code> 百万成员大集合时，主线程要逐个释放 dict 节点，可能卡顿数百毫秒——直接改用 <code>UNLINK key</code> 让后台线程异步回收；</p>
+</li>
+<li class="lvl-2">
+<p><strong>哈希碰撞攻击</strong>：若成员哈希高度集中，hashtable 拉链会退化为单链表。Redis 4.0 起使用对随机种子敏感的 <strong>SipHash</strong> 做哈希，攻击者无法预构造同桶数据，从源头化解该风险。</p>
+</li>
+</ul>
+<h3 id="ZSet（skiplist-dict）">ZSet（skiplist + dict）</h3>
 <p>跳跃表是一种有序的数据结构，通过<strong>在每个节点中维持多个指向其他节点的指针</strong>，从而达到快速访问节点的目的。</p>
 <blockquote>
 <p><strong>链表加多级索引的结构，就是跳跃表</strong>，每个拉链节点都有指针指向别的槽</p>
 <p>下面为原始单链表，上面为多个级别的索引</p>
 </blockquote>
 <img src="/imgs/db/%E8%B7%B3%E8%B7%83%E8%A1%A8.png" alt="img" style="zoom: 27%;" loading='lazy'>
-<p>Redis使用跳跃表作为有序集合键的底层实现之一,如果一个有序集合包含的<strong>元素数量比较多</strong>,又或者有序集合中元素的<strong>成员是比较长的字符串</strong>时, Redis就会使用跳跃表来作为有序集合健的底层实现。</p>
-<img src="/imgs/db/Redis%E8%B7%B3%E8%B7%83%E8%A1%A8.png" alt="img" style="zoom: 30%;" loading='lazy'>
-<h3 id="bitmap（sds）"><a target="_blank" rel="external nofollow noopener noreferrer" href="https://xiaolincoding.com/redis/data_struct/command.html#%E4%BB%8B%E7%BB%8D-8">bitmap</a>（sds）</h3>
-<p>即位图，是一串连续的二进制数组（0和1），可以通过偏移量（offset）定位元素。BitMap通过最小的单位bit来进行<code>0|1</code>的设置，表示某个元素的值或者状态，时间复杂度为O(1)。</p>
+<p>Redis 使用跳跃表作为有序集合的底层实现之一：当有序集合包含的<strong>元素数量比较多</strong>，或成员的<strong>字符串比较长</strong>时，Redis 就会切换为“跳跃表 + 字典”的复合结构。</p>
+<p><strong>编码触发条件</strong>（默认 <code>zset-max-listpack-entries 128</code>、<code>zset-max-listpack-value 64</code>）：成员数 ≤ 128 且每个成员长度 ≤ 64 字节时用 <strong>listpack</strong> 紧凑编码；一旦超限立即升级为 <strong>skiplist + dict</strong> 复合结构，且只升不降。</p>
+<p><strong>为什么是“跳表 + 字典”的黄金组合</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">单一方案</th>
+<th style="text-align:left">致命缺陷</th>
+<th style="text-align:left">结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">只用 dict</td>
+<td style="text-align:left">只能 O(1) 查分数，无法按分数排序、做范围查询</td>
+<td style="text-align:left">不够用</td>
+</tr>
+<tr>
+<td style="text-align:left">只用 skiplist</td>
+<td style="text-align:left">精确查 member 需 O(log N)，重复写入还要先查重</td>
+<td style="text-align:left">不够快</td>
+</tr>
+<tr>
+<td style="text-align:left">skiplist + dict</td>
+<td style="text-align:left">空间多一份指针开销，读写路径各取所长</td>
+<td style="text-align:left"><strong>Redis 最终方案</strong></td>
+</tr>
+</tbody>
+</table>
 <blockquote>
-<p>由于 bit 是计算机中最小的单位，使用它进行储存将非常节省空间，特别适合一些数据量大且使用<strong>二值统计的场景</strong>。</p>
-<p><code>Bitmap</code> 本身是用 <code>String</code> 类型作为底层数据结构实现的一种统计二值状态的数据类型。保存为二进制的字节数组，可以把 <code>Bitmap</code> 看作是一个 bit 数组。<code>BitMap</code> 占用的空间，就是底层字符串占用的空间</p>
+<p>dict 负责 “member → score” 的 O(1) 映射（顺带完成成员唯一性校验），skiplist 负责按 score 排序的范围操作；二者共享同一份 member 数据，ZADD 时同步更新两处。</p>
+</blockquote>
+<p><strong>skiplist 的底层设计</strong>：每个节点除了持有 member 与 score，还维护<strong>多层前进指针</strong>（forward）与<strong>跨度</strong>（span）。层数由随机算法按 1/4 概率逐层向上生成（幂律分布），Redis 7 中最高 64 层——之所以把“平衡”交给概率而非强制旋转，是因为期望层数低（约 1.33 层），插入/删除只需局部修改指针，期望代价 O(log N)，实现复杂度却远低于红黑树。</p>
+<img src="/imgs/db/Redis%E8%B7%B3%E8%B7%83%E8%A1%A8.png" alt="img" style="zoom: 30%;" loading='lazy'>
+<blockquote>
+<p>上图为 Redis 中跳跃表的实际结构：score 升序排列，每层前进指针按层稀疏，span 字段标注每次跨越的节点数——定位“排第几”时沿路径累加 span 即可。</p>
+</blockquote>
+<blockquote>
+<p><strong>span 是排名的基石</strong>：每个前进指针都附带 span（跨越的节点个数）。执行 <code>ZRANK / ZREVRANK</code> 时，只需沿查找路径把各段 span 累加即可得到排名，无需遍历全表——复杂度同为 O(log N)。另外，当多个成员分数相同时，Redis 规定按 member 的字典序继续比较，保证任意时刻都存在<strong>确定的全序</strong>，范围查询结果稳定可预期。</p>
+</blockquote>
+<p><strong>为什么不用红黑树 / B+ 树</strong>：红黑树的范围查询需要中序遍历、实现与调平衡复杂；B+ 树面向磁盘页优化，在纯内存场景优势不明显。跳表实现简单、范围查询只需沿最底层指针线性推进，还天然适合无锁并发下的局部修改——这也是 RocksDB MemTable、LevelDB 等 LSM 引擎普遍选用跳表的原因。</p>
+<pre class="mermaid">flowchart TD
+    A[ZADD 写入成员] --> B{成员数 ≤ 128<br>且长度 ≤ 64 字节?}
+    B -->|是| C[listpack 紧凑编码<br>内存最优]
+    B -->|否| D[skiplist + dict 复合编码<br>有序操作 OlogN]
+    C --> E{继续写入<br>触发任一阈值?}
+    E -->|是| D
+    E -->|否| C
+    D --> F[只升不降<br>除非删除重建 key]
+    style C fill:#e8f5e9,stroke:#4caf50
+    style D fill:#fff8e1,stroke:#ff9800</pre>
+<p><strong>实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>大 ZSet 的高频 ZADD</strong>：榜单类 key 若每秒成千上万次 ZADD，skiplist 指针读写与 dict 双重更新会持续消耗 CPU，且单 key 过大时<strong>无法水平拆分</strong>——优先考虑分层聚合（分钟榜→小时榜→日榜）、<code>ZREMRANGEBYRANK</code> 裁剪只留 Top N，或降低刷分频率；</p>
+</li>
+<li class="lvl-2">
+<p><strong>ZRANGEBYSCORE 深分页</strong>：skiplist 的排名天然“越深越贵”——<code>LIMIT offset count</code> 每页都要从头累加 span 跳过 offset 个节点，offset 很大时退化为 O(offset) 遍历；业界常用“记录上一页最后 score 作为游标”代替页码翻页（详见本站《Redis ZSET 的深度分页解决方案》一文）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>ZUNIONSTORE / ZINTERSTORE 聚合</strong>：对多个大 ZSet 做并/交运算属于 CPU 密集操作且结果需落盘，应安排到业务低峰或交给独立聚合任务，避免阻塞主线程；</p>
+</li>
+<li class="lvl-2">
+<p><strong>内存权衡</strong>：skiplist 每个节点平均 1.33 层、每层一个指针，内存开销明显高于 listpack。若业务分数集中在固定小集合（如枚举 0~100），可适当调大 <code>zset-max-listpack-entries</code>，让更多 key 停留在紧凑编码。</p>
+</li>
+</ul>
+<h3 id="bitmap（sds）"><a target="_blank" rel="external nofollow noopener noreferrer" href="https://xiaolincoding.com/redis/data_struct/command.html#%E4%BB%8B%E7%BB%8D-8">bitmap</a>（sds）</h3>
+<p>即位图——本质是 <strong>String（SDS）之上的一层位视图</strong>：一串连续的二进制位（bit），通过偏移量（offset）读写单个位（0/1），时间复杂度 O(1)。它并不存在独立的数据结构，<code>SETBIT / GETBIT</code> 在底层就是按字节寻址 SDS 中的某个位。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>空间账</strong>：1 个 bit 表示一个用户的状态，10 亿用户也只需约 125MB（10 亿 ÷ 8 字节）；位偏移上限为 2^32-1，与 String 的 512MB 上限一致；</p>
+</li>
+<li class="lvl-2">
+<p><strong>适合场景</strong>：数据量大且只有<strong>二值状态</strong>的统计——签到（第 N 天是否签）、登录态、在线状态、留存分析、黑名单；</p>
+</li>
+<li class="lvl-2">
+<p><strong>BITCOUNT 的底层</strong>：Redis 用“预计算查表 + 按字节分组计数”统计值为 1 的位数（每字节 256 种组合的计数表），整体耗时与字符串长度成正比；</p>
+</li>
+<li class="lvl-2">
+<p><strong>BITOP 的底层</strong>：对参与 key 的字节数组逐字节执行 AND / OR / XOR 逻辑运算后写入目标 key，结果长度取参与者的最大值——本质是 CPU 密集的批量位运算，大位图上执行需谨慎。</p>
+</li>
+</ul>
 </blockquote>
 <figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 设置值，其中 value 只能是 0 和 1     SETBIT key offset value</span></span><br><span class="line">127.0.0.1:6379&gt; SETBIT sid10t 0 1</span><br><span class="line">(<span class="built_in">integer</span>) 0</span><br><span class="line"></span><br><span class="line"><span class="comment"># 获取值     GETBIT key offset</span></span><br><span class="line">127.0.0.1:6379&gt; GETBIT sid10t 1</span><br><span class="line">(<span class="built_in">integer</span>) 1</span><br><span class="line"></span><br><span class="line"><span class="comment"># 获取指定范围内值为 1 的个数     start 和 end 以字节为单位     BITCOUNT key [start end [BYTE|BIT]]</span></span><br><span class="line">127.0.0.1:6379&gt; BITCOUNT sid10t 0 8</span><br><span class="line">(<span class="built_in">integer</span>) 3</span><br></pre></td></tr></table></figure>
 <figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">BitMapsExample</span> &#123;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">run</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="type">UnifiedJedis</span> <span class="variable">jedis</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">UnifiedJedis</span>(<span class="string">&quot;redis://localhost:6379&quot;</span>);</span><br><span class="line"></span><br><span class="line">        <span class="type">boolean</span> <span class="variable">res1</span> <span class="operator">=</span> jedis.setbit(<span class="string">&quot;pings:2024-01-01-00:00&quot;</span>, <span class="number">123</span>, <span class="literal">true</span>);</span><br><span class="line">        System.out.println(res1); <span class="comment">// &gt;&gt;&gt; false</span></span><br><span class="line"></span><br><span class="line">        <span class="type">boolean</span> <span class="variable">res2</span> <span class="operator">=</span> jedis.getbit(<span class="string">&quot;pings:2024-01-01-00:00&quot;</span>, <span class="number">123</span>);</span><br><span class="line">        System.out.println(res2); <span class="comment">// &gt;&gt;&gt; true</span></span><br><span class="line"></span><br><span class="line">        <span class="type">boolean</span> <span class="variable">res3</span> <span class="operator">=</span> jedis.getbit(<span class="string">&quot;pings:2024-01-01-00:00&quot;</span>, <span class="number">456</span>);</span><br><span class="line">        System.out.println(res3); <span class="comment">// &gt;&gt;&gt; false</span></span><br><span class="line"></span><br><span class="line">        <span class="type">long</span> <span class="variable">res4</span> <span class="operator">=</span> jedis.bitcount(<span class="string">&quot;pings:2024-01-01-00:00&quot;</span>);</span><br><span class="line">        System.out.println(res4); <span class="comment">// &gt;&gt;&gt; 1</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><strong>核心命令一览</strong>：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">命令</th>
+<th style="text-align:left">功能</th>
+<th style="text-align:left">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><code>SETBIT key offset value</code></td>
+<td style="text-align:left">将第 offset 位设为 0/1</td>
+<td style="text-align:left">O(1)，返回旧值，自动按需扩展字符串</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>GETBIT key offset</code></td>
+<td style="text-align:left">读取第 offset 位</td>
+<td style="text-align:left">O(1)，越界按 0 处理</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>BITCOUNT key [start end [BYTE|BIT]]</code></td>
+<td style="text-align:left">统计区间内值为 1 的位数</td>
+<td style="text-align:left">O(N)，start/end 以字节为单位</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>BITPOS key bit [start [end]]</code></td>
+<td style="text-align:left">查找第一个 0/1 位的位置</td>
+<td style="text-align:left">O(N)，可用于“分配下一个空闲位”</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>BITOP op destkey key [key...]</code></td>
+<td style="text-align:left">AND / OR / XOR / NOT 批量位运算</td>
+<td style="text-align:left">O(N)，结果写入 destkey；NOT 仅支持单 key</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>BITFIELD key [GET/SET/INCRBY type offset]</code></td>
+<td style="text-align:left">按位域读写与原子自增</td>
+<td style="text-align:left">每条子命令 O(1)，一次调用可组合多条</td>
+</tr>
+</tbody>
+</table>
 <blockquote>
-<h4 id="基础命令">基础命令</h4>
-<ol>
-<li class="lvl-3"><strong>SETBIT</strong>：</li>
-</ol>
-<ul class="lvl-1">
-<li class="lvl-2">
-<ul class="lvl-3">
-<li class="lvl-4"><strong>用途</strong>：<code>SETBIT</code>用于设置Bitmap中指定位置的位值（0或1）。</li>
-<li class="lvl-4"><strong>语法</strong>：<code>SETBIT key offset value</code></li>
-<li class="lvl-4"><strong>示例</strong>：假设我们要在位置5设置位为1，命令将是：<code>SETBIT mybitmap 5 1</code>。</li>
-<li class="lvl-4"><strong>工作方式</strong>：<code>SETBIT</code>会将键<code>mybitmap</code>在偏移<code>offset</code>处的位设置为<code>value</code>。如果该键不存在，Redis会自动创建一个新的Bitmap。该命令返回位被设置之前的旧值。</li>
-</ul>
-</li>
-</ul>
-<ol>
-<li class="lvl-3">
-<p><strong>GETBIT</strong>：</p>
-</li>
-</ol>
-<ul class="lvl-1">
-<li class="lvl-2">
-<ul class="lvl-3">
-<li class="lvl-4"><strong>用途</strong>：<code>GETBIT</code>用于获取Bitmap中指定位置的位值。</li>
-<li class="lvl-4"><strong>语法</strong>：<code>GETBIT key offset</code></li>
-<li class="lvl-4"><strong>示例</strong>：要获取位置5的位值，命令是：<code>GETBIT mybitmap 5</code>。</li>
-<li class="lvl-4"><strong>工作方式</strong>：<code>GETBIT</code>返回键<code>mybitmap</code>在偏移<code>offset</code>处的位值。如果偏移量超出了字符串的长度，它会假定超出范围的位都是0。</li>
-</ul>
-</li>
-</ul>
-<ol>
-<li class="lvl-3">
-<p><strong>BITCOUNT</strong>：</p>
-</li>
-</ol>
-<ul class="lvl-1">
-<li class="lvl-2">
-<ul class="lvl-3">
-<li class="lvl-4"><strong>用途</strong>：<code>BITCOUNT</code>用于计算Bitmap中设置为1的位的数量。</li>
-<li class="lvl-4"><strong>语法</strong>：<code>BITCOUNT key [start end]</code></li>
-<li class="lvl-4"><strong>示例</strong>：计算整个Bitmap的位数：<code>BITCOUNT mybitmap</code>。</li>
-<li class="lvl-4"><strong>工作方式</strong>：<code>BITCOUNT</code>会返回指定范围内值为1的位的数量。如果不指定范围，它将默认计算整个Bitmap。</li>
-</ul>
-</li>
-</ul>
-<ol>
-<li class="lvl-3">
-<p><strong>BITPOS</strong>：</p>
-</li>
-</ol>
-<ul class="lvl-1">
-<li class="lvl-2">
-<ul class="lvl-3">
-<li class="lvl-4"><strong>用途</strong>：<code>BITPOS</code>用于找到Bitmap中第一个设置为0或1的位的位置。</li>
-<li class="lvl-4"><strong>语法</strong>：<code>BITPOS key bit [start] [end]</code></li>
-<li class="lvl-4"><strong>示例</strong>：找到第一个设置为1的位：<code>BITPOS mybitmap 1</code>。</li>
-<li class="lvl-4"><strong>工作方式</strong>：<code>BITPOS</code>返回位值为<code>bit</code>的第一个位的位置。你可以指定一个可选的范围来限制搜索。如果没有找到，会返回特定的值。</li>
-</ul>
-</li>
-</ul>
-<h4 id="高级命令">高级命令</h4>
-<ol>
-<li class="lvl-3">
-<p><strong>BITOP</strong>：</p>
-</li>
-</ol>
-<ul class="lvl-1">
-<li class="lvl-2">
-<ul class="lvl-3">
-<li class="lvl-4"><strong>用途</strong>：<code>BITOP</code>用于对一个或多个Bitmap进行AND、OR、XOR和NOT操作。</li>
-<li class="lvl-4"><strong>语法</strong>：<code>BITOP operation destkey key [key ...]</code></li>
-<li class="lvl-4"><strong>示例</strong>：对两个Bitmap进行AND操作：<code>BITOP AND destkey bitmap1 bitmap2</code>。</li>
-<li class="lvl-4"><strong>工作方式</strong>：<code>BITOP</code>会将指定的操作应用于提供的所有Bitmap，并将结果存储在<code>destkey</code>中。这对于组合多个Bitmap或对Bitmap进行逻辑操作非常有用。</li>
-</ul>
-</li>
-</ul>
-<ol>
-<li class="lvl-3">
-<p><strong>BITFIELD</strong>：</p>
-</li>
-</ol>
-<ul class="lvl-1">
-<li class="lvl-2">
-<ul class="lvl-3">
-<li class="lvl-4"><strong>用途</strong>：<code>BITFIELD</code>用于对Bitmap进行复杂的操作，如设置或获取指定范围内的位值。</li>
-<li class="lvl-4"><strong>语法</strong>：<code>BITFIELD key [GET type offset] [SET type offset value] [INCRBY type offset increment]</code></li>
-<li class="lvl-4"><strong>示例</strong>：在位置5设置3位长的无符号整数：<code>BITFIELD mybitmap SET u3 5 6</code>。</li>
-<li class="lvl-4"><strong>工作方式</strong>：<code>BITFIELD</code>可以在Bitmap上执行多个操作，包括获取、设置和自增特定范围的位。它支持不同的数据类型和位操作，使得它成为最灵活的Bitmap操作命令。</li>
-</ul>
-</li>
-</ul>
+<p><strong>BITFIELD 值得一提</strong>：它能以“位域”为单位原子操作（如 <code>BITFIELD key INCRBY u8 100 1</code> 实现 8 位计数器的溢出保护），本质是把 String 变成一块可寻址的位寄存器堆——很多限流器、令牌桶的精简实现都基于它。</p>
 </blockquote>
 <p><strong><a target="_blank" rel="external nofollow noopener noreferrer" href="https://developer.aliyun.com/article/1436264">应用场景</a></strong>：签到统计、登录状态、用户数、黑名单、去重、</p>
-<h3 id="布隆过滤器（bloom）">布隆过滤器（bloom）</h3>
-<p>RoaringBitmap是高效压缩位图，简称RBM。可以用来告诉你 <strong>“某样东西一定不存在或者可能存在”</strong>。</p>
+<h3 id="布隆过滤器（Bloom-Filter）">布隆过滤器（Bloom Filter）</h3>
 <blockquote>
-<p>布隆过滤器是一种数据结构，比较巧妙的概率型数据结构（probabilistic data structure），特点是高效地插入和查询</p>
-<p>bloom算法类似一个hash set，用来判断某个元素（key）是否在某个集合中，结果是概率性的，而不是确切的。</p>
+<p>⚠️ <strong>先纠一个常见的张冠李戴</strong>：布隆过滤器<strong>不是 Redis 的原生数据类型</strong>，也与 <strong>RoaringBitmap（RBM）</strong> 无关——RBM 是确定性压缩位图（常用于大数据列存与索引加速），而布隆过滤器是<strong>概率型</strong>结构，两者唯一共同点只是“都借助了 bit 数组”。原生 Bitmap 的回答是<strong>确定</strong>的（不存在就是不存在），布隆给出的则是“一定不存在 / 可能存在”的概率性结论，通常需借助 Redis 4.0 的 <strong>RedisBloom 模块</strong>或自行用 String 位运算模拟。</p>
 </blockquote>
-<p><strong>特点：</strong> 相比于传统的 List、Set、Map 等数据结构，它更高效、占用空间更少，但是缺点是其返回的结果是概率性的，而不是确切的。</p>
-<p><strong>原理</strong>：布隆过滤器是一个 bit 向量或者说 bit 数组。如果我们要映射一个值到布隆过滤器中，我们需要使用<strong>多个不同的哈希函数</strong>生成**多个哈希值，**并对每个生成的哈希值指向的 bit 位置 1，例如针对值 “baidu” 和三个不同的哈希函数分别生成了哈希值 1、4、7，再存一个值 “tencent”，如果哈希函数返回 3、4、8 的话，则图为：</p>
+<p>布隆过滤器是一种精巧的概率型数据结构（probabilistic data structure），用极小的内存回答“元素是否在集合中”，代价是<strong>以少量误判换取空间</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>绝不漏报</strong>：一旦某位为 0，元素必然不在——判断“不存在”是确定的；</p>
+</li>
+<li class="lvl-2">
+<p><strong>可能误报</strong>：判断“存在”只是“很可能存在”——所有位都为 1，也可能是其他元素恰好把它们填满（false positive）。</p>
+</li>
+</ul>
+<p><strong>原理</strong>：布隆过滤器本质是一个 bit 向量。插入元素时用 <strong>k 个相互独立的哈希函数</strong>算出 k 个位置并全部置 1；查询时同样计算 k 个位置，只要有 1 个位置为 0 即可断定元素不存在，全部为 1 则只能回答“可能存在”。例如下图中 “baidu” 的三个哈希位为 1、4、7，“tencent” 为 3、4、8，位 4 被两次置位发生覆盖：</p>
 <img src="/imgs/db/v2-c0c20d8e06308aae1578c16afdea3b6a_720w.jpg" alt="img" style="zoom: 50%;" loading='lazy'>
 <blockquote>
-<p>4 这个 bit 位由于两个值的哈希函数都返回了这个 bit 位，因此它被覆盖了。现在我们如果想查询 “dianping” 这个值是否存在，哈希函数返回了 1、5、8三个值，结果我们发现 5 这个 bit 位上的值为 0，<strong>说明没有任何一个值映射到这个 bit 位上</strong>，因此我们可以很确定地说 “dianping” 这个值不存在。而当我们需要查询 “baidu” 这个值是否存在的话，那么哈希函数必然会返回 1、4、7，然后我们检查发现这三个 bit 位上的值均为 1，那么我们可以说 “baidu” 存在了么？答案是不可以，只能是 “baidu” 这个值可能存在。</p>
+<p>查询 “dianping” 时哈希到 1、5、8，位 5 为 0 → <strong>确定不存在</strong>；查询 “baidu” 时 1、4、7 均为 1 → 只能说<strong>可能存在</strong>，因为 1、4、7 可能被其他元素（如 tencent 覆盖的位 4）碰巧全部置位。</p>
 </blockquote>
-<p><strong>结论</strong>：随着增加的值越来越多，被置为 1 的 bit 位也会越来越多，这样某个值即使没有被存储过，但是万一哈希函数返回的三个 bit 位都被其他值置位了 1 ，那么程序还是会判断 这个值存在。为了较少这种碰撞的误判，可以<strong>增加哈希函数计算</strong>（比如以前是三个，现在增加五个，只有五个都为1才算存在，但是效率低）</p>
-<p><strong>使用场景</strong>：利用布隆过滤器减少磁盘 IO 或网络请求，当一个值必定不存在，可以不用进行后续昂贵的查询请求。</p>
-<p><strong>存在问题:</strong> 布隆过滤器的不当使用极易产生大 Value，增加 Redis 阻塞风险，因此生成环境中建议对体积庞大的布隆过滤器进行拆分。应该拆分成多个小 bitmap 之后，对一个 Key 的所有哈希函数都落在这一个小 bitmap 上。</p>
+<p><strong>误判率的数学控制</strong>：误判率由位数组长度 $m$、哈希函数个数 $k$、已插入元素数 $n$ 共同决定，近似关系为误判率 $\approx (1 - e^{-kn/m})^k$。给定容量比 $m/n$ 时，最优哈希个数 $k = (m/n)\ln 2$——工程上通常让位数组长度为预估元素数的 8~10 倍、$k$ 取 5~7，即可把误判率压在 1% 上下。由此也引出三个实践铁律：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>按峰值容量预分配</strong>：位数组过短会迅速饱和、误判率飙升，且扩容需要重建——RedisBloom 用 <code>BF.RESERVE key error_rate capacity</code> 显式指定容量与误差率；</p>
+</li>
+<li class="lvl-2">
+<p><strong>不能删除元素</strong>：置位是“叠加”的，直接清位会误删其他元素——需要删除语义时改用<strong>计数布隆过滤器</strong>（每位置扩展为计数器）或 Cuckoo Filter；</p>
+</li>
+<li class="lvl-2">
+<p><strong>多哈希的 CPU 成本</strong>：$k$ 越大误判率越低但插入/查询都退化为 O(k)，需要与吞吐要求做权衡。</p>
+</li>
+</ul>
+<p><strong>经典使用场景</strong>：缓存穿透防护（拦截不存在 key 的查询，避免打穿到数据库）、爬虫 URL 去重、黑名单预筛、推荐系统的已读过滤——落库前先过布隆，“一定不存在”的结论可以省掉一次昂贵的磁盘或网络 IO。</p>
+<p><strong>Redis 中的实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>实现方式选型</strong>：生产推荐 <strong>RedisBloom 模块</strong>（<code>BF.ADD</code> / <code>BF.EXISTS</code> / <code>BF.RESERVE</code>，天然支持分布式多 key 扩展）；轻量场景也可用 Lua 脚本 + String 位运算模拟，但需注意单条 Lua 的执行时长上限；</p>
+</li>
+<li class="lvl-2">
+<p><strong>大 Value 阻塞风险</strong>：布隆体积随容量线性增长，百万级容量即达 MB 级，不当使用极易产生大 Value，增加阻塞与网络传输风险——生产环境应对体积庞大的过滤器<strong>分片拆分</strong>（如按业务 ID 模数散列到多个 key，每个 key 维护独立哈希位数组），将单 key 控制在百 KB 量级；</p>
+</li>
+<li class="lvl-2">
+<p><strong>误判的业务兜底</strong>：凡使用布隆的业务必须设计“误判兜底”策略（如穿透拦截后允许少量回源查询），不能把概率性结论当作绝对事实。</p>
+</li>
+</ul>
+<h3 id="HyperLogLog（基数统计）">HyperLogLog（基数统计）</h3>
+<p>HyperLogLog 不是一个独立的数据结构，而是<strong>概率型基数估计算法</strong>在 Redis 中的实现，用于回答“这个集合有多少个不重复元素”，却几乎不占用内存。</p>
+<p><strong>底层原理（伯努利过程）</strong>：对每个元素做哈希后观察其二进制串——<strong>末尾连续 0 的个数为 k</strong>，说明这串哈希值来自一个大约 $2^k$ 规模的随机试验集合。单次观测方差极大，于是 HLL 把哈希值前若干位当作“桶号”拆进 $m = 16384$ 个寄存器（每个 6 bit，合计固定约 <strong>12KB</strong>），对桶内各自的最大 k 做<strong>调和平均</strong>修正，最终估计误差约 $1.04/\sqrt{m} \approx 0.81%$：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>PFADD key element...</code>：元素只参与“最长零串”的竞争，<strong>本身不存储</strong>——这就是它能容纳亿级基数却只用 12KB 的原因；</p>
+</li>
+<li class="lvl-2">
+<p><code>PFCOUNT key</code>：给出带误差的基数估计；多个 key 的估计可先 <code>PFMERGE</code> 再计数（合并也是 O(寄存器数)）；</p>
+</li>
+<li class="lvl-2">
+<p>同一元素无论 <code>PFADD</code> 多少次都只算一次——天然去重。</p>
+</li>
+</ul>
+<p><strong>实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>只能算基数、不能查成员</strong>：HLL 不存元素，需要“查某个用户是否访问过”请用 Bitmap 或 Set；</p>
+</li>
+<li class="lvl-2">
+<p><strong>小基数时误差相对放大</strong>：Redis 对极小基数场景做了 LinearCounting 精修，但精确计数的强一致场景仍应使用 Set；</p>
+</li>
+<li class="lvl-2">
+<p><strong>跨天/跨周 UV 合并</strong>：每日各存一个 key，周 UV 直接 <code>PFMERGE</code> 汇总，比把全量 Set 再并集省几个数量级的内存；</p>
+</li>
+<li class="lvl-2">
+<p><strong>与去重业务的区别</strong>：如果后续还要“取出这批用户”，HLL 无能为力，选型时先确认是否只需“计数”。</p>
+</li>
+</ul>
+<h3 id="Stream（消息队列）">Stream（消息队列）</h3>
+<p>Stream 是 Redis 5.0 引入的<strong>原生消息队列</strong>，弥补了 List 队列“无确认、无消费组、消息易丢”的结构性短板。</p>
+<p><strong>底层结构</strong>：消息按单调递增 ID（毫秒时间戳-序号）组织在 <strong>基数树（rax）</strong> 上——rax 是压缩前缀树，对“前缀高度重合”的顺序 ID 极为友好，相邻 ID 共享前缀、只存差异部分；每个树的叶节点用 listpack 紧凑存放一批连续消息。追加消息 O(1)，按 ID 范围读取同样高效。</p>
+<blockquote>
+<p><strong>消费模型</strong>：<code>XREADGROUP GROUP g c</code> 建立<strong>消费组</strong>，组内消费者各自维护游标；消息被读取后进入该消费者的 <strong>PEL（待确认列表）</strong>，只有 <code>XACK</code> 之后才会移除——消费者崩溃后可用 <code>XAUTOCLAIM</code> 把超时未 ACK 的消息转移给其他消费者，实现<strong>至少一次</strong>投递。</p>
+</blockquote>
+<p><strong>实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>内存无界增长</strong>：持续 XADD 不消费会让 rax 无限膨胀——用 <code>XADD ... MAXLEN ~ 100000</code> 做<strong>近似裁剪</strong>（~ 允许牺牲少量精度换取 O(1) 裁剪），或定期 <code>XTRIM</code>；</p>
+</li>
+<li class="lvl-2">
+<p><strong>消费积压</strong>：消费慢于生产时积压消息占满内存，需监控 <code>XLEN</code> 与流长度，配合背压（暂停生产）或扩容消费者；</p>
+</li>
+<li class="lvl-2">
+<p><strong>持久性语义</strong>：Stream 的可靠性依赖 AOF 配置——<code>appendfsync always</code> 才接近“不丢”，everysec 仍可能丢失秒级窗口；</p>
+</li>
+<li class="lvl-2">
+<p><strong>版本要求</strong>：<code>XAUTOCLAIM</code>、<code>XGROUP CREATE ... MKSTREAM</code> 等命令需 Redis 6.2+，旧版本只能用 <code>XCLAIM</code> 手动转移。</p>
+</li>
+</ul>
+<h3 id="Geo（地理位置）">Geo（地理位置）</h3>
+<p>Geo 是“附近的人”“两点距离”等功能的基础，而它的底层只有两个老朋友：<strong>ZSet + geohash 编码</strong>。</p>
+<p><strong>底层原理</strong>：<code>GEOADD</code> 时把经纬度按 geohash 算法编码——将纬度区间 [-90, 90] 与经度区间 [-180, 180] 反复二分，每轮产出 1 bit，经纬度 bits 交叉拼接成 52 位整数，作为 ZSet 的 score（52 位恰好落入 double 的 52 位显式尾数位，可无损表示，二维精度约 0.6 米）；member 即地点名。于是：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>按 score 排序 = 按地理位置排序</strong>，<code>ZRANGEBYSCORE</code> 天然支持“矩形框选”；</p>
+</li>
+<li class="lvl-2">
+<p><code>GEORADIUS</code> 的执行路径：按半径换算经纬度边界 → 用 <code>ZRANGEBYSCORE</code> 粗筛候选 → 逐点计算球面距离精确过滤并排序。</p>
+</li>
+</ul>
+<blockquote>
+<p><strong>geohash 的边界陷阱</strong>：两个实际很近的点若恰好分处某条二分边界两侧，它们的 geohash 前缀会差异巨大、score 相距遥远——直接按 score 范围搜索会<strong>漏人</strong>。Redis 的做法是搜索时把目标格子及其 <strong>8 个邻域格子</strong>一并纳入候选（geohash neighbor 扩展）再做距离过滤，这也是“附近的人”结果不残缺的底层保证。</p>
+</blockquote>
+<p><strong>实践问题与解决方案</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>热 key 问题</strong>：“附近的人”往往集中在核心城区，单个 Geo key 承受全网流量——可按城市/区域分 key，再对跨界查询合并结果；</p>
+</li>
+<li class="lvl-2">
+<p><strong>过期与清理</strong>：位置信息天然有时效，Geo 却<strong>没有字段级过期</strong>——可像 Hash 一样配套 ZSet 记录上报时间，由任务清理陈旧坐标；</p>
+</li>
+<li class="lvl-2">
+<p><strong>超大 key 风险</strong>：用户量百万级后单 key 的 ZSet 体量巨大，<code>GEORADIUS</code> 的粗筛+精排在该 key 上串行执行，响应会劣化——需配合分片与本地缓存降级。</p>
+</li>
+</ul>
 <h2 id="使用指南">使用指南</h2>
 <p>选型指南：</p>
 <table>
@@ -682,20 +1053,29 @@
 <blockquote>
 <ol>
 <li class="lvl-3">
-<p><strong>内存优化</strong>：尽量用 Hash 代替多个 String 存储对象（减少 Key 内存开销）；小数据量时 Redis 会自动使用 ZipList 结构。</p>
+<p><strong>内存优化</strong>：尽量用 Hash 代替多个 String 存储对象（每个 key 自身还有对象头与字典项开销）；小数据量时 Redis 会自动使用紧凑编码（listpack / intset / embstr）。</p>
 </li>
 <li class="lvl-3">
-<p><strong>大 Key 问题</strong>：避免 Value 过大（如 String &gt; 10KB, Hash/List/Set/ZSet 元素过多），会导致网络阻塞和删除时主线程卡顿。</p>
+<p><strong>大 Key 问题</strong>：Value 过大（如 String &gt; 10KB，Hash/List/Set/ZSet 元素过多）会导致网络传输、持久化与删除时主线程卡顿——用 <code>MEMORY USAGE key</code> 体检、<code>redis-cli --bigkeys</code> 扫描定位，删除一律改用 <code>UNLINK</code> 异步回收。</p>
 </li>
 <li class="lvl-3">
-<p><strong>热 Key 问题</strong>：避免某个 Key 被极高频率访问，导致单分片负载过高。</p>
+<p><strong>热 Key 问题</strong>：某个 Key 被极高频率访问会使单分片负载失衡——<code>redis-cli --hotkeys</code>（需开启 LFU 策略）辅助定位，本地缓存 + 随机后缀多副本分摊读流量是常用解法。</p>
 </li>
 <li class="lvl-3">
-<p><strong>过期策略</strong>：Redis 使用惰性删除 + 定期删除，不要完全依赖过期时间处理业务逻辑。</p>
+<p><strong>过期策略</strong>：Redis 采用惰性删除 + 定期删除，过期 key 未必立即消失，且超大 key 到期瞬间的删除动作会阻塞主线程——不要完全依赖过期时间处理强一致业务。</p>
+</li>
+<li class="lvl-3">
+<p><strong>编码体检</strong>：怀疑内存异常先执行 <code>OBJECT ENCODING key</code>——若本应紧凑的小数据 key 呈现 raw / hashtable，说明经历了“写入超大值后回删”的只升不降过程，重建 key 才能恢复紧凑态。</p>
+</li>
+<li class="lvl-3">
+<p><strong>慢命令排查</strong>：<code>SLOWLOG GET</code> 查看主线程慢命令，重点排查随规模增长的 O(N) 命令（KEYS / HGETALL / SMEMBERS / LRANGE 全量）；生产禁止 <code>KEYS *</code>，遍历一律 <code>SCAN</code> 游标分批。</p>
+</li>
+<li class="lvl-3">
+<p><strong>避免大 Value 往返</strong>：单次命令返回几十 MB 数据会拖垮网络与序列化，读取集合类数据应分页/分批（HSCAN / SSCAN / ZSCAN / LIMIT）。</p>
 </li>
 </ol>
 </blockquote>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/12/fb61cae088544f86a4209a47b2ca6a3d/">https://pengline.cn/2025/12/fb61cae088544f86a4209a47b2ca6a3d/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Redis%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/">Redis数据结构</a><a class="post-meta__tags" href="/tags/Redis%E8%B7%B3%E8%A1%A8/">Redis跳表</a><a class="post-meta__tags" href="/tags/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B/">Redis数据类型</a><a class="post-meta__tags" href="/tags/%E5%BF%AB%E9%80%9F%E5%88%97%E8%A1%A8/">快速列表</a><a class="post-meta__tags" href="/tags/Redis%E5%AD%97%E5%85%B8/">Redis字典</a><a class="post-meta__tags" href="/tags/%E5%8E%8B%E7%BC%A9%E5%88%97%E8%A1%A8/">压缩列表</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/12/993e8895ae2e46ca8c4d744b312d1491/" title="ES 手动路由和自动路由的实现过程"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small081407qOyN61757549647.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">ES 手动路由和自动路由的实现过程</div></div><div class="info-2"><div class="info-item-1">Routing 决定文档存在哪个分片，Pipeline 在文档入库前可以自动处理数据，能实现自动、智能的路由策略。</div></div></div></a><a class="pagination-related" href="/2025/12/27fc28876c1e4f9baacd88ca8f29b266/" title="Mysql 各种索引详解和使用指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">Mysql 各种索引详解和使用指南</div></div><div class="info-2"><div class="info-item-1">MySQL 索引是提高数据库查询性能的关键机制。索引是一种数据结构，用于快速定位表中数据行，类似书籍目录。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/01/dc5a65a9f3154fe8a413c1e341080100/" title="Redis ZSET 的深度分页解决方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-01-11</div><div class="info-item-2">Redis ZSET 的深度分页解决方案</div></div><div class="info-2"><div class="info-item-1">深入剖析Redis ZSET深度分页的底层原理、性能瓶颈及游标优化方案，涵盖跳表结构、同分处理与架构选型。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="toc-number">1.</span> <span class="toc-text">数据结构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8A%A8%E6%80%81%E5%AD%97%E7%AC%A6%E4%B8%B2%EF%BC%88SDS%EF%BC%89"><span class="toc-number">1.1.</span> <span class="toc-text">动态字符串（SDS）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%8C%E5%90%91%E9%93%BE%E8%A1%A8%EF%BC%88linkedlist%EF%BC%89"><span class="toc-number">1.2.</span> <span class="toc-text">双向链表（linkedlist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%93%88%E5%B8%8C%E8%A1%A8%EF%BC%88hash-dict%EF%BC%89"><span class="toc-number">1.3.</span> <span class="toc-text">哈希表（hash &#x2F; dict）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8E%8B%E7%BC%A9%E5%88%97%E8%A1%A8%EF%BC%88ziplist%EF%BC%89"><span class="toc-number">1.4.</span> <span class="toc-text">压缩列表（ziplist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BF%AB%E9%80%9F%E5%88%97%E8%A1%A8%EF%BC%88quicklist%EF%BC%89"><span class="toc-number">1.5.</span> <span class="toc-text">快速列表（quicklist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B4%A7%E5%87%91%E5%88%97%E8%A1%A8%EF%BC%88listpack%EF%BC%89"><span class="toc-number">1.6.</span> <span class="toc-text">紧凑列表（listpack）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B7%B3%E8%B7%83%E8%A1%A8%EF%BC%88skiplist%EF%BC%89"><span class="toc-number">1.7.</span> <span class="toc-text">跳跃表（skiplist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E6%95%B0%E9%9B%86%E5%90%88%EF%BC%88intset%EF%BC%89"><span class="toc-number">1.8.</span> <span class="toc-text">整数集合（intset）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B"><span class="toc-number">2.</span> <span class="toc-text">数据类型</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#String%EF%BC%88SDS%EF%BC%89"><span class="toc-number">2.1.</span> <span class="toc-text">String（SDS）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#List%EF%BC%88%E5%BF%AB%E9%80%9F%E5%88%97%E8%A1%A8%EF%BC%89"><span class="toc-number">2.2.</span> <span class="toc-text">List（快速列表）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Hash%EF%BC%88%E5%AD%97%E5%85%B8-%E5%8E%8B%E7%BC%A9%E5%88%97%E8%A1%A8%EF%BC%89"><span class="toc-number">2.3.</span> <span class="toc-text">Hash（字典+压缩列表）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Set%EF%BC%88%E5%AD%97%E5%85%B8%EF%BC%89"><span class="toc-number">2.4.</span> <span class="toc-text">Set（字典）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#zSet%EF%BC%88%E8%B7%B3%E8%B7%83%E8%A1%A8%EF%BC%89"><span class="toc-number">2.5.</span> <span class="toc-text">zSet（跳跃表）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#bitmap%EF%BC%88sds%EF%BC%89"><span class="toc-number">2.6.</span> <span class="toc-text">bitmap（sds）</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%9F%BA%E7%A1%80%E5%91%BD%E4%BB%A4"><span class="toc-number">2.6.1.</span> <span class="toc-text">基础命令</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%AB%98%E7%BA%A7%E5%91%BD%E4%BB%A4"><span class="toc-number">2.6.2.</span> <span class="toc-text">高级命令</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%83%E9%9A%86%E8%BF%87%E6%BB%A4%E5%99%A8%EF%BC%88bloom%EF%BC%89"><span class="toc-number">2.7.</span> <span class="toc-text">布隆过滤器（bloom）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97"><span class="toc-number">3.</span> <span class="toc-text">使用指南</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/12/fb61cae088544f86a4209a47b2ca6a3d/">https://pengline.cn/2025/12/fb61cae088544f86a4209a47b2ca6a3d/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Redis%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/">Redis数据结构</a><a class="post-meta__tags" href="/tags/Redis%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B/">Redis数据类型</a><a class="post-meta__tags" href="/tags/Redis%E7%BC%96%E7%A0%81/">Redis编码</a><a class="post-meta__tags" href="/tags/SDS/">SDS</a><a class="post-meta__tags" href="/tags/%E8%B7%B3%E8%A1%A8/">跳表</a><a class="post-meta__tags" href="/tags/quicklist/">quicklist</a><a class="post-meta__tags" href="/tags/listpack/">listpack</a><a class="post-meta__tags" href="/tags/ziplist/">ziplist</a><a class="post-meta__tags" href="/tags/intset/">intset</a><a class="post-meta__tags" href="/tags/%E6%B8%90%E8%BF%9B%E5%BC%8Frehash/">渐进式rehash</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/12/993e8895ae2e46ca8c4d744b312d1491/" title="ES 手动路由和自动路由的实现过程"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634265801642163426580161.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">ES 手动路由和自动路由的实现过程</div></div><div class="info-2"><div class="info-item-1">Routing 决定文档存在哪个分片，Pipeline 在文档入库前可以自动处理数据，能实现自动、智能的路由策略。</div></div></div></a><a class="pagination-related" href="/2025/12/27fc28876c1e4f9baacd88ca8f29b266/" title="Mysql 各种索引详解和使用指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">Mysql 各种索引详解和使用指南</div></div><div class="info-2"><div class="info-item-1">从底层原理到生产实践全面剖析 MySQL 索引：B+ 树与 Hash 的结构差异、聚簇/二级索引的回表机制、最左前缀原理、覆盖索引与索引下推、索引失效场景、EXPLAIN 各列含义与访问类型金字塔，以及索引设计的选列规则与最佳实践。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/01/dc5a65a9f3154fe8a413c1e341080100/" title="Redis ZSET 的深度分页解决方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-01-11</div><div class="info-item-2">Redis ZSET 的深度分页解决方案</div></div><div class="info-2"><div class="info-item-1">深入剖析Redis ZSET深度分页的底层原理、性能瓶颈及游标优化方案，涵盖跳表结构、同分处理与架构选型。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#Redis-%E7%9A%84%E5%AF%B9%E8%B1%A1%E6%A8%A1%E5%9E%8B%EF%BC%9Atype-encoding-ptr"><span class="toc-number">1.</span> <span class="toc-text">Redis 的对象模型：type &#x2F; encoding &#x2F; ptr</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="toc-number">2.</span> <span class="toc-text">数据结构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8A%A8%E6%80%81%E5%AD%97%E7%AC%A6%E4%B8%B2%EF%BC%88SDS%EF%BC%89"><span class="toc-number">2.1.</span> <span class="toc-text">动态字符串（SDS）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%8C%E5%90%91%E9%93%BE%E8%A1%A8%EF%BC%88linkedlist%EF%BC%89"><span class="toc-number">2.2.</span> <span class="toc-text">双向链表（linkedlist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%93%88%E5%B8%8C%E8%A1%A8%EF%BC%88dict%EF%BC%89"><span class="toc-number">2.3.</span> <span class="toc-text">哈希表（dict）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8E%8B%E7%BC%A9%E5%88%97%E8%A1%A8%EF%BC%88ziplist%EF%BC%89"><span class="toc-number">2.4.</span> <span class="toc-text">压缩列表（ziplist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BF%AB%E9%80%9F%E5%88%97%E8%A1%A8%EF%BC%88quicklist%EF%BC%89"><span class="toc-number">2.5.</span> <span class="toc-text">快速列表（quicklist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B4%A7%E5%87%91%E5%88%97%E8%A1%A8%EF%BC%88listpack%EF%BC%89"><span class="toc-number">2.6.</span> <span class="toc-text">紧凑列表（listpack）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B7%B3%E8%B7%83%E8%A1%A8%EF%BC%88skiplist%EF%BC%89"><span class="toc-number">2.7.</span> <span class="toc-text">跳跃表（skiplist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E6%95%B0%E9%9B%86%E5%90%88%EF%BC%88intset%EF%BC%89"><span class="toc-number">2.8.</span> <span class="toc-text">整数集合（intset）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B"><span class="toc-number">3.</span> <span class="toc-text">数据类型</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#String%EF%BC%88int-embstr-raw%EF%BC%89"><span class="toc-number">3.1.</span> <span class="toc-text">String（int &#x2F; embstr &#x2F; raw）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#List%EF%BC%88%E5%BF%AB%E9%80%9F%E5%88%97%E8%A1%A8%EF%BC%89"><span class="toc-number">3.2.</span> <span class="toc-text">List（快速列表）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Hash%EF%BC%88%E5%93%88%E5%B8%8C%E8%A1%A8-%E7%B4%A7%E5%87%91%E7%BC%96%E7%A0%81%EF%BC%89"><span class="toc-number">3.3.</span> <span class="toc-text">Hash（哈希表 + 紧凑编码）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Set%EF%BC%88intset-%E5%93%88%E5%B8%8C%E8%A1%A8%EF%BC%89"><span class="toc-number">3.4.</span> <span class="toc-text">Set（intset + 哈希表）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ZSet%EF%BC%88skiplist-dict%EF%BC%89"><span class="toc-number">3.5.</span> <span class="toc-text">ZSet（skiplist + dict）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#bitmap%EF%BC%88sds%EF%BC%89"><span class="toc-number">3.6.</span> <span class="toc-text">bitmap（sds）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%83%E9%9A%86%E8%BF%87%E6%BB%A4%E5%99%A8%EF%BC%88Bloom-Filter%EF%BC%89"><span class="toc-number">3.7.</span> <span class="toc-text">布隆过滤器（Bloom Filter）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#HyperLogLog%EF%BC%88%E5%9F%BA%E6%95%B0%E7%BB%9F%E8%AE%A1%EF%BC%89"><span class="toc-number">3.8.</span> <span class="toc-text">HyperLogLog（基数统计）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Stream%EF%BC%88%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97%EF%BC%89"><span class="toc-number">3.9.</span> <span class="toc-text">Stream（消息队列）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Geo%EF%BC%88%E5%9C%B0%E7%90%86%E4%BD%8D%E7%BD%AE%EF%BC%89"><span class="toc-number">3.10.</span> <span class="toc-text">Geo（地理位置）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8%E6%8C%87%E5%8D%97"><span class="toc-number">4.</span> <span class="toc-text">使用指南</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',

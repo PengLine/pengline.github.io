@@ -1,15 +1,16 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Mysql 各种索引详解和使用指南 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="MySQL 索引是提高数据库查询性能的关键机制。索引是一种数据结构，用于快速定位表中数据行，类似书籍目录。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Mysql 各种索引详解和使用指南 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="从底层原理到生产实践全面剖析 MySQL 索引：B+ 树与 Hash 的结构差异、聚簇&#x2F;二级索引的回表机制、最左前缀原理、覆盖索引与索引下推、索引失效场景、EXPLAIN 各列含义与访问类型金字塔，以及索引设计的选列规则与最佳实践。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Mysql 各种索引详解和使用指南">
 <meta property="og:url" content="https://pengline.cn/2025/12/27fc28876c1e4f9baacd88ca8f29b266/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="MySQL 索引是提高数据库查询性能的关键机制。索引是一种数据结构，用于快速定位表中数据行，类似书籍目录。">
+<meta property="og:description" content="从底层原理到生产实践全面剖析 MySQL 索引：B+ 树与 Hash 的结构差异、聚簇&#x2F;二级索引的回表机制、最左前缀原理、覆盖索引与索引下推、索引失效场景、EXPLAIN 各列含义与访问类型金字塔，以及索引设计的选列规则与最佳实践。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp">
 <meta property="article:published_time" content="2025-12-06T16:00:00.000Z">
-<meta property="article:modified_time" content="2026-09-02T03:28:20.273Z">
+<meta property="article:modified_time" content="2026-09-06T09:34:03.935Z">
 <meta property="article:author" content="余一叶知秋尽">
-<meta property="article:tag" content="MySQL索引，MySQL EXPLAIN">
+<meta property="article:tag" content="MySQL EXPLAIN">
+<meta property="article:tag" content="MySQL索引">
 <meta property="article:tag" content="全文索引">
 <meta property="article:tag" content="索引下推">
 <meta property="article:tag" content="索引优化">
@@ -18,7 +19,7 @@
 <meta property="article:tag" content="聚集索引">
 <meta property="article:tag" content="覆盖索引">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/12/27fc28876c1e4f9baacd88ca8f29b266/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/12/27fc28876c1e4f9baacd88ca8f29b266/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -156,40 +157,83 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">106</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">531</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Mysql 各种索引详解和使用指南</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Mysql 各种索引详解和使用指南</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-12-06T16:00:00.000Z" title="发表于 2025-12-07 00:00:00">2025-12-07</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-02T03:28:20.273Z" title="更新于 2026-09-02 11:28:20">2026-09-02</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/MySQL/">MySQL</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>索引是一种数据结构，用于帮助我们在大量数据中快速定位到我们想要查找的数据，类似于书籍的目录</p>
-<p><em>索引也是一张表，该表保存了主键与索引字段，并指向实体表的记录</em></p>
-<p>以下以 MySQL 8 为例说明：</p>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">571</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Mysql 各种索引详解和使用指南</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Mysql 各种索引详解和使用指南</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-12-06T16:00:00.000Z" title="发表于 2025-12-07 00:00:00">2025-12-07</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-06T09:34:03.935Z" title="更新于 2026-09-06 17:34:03">2026-09-06</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/MySQL/">MySQL</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>索引是一种数据结构，用于帮助我们在海量数据中快速定位目标行——它的作用类似书籍目录：没有目录只能逐页翻阅（全表扫描），有了目录便能按页码直达（索引查找）。索引在数据库层面以 <strong>B+ 树</strong>等结构组织，查询时沿树路径以 O(log N) 次磁盘 IO 完成定位。</p>
+<blockquote>
+<p><strong>阅读导览</strong>：<br>
+① <strong>索引的物理形态</strong>——存储引擎如何组织索引文件，MyISAM 与 InnoDB 的本质差异；<br>
+② <strong>索引分类全景</strong>——按结构（B+ 树 / Hash / 全文 / 空间）与按组织方式（聚簇 / 二级）两大维度；<br>
+③ <strong>原理深挖</strong>——最左前缀为什么成立、覆盖索引与索引下推如何省 IO；<br>
+④ <strong>失效场景与选择规则</strong>——哪些写法会让优化器弃用索引，如何量化区分度；<br>
+⑤ <strong>EXPLAIN 实战</strong>——type 访问类型金字塔与 Extra 关键标记的判读；<br>
+⑥ <strong>索引设计清单</strong>——建与不建的边界、常见误区。</p>
+</blockquote>
+<p>以下以 MySQL 8 为例说明（存储引擎默认为 InnoDB）：</p>
 <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查看表索引</span></span><br><span class="line"><span class="keyword">SHOW</span> INDEX <span class="keyword">FROM</span> table_name;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 创建索引</span></span><br><span class="line"><span class="keyword">CREATE</span> INDEX idx_name <span class="keyword">ON</span> table_name(col1, col2);</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 删除索引</span></span><br><span class="line"><span class="keyword">DROP</span> INDEX idx_name <span class="keyword">ON</span> table_name;</span><br></pre></td></tr></table></figure>
 <h2 id="索引详解">索引详解</h2>
 <p>索引是一种特殊的文件(InnoDB数据表上的索引是表空间的一个组成部分)，它们包含着对数据表里所有记录的引用指针。</p>
 <p>不同的存储引擎索引的结构也有区别：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p>InnoDB 存储引擎只有一个 .ibd 文件，涉及到事务的细粒度控制和并发安全考虑。</p>
+<p><strong>InnoDB</strong>：数据与索引共同存放在表空间（独立表空间模式下每表一个 <code>.ibd</code>）。表按主键组织为<strong>聚簇索引</strong>——索引即数据、数据即索引，这一形态天然支撑行级锁与 MVCC 需要的数据页结构。</p>
 </li>
 <li class="lvl-2">
-<p>MyISAM 存储引擎存在 .MYI 文件中。所以 B+ 树索引的叶子节点并不存储数据，而是存储.MYD地址。</p>
-<img src="/imgs/db/image-20251222161007590.png" alt="image-20251222161007590" style="zoom:50%;" loading='lazy'>
+<p><strong>MyISAM</strong>：索引保存在独立的 <code>.MYI</code> 文件中，与数据文件 <code>.MYD</code> 分离——B+ 树索引的叶子节点不存数据，而是存储行在 <code>.MYD</code> 中的物理地址。</p>
+</li>
+</ul>
+<pre class="mermaid">flowchart LR
+    subgraph MyISAM[MyISAM：索引与数据分离]
+        M1[.MYI B+ 树索引<br>叶子存行地址] --> M2[.MYD 数据文件<br>按地址定位行]
+    end
+    subgraph InnoDB[InnoDB：数据即索引]
+        I1[聚簇索引 B+ 树<br>叶子节点 = 数据页 完整行]
+        I2[二级索引 B+ 树<br>叶子存 索引键 + 主键] -->|回表| I1
+    end
+
+    style MyISAM fill:#f5f5f5,stroke:#9e9e9e
+    style InnoDB fill:#e8f5e9,stroke:#4caf50</pre>
+  <img src="/imgs/db/image-20251222161007590.png" alt="image-20251222161007590" style="zoom:50%;" loading='lazy'>
 <p>添加索引后 .MYI 文件增大，可见索引是单独存储的</p>
-<img src="/imgs/db/image-20251222161142097.png" alt="image-20251222161142097" style="zoom:50%;" loading='lazy'>
+  <img src="/imgs/db/image-20251222161142097.png" alt="image-20251222161142097" style="zoom:50%;" loading='lazy'>
+<blockquote>
+<p><strong>NULL 与索引</strong>：InnoDB 二级索引允许同一列存在<strong>多个 NULL</strong>（NULL 之间互不相等，唯一索引也不阻止多行 NULL）；<code>NULL</code> 与空字符串 <code>''</code> 是两种不同的值——<code>NULL</code> 表示“未知/缺失”，不参与 <code>=</code> / <code>&gt;</code> / <code>&lt;</code> 等普通比较，只能用 <code>IS NULL</code> / <code>IS NOT NULL</code> 判断，并影响 <code>COUNT(col)</code> 与基数统计。</p>
+</blockquote>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"> # 查看mysql中索引使用的统计情况  </span><br><span class="line"> # handler_read_key 表示使用索引查询到的次数 </span><br><span class="line"> # handler_read_rnd_next  这个值越高，说明查询低效</span><br><span class="line">show status like &#x27;Handler_read%&#x27;  </span><br></pre></td></tr></table></figure>
+<p><strong>优点</strong>：极大提高查询速度——把全表扫描的 O(N) 行访问，降为沿索引树的 O(log N) 次磁盘 IO。</p>
+<p><strong>缺点</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>写放大</strong>：对表执行 <code>INSERT</code> / <code>UPDATE</code> / <code>DELETE</code> 时，不仅要维护数据页，还要同步维护每一棵索引树（插入/删除索引项、可能触发页分裂），写入性能随索引数量线性下降；</p>
+</li>
+<li class="lvl-2">
+<p><strong>空间占用</strong>：索引需要额外磁盘空间——每个索引都是一棵独立的 B+ 树副本。</p>
 </li>
 </ul>
 <blockquote>
-<p>null 值索引可以重复，在mysql中，不算为值，跟空值有区别</p>
-</blockquote>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"> # 查看mysql中索引使用的统计情况  </span><br><span class="line"> # handler_read_key 表示使用索引查询到的次数 </span><br><span class="line"> # handler_read_rnd_next  这个值越高，说明查询低效</span><br><span class="line">show status like &#x27;Handler_read%&#x27;  </span><br></pre></td></tr></table></figure>
-<p><strong>优点</strong>：大大提高了查询速度。</p>
-<p><strong>缺点</strong>：降低更新表的速度，如对表进行<code>INSERT</code>、<code>UPDATE</code>和<code>DELETE</code>时，MySQL不仅要保存数据，还要保存一下索引文件。且建立索引会占用磁盘空间。</p>
-<blockquote>
-<p>以1000条数据为例，占用空间比对图：</p>
+<p>以 1000 条数据为例，占用空间对比图：</p>
 <img src="/imgs/db/image-20251222155145333.png" alt="image-20251222155145333" style="zoom: 67%;" loading='lazy'>
-<p>添加一个组合索引后，磁盘占用多了越160 KB</p>
+<p>添加一个组合索引后，磁盘占用多了约 160 KB</p>
 <img src="/imgs/db/image-20251222154945316.png" alt="image-20251222154945316" style="zoom: 67%;" loading='lazy'>
-<p>在组合索引中减少字段，磁盘占用页相应减少，字段值越大占用空间越大。</p>
+<p>组合索引包含的字段越少、字段类型越小，磁盘占用相应越少——索引体积与字段个数、字段长度正相关。</p>
 <img src="/imgs/db/image-20251222155359945.png" alt="image-20251222155359945" style="zoom:67%;" loading='lazy'>
-<p><strong>提示</strong>：在删除索引后，空间不会立刻被回收，需要执行optimize、repair或recreate后才会立刻回收</p>
+<p><strong>提示</strong>：删除索引后，InnoDB 表空间内被释放的页不会立刻归还操作系统，而是标记为可复用；需要执行 <code>OPTIMIZE TABLE</code> 或重建表（<code>ALTER TABLE ... ENGINE=InnoDB</code>）后空间才会物理收缩。</p>
 </blockquote>
 <h3 id="索引类型">索引类型</h3>
+<p>先建立一张分类地图——索引并非只有一种形态，可以从<strong>数据结构</strong>、<strong>列的数量</strong>、<strong>数据组织方式</strong>三个维度理解：</p>
+<pre class="mermaid">flowchart TD
+    T[MySQL 索引] --> D1[按数据结构]
+    T --> D2[按列数量]
+    T --> D3[按数据组织]
+
+    D1 --> B[B+ 树<br>InnoDB 主选结构<br>等值 范围 排序]
+    D1 --> H[Hash<br>InnoDB 自适应哈希<br>仅等值匹配]
+    D1 --> F[全文索引<br>倒排索引<br>大文本关键词检索]
+    D1 --> S[空间索引<br>R-Tree<br>地理坐标检索]
+
+    D2 --> C1[单列索引]
+    D2 --> C2[组合索引<br>最左前缀规则]
+
+    D3 --> PC[聚簇索引<br>叶子节点 等于 数据行<br>每表仅一个]
+    D3 --> SC[二级索引<br>叶子节点存 键值加主键<br>查找需回表]</pre>
 <ul class="lvl-0">
 <li class="lvl-2">
 <p><strong>B+ 树索引</strong>：是一种平衡多路查找树，所有数据记录都存储在<strong>叶子节点</strong>，非叶子节点只存索引键值和指向下一级节点的指针。</p>
@@ -227,7 +271,7 @@
 </li>
 </ul>
 </blockquote>
-<p><strong>B树特征</strong></p>
+<p><strong>B 树特征</strong></p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
@@ -244,34 +288,40 @@
 </li>
 </ul>
 </blockquote>
-<p><strong>B+树特征</strong></p>
+<p><strong>B+ 树特征</strong></p>
 <blockquote>
 <p>1.单一节点存储更多的元素，使得查询的IO次数更少。（树的高度较低）</p>
 <p>2.所有查询都要查找到叶子节点，查询性能稳定。(非叶子节点存储索引，叶子节点存储数据)</p>
 <p>3.所有叶子节点形成有序链表，便于范围查询。（叶子节点是链表结构（顺序连接存储数据））</p>
 </blockquote>
-<p><strong>B+树优势</strong></p>
+<p><strong>B+ 树优势</strong></p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
-<p>非叶子节点只存储索引数据。所以每层能存更多索引数据（默认16K，通过<code>show variables like 'innodb_page_size'</code>命令查询），每次IO加载一层16K数据做索引筛选，筛选完成继续IO第二层</p>
+<p><strong>非叶子节点只存索引键</strong>：每层能容纳的键数远多于“键+数据”混存的传统 B 树。InnoDB 页默认 16KB（<code>SHOW VARIABLES LIKE 'innodb_page_size'</code>），一次磁盘 IO 恰好加载一页，页内二分定位后继续 IO 下一层；</p>
 </li>
 <li class="lvl-2">
-<p>叶子节点为有序的双向链表。当IO定位到叶子节点数据时，每次加载一页数据，当需要继续加载下一页数据时，无序再IO。</p>
+<p><strong>叶子节点按序串成链表</strong>：范围查询定位到起始页后，沿叶子链表顺序读取即可，无需再沿树回溯。需要说明：MySQL 8.0 中叶子<strong>页间为单向 next 指针串联</strong>（“双向链表”多见于教材对 B+ 树的通称，InnoDB 的实现是页内记录有序 + 页间单向链）；</p>
 </li>
 <li class="lvl-2">
-<p>三层能存储的数据量（int型的id为例，占8bit，指针占6bit，默认每页16k）：<br>
-16 * 1024 / (6 + 8) = 1170, 表示每页存的索引数量<br>
-1170 * 1170 * 16 = 438400512 表示三层树可以存储的数据量（两层索引+一层数据，叶子节点的每个节点存储16k）</p>
+<p><strong>三层能存多少数据</strong>（以 bigint 主键 8 字节 + 页内指针 6 字节估算）：</p>
+<ul class="lvl-3">
+<li class="lvl-4">每页索引键数 ≈ 16 × 1024 / (8 + 6) ≈ 1170 个；</li>
+<li class="lvl-4">叶子数据页按行均 1KB 计，每页约容纳 16 行；</li>
+<li class="lvl-4">三层 B+ 树可承载 ≈ 1170 × 1170 × 16 ≈ <strong>2190 万行</strong>——这正是“千万级表索引树高度仅 3 层”的由来：无论定位哪一行，都只需 3~4 次磁盘 IO。</li>
+</ul>
 </li>
 <li class="lvl-2">
-<p><strong>一个千万量级，且存储引擎是MyISAM或者InnoDB的表，其索引树的高度在3~5之间</strong>。取决于索引占的大小</p>
+<p><strong>千万量级（MyISAM / InnoDB）表的索引树高度通常为 3~5 层</strong>，具体取决于索引键大小与行宽。</p>
 </li>
 </ul>
 </blockquote>
 <h4 id="Hash-索引">Hash 索引</h4>
 <p>基于哈希表实现，对索引列计算哈希值，直接定位到数据位置。</p>
-<p>InnoDB中采用除法<strong>散列函数</strong>，冲突机制采用<strong>链接法</strong>（类似于Map集合，只是没有红黑树）。全表扫描方式</p>
+<blockquote>
+<p>⚠️ <strong>先澄清一个常见误区</strong>：InnoDB <strong>不允许用户直接创建 HASH 索引</strong>——<code>CREATE INDEX ... USING HASH</code> 会被忽略并退化为 B+ 树。InnoDB 中真正的哈希结构是引擎内部的<strong>自适应哈希索引（Adaptive Hash Index）</strong>：由引擎监控热点查询后自动为 B+ 树部分页面构建哈希索引，命中即 O(1) 定位，无需人工干预（由 <code>innodb_adaptive_hash_index</code> 控制开关）。</p>
+<p>本节讨论的 Hash 索引，在“可创建索引”语境下更贴近 <strong>MEMORY / NDB 引擎</strong>的实现：散列函数负责把键均匀打散，冲突机制采用<strong>链接法</strong>（类似 Java HashMap 的数组+链表，只是没有红黑树），一旦碰撞仍需顺序比较同桶内的多个键。</p>
+</blockquote>
 <p><strong>Hash索引是将索引键通过Hash运算之后，将 Hash运算结果的Hash值和所对应的行指针信息存放于一个Hash表中</strong>，由于不同索引键存在相同Hash值，所以即使取满足某个Hash键值的数据的记录条数，也无法从Hash索引中直接完成查询，还是要通过访问表中的实际数据进行相应的比较，并得到相应的结果。</p>
 <blockquote>
 <ul class="lvl-1">
@@ -301,10 +351,10 @@
 <p>Hash索引无法避免数据排序操作；</p>
 </li>
 <li class="lvl-2">
-<p>Hash索引不能利用部分索引键查询（不支持多列联合索引的最左匹配规则 ）</p>
+<p>Hash索引不能利用部分索引键查询（不支持多列联合索引的最左匹配规则）；</p>
 </li>
 <li class="lvl-2">
-<p>Hash索引需要全表扫描查询</p>
+<p><strong>发生碰撞时仍需访问数据行逐一比对</strong>：哈希值相同的多个键必须回到数据行逐行比较才能确认结果，且桶内数据无序，无法利用页内有序性做范围过滤；</p>
 </li>
 <li class="lvl-2">
 <p>如果有大量重复键值的情况下，哈希索引的效率会很低，因为存在哈希碰撞问题</p>
@@ -387,15 +437,15 @@
 <p>空间索引（SPATIAL）基于 R-Tree（一种多维空间索引结构）。用于地理空间数据类型（如 <code>POINT</code>、<code>GEOMETRY</code>）。</p>
 <p>适用 MyISAM、InnoDB（MySQL 5.7+）存储引擎。要求列必须为 <code>NOT NULL</code>，且使用空间数据类型。</p>
 <h4 id="聚簇-主键索引">聚簇/主键索引</h4>
-<p><mark>每张表只能拥有一个聚簇索引。可以存在多个 null</mark></p>
-<p>聚簇索引就是按照每张表的主键构造一颗B+树，同时叶子节点中存放的就是整张表的行记录数据，也将聚集索引的叶子节点称为数据页。这个特性决定了索引组织表中数据也是索引的一部分；</p>
+<p><strong>每张表只能拥有一个聚簇索引</strong>（行数据只有一种物理排列顺序）；而二级索引列上可以存在多个 NULL（见上文 NULL 说明）。</p>
+<p>聚簇索引就是按照每张表的主键构造一棵 B+ 树，叶子节点存放的是整张表的行记录数据（也称<strong>数据页</strong>）。这个特性决定了 InnoDB 是<strong>索引组织表</strong>：数据本身就是索引的一部分，主键的物理顺序即数据的存储顺序。</p>
 <p><strong>聚集规则</strong>：有主键则定义主键索引为聚集索引；没有主键则选第一个不允许为NULL的唯一索引；还没有就使用innodb的内置rowid为聚集索引。 主键如果更改代价较高，故建表时要考虑自增ID不能频繁update这点，且最好有顺序（数字）。</p>
 <blockquote>
 <p><strong>优点：</strong></p>
 <ul class="lvl-1">
 <li class="lvl-2">数据访问更快，因为聚簇索引将索引和数据保存在同一个B+树中，从聚簇索引中获取数据更快</li>
 <li class="lvl-2">对主键的排序查找和范围查找非常快</li>
-<li class="lvl-2">叶子节点存储全部数据（以）</li>
+<li class="lvl-2">叶子节点即数据页，存储行记录的全部字段</li>
 </ul>
 <p><strong>缺点：</strong></p>
 <ul class="lvl-1">
@@ -412,7 +462,7 @@
 </blockquote>
 <p><strong>查找原理：</strong></p>
 <figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">select * from user where id &gt;= 18 and id &lt; 40    # 以主键id范围查找</span><br></pre></td></tr></table></figure>
-<p>（注：一般数据库默认都会为主键生成聚簇索引，一般根节点都是常驻内存的，也就是说页 1 已经在内存中）</p>
+<p><strong>注</strong>：主键默认即为聚簇索引；树的<strong>根页</strong>通常在缓冲池（Buffer Pool）中常驻，即上图“页 1”一般不产生磁盘 IO，真正的 IO 计数从第二层开始。</p>
 <img src="/imgs/db/8.jpg" alt="img" style="zoom: 80%;" loading='lazy'>
 <blockquote>
 <ol>
@@ -436,9 +486,20 @@
 <p>(18,kl), (19,kl), (22,hj), (24,io), (25,vg) , (29,jk), (31,jk) , (33,rt) , (34,ty) , (35,yu) , (37,rt) , (39,rt) 。</p>
 </blockquote>
 <h4 id="非聚簇-非主键索引">非聚簇/非主键索引</h4>
-<p>又称辅助索引、二级索引、非聚集，是除主键以外的其他索引。</p>
+<p>又称辅助索引、二级索引、非聚集，是除主键以外的其他索引。它与聚簇索引的组织关系及“回表”路径可概括为：</p>
+<pre class="mermaid">flowchart LR
+    subgraph PK[聚簇索引树]
+        P1[根页] --> P2[内节点]
+        P2 --> P3[叶子等于数据页<br>存放整行记录]
+    end
+    subgraph SK[二级索引树]
+        S1[根页] --> S2[内节点]
+        S2 --> S3[叶子存放<br>索引键 加 主键值]
+    end
+    S3 -->|① 先拿到主键值| Q[回表]
+    Q -->|② 按主键再查一次聚簇索引| P3</pre>
 <blockquote>
-<p>在<strong>聚簇索引之上创建的索引称之为辅助索引</strong>，辅助索引访问数据总是<mark>需要二次查找（回表）</mark>。辅助索引叶子节点存储的不再是行的物理位置，而是主键值。</p>
+<p>在<strong>聚簇索引之上创建的索引称之为辅助索引</strong>，辅助索引访问数据总是<strong>需要二次查找（回表）</strong>。辅助索引叶子节点存储的不再是行的物理位置，而是主键值。</p>
 <p>Innodb辅助索引的叶子节点并<strong>不包含行记录的全部数据</strong>，叶子节点<strong>除了包含键值外，还包含了相应行数据的聚簇索引键</strong>。以便于拿到该键值二次查询聚簇索引。</p>
 </blockquote>
 <p><strong>查找原理</strong></p>
@@ -450,6 +511,7 @@
 <h4 id="组合索引">组合索引</h4>
 <p>使用组合索引，需要遵守<strong>最左前缀原则</strong>：查询条件必须从最左边的列开始，才能有效利用索引。</p>
 <p>例如：索引 <code>(a, b, c)</code> 可用于 <code>WHERE a=1 AND b=2</code>，但不能用于 <code>WHERE b=2</code> 或 <code>WHERE c=3</code>。</p>
+<p><strong>为什么最左前缀成立？</strong> 这与 B+ 树的键值组织方式直接相关：组合索引的键按<strong>字典序</strong>排列——先按 <code>a</code> 排序，<code>a</code> 相同再按 <code>b</code> 排，<code>b</code> 也相同才轮到 <code>c</code>。因此只给 <code>b</code>、<code>c</code> 条件时，树中任意一层都无法用二分确定搜索范围（键的有序前缀缺失），索引便无从定位；反过来，<code>WHERE a=1 AND c=5</code> 能用索引完成 <code>a</code> 的等值定位，却无法继续约束 <code>c</code>（中间隔着 <code>b</code>），只能把 <code>c</code> 降级为叶子上的过滤条件。</p>
 <p>但是在 Mysql 8中，在优化器做了大量优化，在符合场景的数据也可能会用到索引，具体参考：<a target="_blank" rel="external nofollow noopener noreferrer" href="https://pengline.github.io/2025/11/3d935c639e3d43919f965465aaa34286/">MySQL 8.0 新增功能函数和使用案例</a></p>
 <blockquote>
 <ul class="lvl-1">
@@ -497,65 +559,89 @@
 </blockquote>
 </blockquote>
 <h3 id="8-0-索引优化">8.0 索引优化</h3>
-<p>mysql 8 对索引做了大量优化，具体参考：<a target="_blank" rel="external nofollow noopener noreferrer" href="https://pengline.github.io/2025/11/3d935c639e3d43919f965465aaa34286/">MySQL 8.0 新增功能函数和使用案例</a></p>
+<p>MySQL 8 对索引做了大量优化，具体参考：<a target="_blank" rel="external nofollow noopener noreferrer" href="https://pengline.github.io/2025/11/3d935c639e3d43919f965465aaa34286/">MySQL 8.0 新增功能函数和使用案例</a></p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>索引跳跃扫描</strong>（ index skip scan，针对最左匹配原则的优化）</p>
+<p><strong>索引跳跃扫描（Index Skip Scan）</strong>：针对最左匹配原则的“解药”。联合索引 <code>(gender, age)</code> 上执行 <code>WHERE age = 20</code> 时，8.0 优化器会对前导列 <code>gender</code> 的<strong>每一个 distinct 值</strong>“跳跃”式地各搜一段 <code>age</code> 索引，相当于自动补全了前导列。使用前提很苛刻：<strong>前导列 distinct 数量必须少</strong>（如性别仅 2~3 个值），否则跳跃次数过多，优化器仍会放弃；</p>
 </li>
 <li class="lvl-2">
-<p><strong>隐藏索引</strong>（新增）</p>
+<p><strong>隐藏索引（INVISIBLE）</strong>：索引被标记为不可见后优化器不会使用，但 DDL 仍持续维护——用于上线前<strong>无损验证</strong>“删掉该索引到底影响哪些查询”，确认无影响再真正 DROP，避免大表删除后又要重建的风险；</p>
 </li>
 <li class="lvl-2">
-<p><strong>降序索引</strong>（新增）</p>
+<p><strong>降序索引（DESC）</strong>：8.0 起才支持真正倒序存储的索引。<code>ORDER BY a DESC, b ASC</code> 可直接精确匹配 <code>INDEX (a DESC, b ASC)</code>，不再依赖对正序索引的反向扫描（反向扫描无法利用部分优化，且此前版本根本不存在降序索引概念）；</p>
 </li>
 <li class="lvl-2">
-<p><strong>函数索引</strong>（新增）</p>
+<p><strong>函数索引（Functional Index）</strong>：<code>WHERE YEAR(create_time) = 2024</code> 走不了普通索引，是因为每行的函数结果无法与索引键直接比较；8.0 允许 <code>INDEX ((YEAR(create_time)))</code> 把函数计算结果本身建成索引列，从根源上解决“函数导致失效”的问题（也支持表达式前缀）。</p>
 </li>
 </ul>
 <h3 id="规则与失效">规则与失效</h3>
 <h4 id="失效场景">失效场景</h4>
-<p>什么情况下索引不会被命中</p>
+<p>什么情况下索引不会被命中？先用一张决策树快速自查，再逐个展开：</p>
+<pre class="mermaid">flowchart TD
+    Q[一条 WHERE 查询] --> C1{条件命中<br>索引列?}
+    C1 -->|否| X1[只能全表扫描]
+    C1 -->|是| C2{索引列上套了函数运算<br>或发生隐式类型转换?}
+    C2 -->|是| X2[索引失效<br>改函数索引或改写条件]
+    C2 -->|否| C3{OR 连接的条件中<br>存在非索引列?}
+    C3 -->|是| X3[整体失效<br>改用 UNION 或全列建索引]
+    C3 -->|否| C4{LIKE 以 % 开头?}
+    C4 -->|是| X4[无法前缀匹配<br>考虑覆盖索引或全文检索]
+    C4 -->|否| C5{联合索引<br>不满足最左前缀?}
+    C5 -->|是| X5[多数场景不可用<br>8.0 视情况 Skip Scan]
+    C5 -->|否| C6{区分度过低<br>命中行占比过高?}
+    C6 -->|是| X6[优化器弃用索引<br>全表扫描反而更优]
+    C6 -->|否| D[命中索引]</pre>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
-<p>查询条件没有使用索引列</p>
+<p><strong>条件没有使用索引列</strong>：<code>WHERE</code> 中全是无索引列，优化器无索引可用，只能全表扫描；</p>
 </li>
 <li class="lvl-2">
-<p>where条件带有 or ，即使其中有条件带索引也不会使用（想让索引生效，只能将or条件中的每个列都加上索引，如果OR的其中一个条件没有建立索引，则都不会使用索引，建议使用 union ，拼接多个查询语句）。</p>
+<p><strong><code>OR</code> 连接了非索引列条件</strong>：即使其中一个条件命中了索引，只要 <code>OR</code> 另一侧没有索引，整体也无法走索引。想让索引生效，要么给 <code>OR</code> 涉及的每个列都建索引，要么改写为 <code>UNION</code> 拼接多个单索引查询；</p>
 </li>
 <li class="lvl-2">
-<p><strong>like 以%开头</strong>，索引不会命中（除非只查询索引列），如：“%name”。</p>
+<p><strong><code>LIKE</code> 以 <code>%</code> 开头</strong>：<code>LIKE '%name'</code> 的匹配起点不确定，无法利用键有序性做前缀定位（除非查询列全在索引中，走覆盖扫描）；<code>LIKE 'name%'</code> 属于范围查询，前缀部分可正常用索引；</p>
 </li>
 <li class="lvl-2">
-<p><strong>范围查询</strong>条件右边的列索引失效，如：age &gt; 20 and name = ‘test’</p>
+<p><strong>范围条件右侧的列失效</strong>：联合索引 <code>(age, name)</code> 上执行 <code>WHERE age &gt; 20 AND name = 'test'</code>，<code>age &gt; 20</code> 完成定位后，<code>name</code> 的有序性已被打破，无法继续约束；</p>
 </li>
 <li class="lvl-2">
-<p><strong>不等于</strong>(!= 或者&lt;&gt;)索引失效（8.0 版本以后支持）</p>
+<p><strong>不等于（<code>!=</code> / <code>&lt;&gt;</code>）</strong>：语义是“排除少量值”，B+ 树无法直接表达“跳过某值”，通常退化为扫描后过滤。若被排除值占绝大多数、命中值极少且覆盖在索引中，优化器也可能选择索引扫描（8.0 代价估算更精细，但不能依赖此行为）；</p>
 </li>
 <li class="lvl-2">
-<p><strong>类型转换</strong>：如果列类型是字符串，一定要在条件中将数据使用引号引用起来,否则不使用索引。</p>
+<p><strong>隐式类型转换</strong>：列是字符串而条件传了数字（或反之），MySQL 会先对列做函数式转换再比较，等于在索引列上套了函数——<code>WHERE phone = 13800000000</code>（phone 为 varchar）将无法使用索引，务必用引号包住条件值；</p>
 </li>
 <li class="lvl-2">
-<p><strong>函数计算</strong>：查询条件中，在索引列上使用函数（+, - ,*,/）, 这种情况下需建立函数索引。</p>
+<p><strong>索引列上做函数/运算</strong>：<code>WHERE YEAR(create_time) = 2024</code>、<code>WHERE price * 0.9 &gt; 100</code>——索引键存的是原始值，无法与运算结果比较；MySQL 8.0 的解法是建函数索引；</p>
 </li>
 <li class="lvl-2">
-<p>采用 not in, not exist （8.0 版本以后支持，以前不会命中，采用的也是当前字段的索引）。</p>
+<p><strong><code>NOT IN</code> / <code>NOT EXISTS</code></strong>：优化器通常改写为反连接（anti-join）执行，能否用索引取决于改写后的形态与代价评估，不存在“版本一刀切不支持”的说法；</p>
 </li>
 <li class="lvl-2">
-<p>采用 is not null （8.0 版本以后支持，以前不会命中，采用的也是当前字段的索引）。</p>
+<p><strong><code>IS NOT NULL</code></strong>：NULL 在 InnoDB 索引中按最小值排序存放，<code>IS NOT NULL</code> 可转为范围扫描，但命中占比过高时优化器仍会选择全表扫描；</p>
 </li>
 <li class="lvl-2">
-<p><strong>散列小被优化</strong>：索引列的散列较小，如，tinyint，bool等，选择和查询的筛选后的数据量过大，经过优化器后可能会全表扫描。</p>
+<p><strong>区分度过低</strong>：索引列取值极少（如 bool、tinyint 状态列）时，一个等值条件就会命中大量行，回表随机 IO 超过顺序扫描，优化器评估后主动弃用索引——这不是“索引坏了”，而是“不该用”。</p>
 </li>
 </ul>
 </blockquote>
 <h4 id="选择与规则">选择与规则</h4>
 <p>是否需要建立索引、值得建立索引？哪些字段适合建立索引？</p>
+<p>先厘清两个常被混淆的量化概念：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>区分度（cardinality ratio）</strong>：<code>COUNT(DISTINCT col) / COUNT(*)</code>，越接近 1 表示列上重复值越少，等值定位后剩余候选行越少，越适合建索引；</p>
+</li>
+<li class="lvl-2">
+<p><strong>命中占比（值的选择性）</strong>：某个查询条件下预计命中的行数占总行数的比例。MySQL 优化器并不机械套用“选择性公式”，而是通过<strong>成本模型</strong>估算两种方案的总代价——全表扫描的顺序 IO + 过滤代价，对比索引访问的树路径 IO + 回表随机 IO——选择代价更低的一方执行。</p>
+</li>
+</ul>
 <blockquote>
-<p>MySQL是没有计算索引选择性的，只是预测逻辑IO操作的数量，因为索引不止消耗磁盘空间，也会耗费性能，每次的DDL操作也会同时更新索引。因此对于MySQL索引要慎重选择。</p>
-<p><strong>索引选择性占比：结果个数与总个数的比值</strong>，(x / sum) &gt; 20。</p>
+<p><strong>经验法则</strong>：当等值条件的命中占比超过 20%（如 <code>WHERE status='x'</code> 将命中表中 1/4 的行）时，回表随机 IO 往往已超过全表顺序扫描，此时<strong>全表扫描比走索引更快</strong>——这也是区分度过低的列（性别、状态）不该建索引的根本原因。</p>
 </blockquote>
-<p>一般来说，如果选择性超过 20% 那么全表扫描比使用索引性能更优。</p>
+<blockquote>
+<p>索引并不免费：它消耗磁盘空间，每次 DML 都要同步维护（插入/删除索引项，可能触发页分裂与合并），表结构 DDL 同样牵动索引。因此建索引前务必权衡读写比，谨慎选择。</p>
+</blockquote>
 <ul class="lvl-0">
 <li class="lvl-2">
 <p><strong>选择高区分度的列</strong>建索引（如用户ID，而非性别）。</p>
@@ -573,12 +659,12 @@
 <p><strong>避免过度索引</strong>：索引会占用空间，并降低 <code>INSERT/UPDATE/DELETE</code> 性能。</p>
 </li>
 </ul>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">计算公式</span><br><span class="line">SELECT COUNT(*) FROM table_name WHERE column_name / SELECT COUNT(*) FROM table_name</span><br><span class="line">如：</span><br><span class="line">SELECT (SELECT COUNT(*) FROM sys_dock_recycle_drop WHERE `code` = &#x27;FC1299653255&#x27;) /</span><br><span class="line">    (SELECT COUNT(*) FROM sys_dock_recycle_drop) * 100</span><br><span class="line"></span><br><span class="line">再如：</span><br><span class="line">SELECT (SELECT COUNT(*) FROM zssec_water_history WHERE dev_status &gt; 0) / (SELECT COUNT(*) FROM zssec_water_history)   * 100 </span><br></pre></td></tr></table></figure>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- ① 列的区分度：值越接近 1 越适合建索引</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="built_in">COUNT</span>(<span class="keyword">DISTINCT</span> column_name) <span class="operator">/</span> <span class="built_in">COUNT</span>(<span class="operator">*</span>) <span class="keyword">AS</span> ratio</span><br><span class="line"><span class="keyword">FROM</span> table_name;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- ② 某等值条件的命中占比（百分比）：</span></span><br><span class="line"><span class="comment">--    命中占比 &gt; 20% 时，全表扫描通常优于走索引</span></span><br><span class="line"><span class="keyword">SELECT</span> (<span class="keyword">SELECT</span> <span class="built_in">COUNT</span>(<span class="operator">*</span>) <span class="keyword">FROM</span> sys_dock_recycle_drop</span><br><span class="line">        <span class="keyword">WHERE</span> `code` <span class="operator">=</span> <span class="string">&#x27;FC1299653255&#x27;</span>) <span class="operator">/</span></span><br><span class="line">       (<span class="keyword">SELECT</span> <span class="built_in">COUNT</span>(<span class="operator">*</span>) <span class="keyword">FROM</span> sys_dock_recycle_drop) <span class="operator">*</span> <span class="number">100</span> <span class="keyword">AS</span> hit_percent;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- ③ 再如：范围条件命中占比</span></span><br><span class="line"><span class="keyword">SELECT</span> (<span class="keyword">SELECT</span> <span class="built_in">COUNT</span>(<span class="operator">*</span>) <span class="keyword">FROM</span> zssec_water_history</span><br><span class="line">        <span class="keyword">WHERE</span> dev_status <span class="operator">&gt;</span> <span class="number">0</span>) <span class="operator">/</span></span><br><span class="line">       (<span class="keyword">SELECT</span> <span class="built_in">COUNT</span>(<span class="operator">*</span>) <span class="keyword">FROM</span> zssec_water_history) <span class="operator">*</span> <span class="number">100</span> <span class="keyword">AS</span> hit_percent;</span><br></pre></td></tr></table></figure>
 <p><strong>不适合建立索引的列</strong>：</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
-<p>tinyint 或 用以标致类型的int列。比如用以保存性别，选择性过大，最小都是超过25%了，因此没有设置索引的必要。</p>
+<p>tinyint 或用作标志的 int 列（如性别、状态）：取值个数太少，任何等值条件都会命中大量行（区分度低、命中占比高），回表反而慢于顺序扫描；</p>
 </li>
 <li class="lvl-2">
 <p>更新频繁的字段。</p>
@@ -619,16 +705,36 @@
 </blockquote>
 <p><strong>最左匹配规则</strong>（联合索引）</p>
 <blockquote>
-<p>最左优先，以最左边的为起点任何连续的索引都能匹配上。右边索引需要依赖左表索引的执行结果，否则数据无法正常查询。因为索引结构存储是顺序存储的，先根据最左边索引排序，再依次根据后面排序。</p>
-<p>同时遇到范围查询(&gt;、&lt;、between、like)就会停止匹配。</p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>最左优先</strong>：以最左边列为起点，<strong>任意连续的前缀组合</strong>都能匹配上——索引 <code>(a,b,c)</code> 等效于 <code>(a)</code>、<code>(a,b)</code>、<code>(a,b,c)</code> 三组索引；跳过前导列的条件无法使用索引；</p>
+</li>
+<li class="lvl-2">
+<p><strong>顺序存储的必然结果</strong>：索引键先按最左列排序，再依次按后续列排序，所以只有连续前缀能保持有序性供二分定位；</p>
+</li>
+<li class="lvl-2">
+<p><strong>遇到范围查询即停止匹配</strong>：<code>&gt;</code>、<code>&lt;</code>、<code>BETWEEN</code>、<code>LIKE 'x%'</code> 出现后，<strong>当前列仍可用索引</strong>，但从它<strong>之后</strong>的列起有序性被打破，停止匹配。</p>
+</li>
+</ul>
 </blockquote>
-<p>所以，将范围性和模糊等不确定性查询条件，放置靠后位置。 如： where a = 1 and d in (2,3) and c &gt; 4 and b like 5</p>
+<p>因此，应把范围、模糊这类“不确定性”条件涉及的列放到组合索引的<strong>靠后位置</strong>，前面放等值条件列。例如 <code>WHERE a = 1 AND c &gt; 4 AND b = 2</code> 配合索引 <code>(a, b, c)</code>——等值列 <code>a</code>、<code>b</code> 完整命中，范围列 <code>c</code> 恰好收尾，索引利用率最大化。</p>
 <figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"># 8.0之前版本：</span><br><span class="line"># 如：建组合索引 a,b,c ，相当于建立了 a、a,b、a,b,c  三组索引 </span><br><span class="line"></span><br><span class="line"># 可以使用组合索引</span><br><span class="line">SELECT * FROM test WHERE a=&quot;1&quot; AND b=&quot;2&quot; </span><br><span class="line">SELECT * FROM test WHERE a=&quot;1&quot;</span><br><span class="line"># 不会使用到组合索引，8.0中可能会用到</span><br><span class="line">SELECT * FROM test WHERE b=&quot;1&quot; AND c=&quot;2&quot; </span><br><span class="line">SELECT * FROM test WHERE c=&quot;1&quot;</span><br><span class="line"></span><br><span class="line"># 以下查询只用到组合索引的一部分，8.0中可能会用到</span><br><span class="line">where a = xxx and c = xxx          #  可以用到 a 列的索引，用不到 c 列索引。</span><br><span class="line">where a like &#x27;xxx%&#x27; and b = xxx # 可以用到 a 列的索引，用不到 b 列的索引。</span><br><span class="line">where a &gt; xxx and b = xxx         # 可以用到 a 列的索引，用不到 b 列的索引。</span><br><span class="line"></span><br><span class="line"># 如下查询条件完全用不到索引，8.0中可能会用到</span><br><span class="line">where b = xxx</span><br><span class="line">where c = xxx</span><br><span class="line">where a like &#x27;%xxx&#x27;            -- 不满足最左前缀</span><br><span class="line">where d = xxx order by a    -- 出现非排序使用到的索引列 d </span><br><span class="line">where a + 1 = xxx    -- 使用函数、运算表达式及类型隐式转换等</span><br></pre></td></tr></table></figure>
 <h2 id="EXPLAIN-详解">EXPLAIN 详解</h2>
-<p><code>EXPLAIN</code> 是分析和优化 SQL 查询性能的重要工具，以下为<code>EXPLAIN</code> 输出中各列的含义，带***最重要，**次之：</p>
+<p><code>EXPLAIN</code> 是分析和优化 SQL 查询性能最重要、最常用的工具——它不真正执行查询，而是输出<strong>执行计划</strong>：优化器基于成本模型选定访问路径后，把每一步的访问方式、所用索引、预估行数完整呈现。读 EXPLAIN 的核心是抓两条主线：<strong>访问类型（type）在金字塔上走多深</strong>、<strong>额外操作（Extra）是否需要回表/排序/建临时表</strong>。</p>
+<blockquote>
+<p>标注约定：★★★ 为最重要，★★ 次之，★ 供参考。以下为 EXPLAIN 输出中各列的含义：</p>
+</blockquote>
 <img src="/imgs/db/image-20251211175337674.png" alt="image-20251211175337674" style="zoom:67%;" loading='lazy'>
-<h3 id="type（访问类型-）"><mark>type</mark>（访问类型 ***）</h3>
-<p>按性能从优到劣排序：</p>
+<h3 id="type（访问类型，★★★-最重要）">type（访问类型，★★★ 最重要）</h3>
+<p>访问类型描述 MySQL 如何读取数据，按性能从优到劣恰好构成一条“金字塔”，越往上越快、越往下越慢：</p>
+<pre class="mermaid">flowchart TD
+    A[system 系统表<br>仅一行] --> B[const 主键或唯一索引等值<br>最多一行]
+    B --> C[eq_ref 多表 JOIN<br>按唯一索引逐行匹配]
+    C --> D[ref 非唯一索引等值<br>可能多行]
+    D --> E[range 索引范围扫描<br>BETWEEN IN 大于 小于]
+    E --> F[index 全索引扫描<br>遍历整棵索引树]
+    F --> G[ALL 全表扫描<br>性能最差 重点优化]</pre>
+<p>（图中自上而下逐级退化，以下逐个说明。）</p>
 <ul class="lvl-0">
 <li class="lvl-2">
 <p>最优级别</p>
@@ -681,16 +787,16 @@
 <ul class="lvl-2">
 <li class="lvl-4">
 <p><strong>index</strong>：全索引扫描（读取整个索引）</p>
-<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">EXPLAIN <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> <span class="built_in">MOD</span>(id,<span class="number">5</span>)<span class="operator">=</span><span class="number">0</span> <span class="keyword">or</span> <span class="built_in">MOD</span>(id,<span class="number">6</span>)<span class="operator">=</span><span class="number">0</span> limit <span class="number">100</span>, <span class="number">1000</span></span><br><span class="line"># 可以优化，从 index <span class="operator">-</span><span class="operator">&gt;</span> <span class="keyword">range</span>：</span><br><span class="line">EXPLAIN <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> id <span class="operator">&gt;</span> <span class="number">1997869822548984078</span> <span class="keyword">AND</span> (<span class="built_in">MOD</span>(id,<span class="number">5</span>)<span class="operator">=</span><span class="number">0</span> <span class="keyword">or</span> <span class="built_in">MOD</span>(id,<span class="number">6</span>)<span class="operator">=</span><span class="number">0</span>) limit <span class="number">100</span>, <span class="number">1000</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"># 只需 id（id 就在索引中），可走 index 全索引扫描</span><br><span class="line">EXPLAIN <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> <span class="built_in">MOD</span>(id,<span class="number">5</span>)<span class="operator">=</span><span class="number">0</span> <span class="keyword">or</span> <span class="built_in">MOD</span>(id,<span class="number">6</span>)<span class="operator">=</span><span class="number">0</span> limit <span class="number">100</span>, <span class="number">1000</span></span><br><span class="line"># 追加 id 下界后收窄为 <span class="keyword">range</span>（索引范围扫描），扫描量大幅下降：</span><br><span class="line">EXPLAIN <span class="keyword">SELECT</span> id <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> id <span class="operator">&gt;</span> <span class="number">1997869822548984078</span> <span class="keyword">AND</span> (<span class="built_in">MOD</span>(id,<span class="number">5</span>)<span class="operator">=</span><span class="number">0</span> <span class="keyword">or</span> <span class="built_in">MOD</span>(id,<span class="number">6</span>)<span class="operator">=</span><span class="number">0</span>) limit <span class="number">100</span>, <span class="number">1000</span></span><br></pre></td></tr></table></figure>
 </li>
 <li class="lvl-4">
 <p><strong>ALL</strong>：全表扫描（不使用索引，性能最差，需要优化）</p>
-<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"># 改为这样，从 index <span class="operator">-</span><span class="operator">&gt;</span> <span class="keyword">ALL</span></span><br><span class="line">EXPLAIN <span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> <span class="built_in">MOD</span>(id,<span class="number">5</span>)<span class="operator">=</span><span class="number">0</span> <span class="keyword">or</span> <span class="built_in">MOD</span>(id,<span class="number">6</span>)<span class="operator">=</span><span class="number">0</span> limit <span class="number">100</span>, <span class="number">1000</span></span><br><span class="line"># 可以优化，从 index <span class="operator">-</span><span class="operator">&gt;</span> <span class="keyword">range</span>：</span><br><span class="line">EXPLAIN <span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> id <span class="operator">&gt;</span> <span class="number">1997869</span> <span class="keyword">AND</span> (<span class="built_in">MOD</span>(id,<span class="number">5</span>)<span class="operator">=</span><span class="number">0</span> <span class="keyword">or</span> <span class="built_in">MOD</span>(id,<span class="number">6</span>)<span class="operator">=</span><span class="number">0</span>) limit <span class="number">100</span>, <span class="number">1000</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"># 查询所有列，索引树无法覆盖，需回表 → 优化器选择 <span class="keyword">ALL</span>（全表扫描）</span><br><span class="line">EXPLAIN <span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> <span class="built_in">MOD</span>(id,<span class="number">5</span>)<span class="operator">=</span><span class="number">0</span> <span class="keyword">or</span> <span class="built_in">MOD</span>(id,<span class="number">6</span>)<span class="operator">=</span><span class="number">0</span> limit <span class="number">100</span>, <span class="number">1000</span></span><br><span class="line"># 追加 id 下界后收窄为 <span class="keyword">range</span>，回表行数骤减：</span><br><span class="line">EXPLAIN <span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> id <span class="operator">&gt;</span> <span class="number">1997869</span> <span class="keyword">AND</span> (<span class="built_in">MOD</span>(id,<span class="number">5</span>)<span class="operator">=</span><span class="number">0</span> <span class="keyword">or</span> <span class="built_in">MOD</span>(id,<span class="number">6</span>)<span class="operator">=</span><span class="number">0</span>) limit <span class="number">100</span>, <span class="number">1000</span></span><br></pre></td></tr></table></figure>
 </li>
 </ul>
 </li>
 </ul>
-<h3 id="Extra（额外信息-）"><mark>Extra</mark>（额外信息 ***）</h3>
+<h3 id="Extra（额外信息，★★★-最重要）">Extra（额外信息，★★★ 最重要）</h3>
 <p>提供额外的执行信息：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
@@ -726,20 +832,20 @@
 <img src="/imgs/db/image-20251222103120147.png" alt="image-20251222103120147" style="zoom:60%;" loading='lazy'>
 </li>
 </ul>
-<h3 id="ref（索引引用-）">ref（索引引用 **）</h3>
-<p>显示索引的哪一列被使用</p>
+<h3 id="ref（用到的索引列，★★）">ref（用到的索引列，★★）</h3>
+<p>显示与索引进行比较的列或常量，判断是否真正“用对”了索引：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p>const：常量</p>
+<p><code>const</code>：与常量比较（如 <code>WHERE id = 1</code> 中的 1）；</p>
 </li>
 <li class="lvl-2">
-<p>列名：使用的列</p>
+<p>列名：与另一张表的列比较（常见于 join 条件）；</p>
 </li>
 <li class="lvl-2">
-<p>func：函数</p>
+<p><code>func</code>：比较的是函数结果，常伴随隐式类型转换出现——此时要警惕索引失效。</p>
 </li>
 </ul>
-<h3 id="select-type（查询类型-）">select_type（查询类型 **）</h3>
+<h3 id="select-type（查询类型，★★）">select_type（查询类型，★★）</h3>
 <ul class="lvl-0">
 <li class="lvl-2">
 <p><strong>SIMPLE</strong>：简单 SELECT，不使用 UNION 或子查询</p>
@@ -763,10 +869,13 @@
 <p><strong>DEPENDENT SUBQUERY</strong>：依赖外部查询的子查询</p>
 </li>
 </ul>
-<h3 id="rows（预估扫描行数-）">rows（预估扫描行数 *）</h3>
-<p>MySQL 预估需要扫描的行数（值越小越好）</p>
-<h3 id="filtered（过滤比例-）">filtered（过滤比例 *）</h3>
-<p>存储引擎层返回的数据在服务层过滤后，剩余的比例（百分比值，越大越好）</p>
+<h3 id="rows（预估扫描行数，★★）">rows（预估扫描行数，★★）</h3>
+<p>MySQL 基于统计信息预估需要扫描的行数（值越小越好）。注意它是“预估值”，真实执行可能偏差较大——当 rows 与实际行数数量级明显不符时，通常是<strong>统计信息过期</strong>（执行 <code>ANALYZE TABLE</code> 刷新），或过滤条件集中在非索引列上。</p>
+<h3 id="filtered（过滤比例，★）">filtered（过滤比例，★）</h3>
+<p>存储引擎层返回的数据经过服务层过滤后剩余的比例（百分比值，越大越好）</p>
+<blockquote>
+<p><strong>联合判读</strong>：<code>rows × filtered%</code> ≈ 最终处理的行数。若某一步 <code>rows = 100 万而 filtered = 1%</code>，说明大量行被取出后才被过滤，通常意味着缺少更精确的索引，需要在该过滤列（或联合索引列）上做文章。</p>
+</blockquote>
 <h3 id="id（查询标识符）">id（查询标识符）</h3>
 <p>SELECT 查询的序列号</p>
 <p><code>SELECT * FROM users WHERE id IN (SELECT user_id FROM orders);</code>  子查询的 id 会不同</p>
@@ -792,7 +901,72 @@
 <p>查询可能使用的索引列表，如果为 NULL，考虑添加合适的索引</p>
 <h3 id="table（访问的表）">table（访问的表）</h3>
 <p>显示查询涉及的表名。可能是实际表名、别名或 <code>&lt;derivedN&gt;</code>、<code>&lt;unionM,N&gt;</code> 等</p>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/12/27fc28876c1e4f9baacd88ca8f29b266/">https://pengline.cn/2025/12/27fc28876c1e4f9baacd88ca8f29b266/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/MySQL%E7%B4%A2%E5%BC%95%EF%BC%8CMySQL-EXPLAIN/">MySQL索引，MySQL EXPLAIN</a><a class="post-meta__tags" href="/tags/%E8%81%9A%E9%9B%86%E7%B4%A2%E5%BC%95/">聚集索引</a><a class="post-meta__tags" href="/tags/%E8%81%94%E5%90%88%E7%B4%A2%E5%BC%95/">联合索引</a><a class="post-meta__tags" href="/tags/%E8%A6%86%E7%9B%96%E7%B4%A2%E5%BC%95/">覆盖索引</a><a class="post-meta__tags" href="/tags/%E7%B4%A2%E5%BC%95%E4%B8%8B%E6%8E%A8/">索引下推</a><a class="post-meta__tags" href="/tags/%E5%85%A8%E6%96%87%E7%B4%A2%E5%BC%95/">全文索引</a><a class="post-meta__tags" href="/tags/%E7%B4%A2%E5%BC%95%E5%A4%B1%E6%95%88/">索引失效</a><a class="post-meta__tags" href="/tags/%E7%B4%A2%E5%BC%95%E4%BC%98%E5%8C%96/">索引优化</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/12/fb61cae088544f86a4209a47b2ca6a3d/" title="Redis 常见数据结构和数据类型"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">Redis 常见数据结构和数据类型</div></div><div class="info-2"><div class="info-item-1">Redis 内部使用了多种高效的数据结构来实现其丰富的数据类型（String、List、Hash、Set、Sorted Set 等）。</div></div></div></a><a class="pagination-related" href="/2025/12/c48cd69e7a3b47faae3866edeb761422/" title="同步 Mysql 数据的多种方式和策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small225718E2h9r1757257038.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">同步 Mysql 数据的多种方式和策略</div></div><div class="info-2"><div class="info-item-1">将 MySQL 数据同步至 ES、Redis 等其他数据库，有多种同步策略，各自特点对应不同的应用场景。</div></div></div></a></nav><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B4%A2%E5%BC%95%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.</span> <span class="toc-text">索引详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B4%A2%E5%BC%95%E7%B1%BB%E5%9E%8B"><span class="toc-number">1.1.</span> <span class="toc-text">索引类型</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#B-%E6%A0%91%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.1.</span> <span class="toc-text">B+ 树索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Hash-%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.2.</span> <span class="toc-text">Hash 索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%85%A8%E6%96%87%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.3.</span> <span class="toc-text">全文索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%A9%BA%E9%97%B4%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.4.</span> <span class="toc-text">空间索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%81%9A%E7%B0%87-%E4%B8%BB%E9%94%AE%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.5.</span> <span class="toc-text">聚簇&#x2F;主键索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%9D%9E%E8%81%9A%E7%B0%87-%E9%9D%9E%E4%B8%BB%E9%94%AE%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.6.</span> <span class="toc-text">非聚簇&#x2F;非主键索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%BB%84%E5%90%88%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.7.</span> <span class="toc-text">组合索引</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A6%86%E7%9B%96%E7%B4%A2%E5%BC%95"><span class="toc-number">1.2.</span> <span class="toc-text">覆盖索引</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B4%A2%E5%BC%95%E4%B8%8B%E6%8E%A8"><span class="toc-number">1.3.</span> <span class="toc-text">索引下推</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#8-0-%E7%B4%A2%E5%BC%95%E4%BC%98%E5%8C%96"><span class="toc-number">1.4.</span> <span class="toc-text">8.0 索引优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%84%E5%88%99%E4%B8%8E%E5%A4%B1%E6%95%88"><span class="toc-number">1.5.</span> <span class="toc-text">规则与失效</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%A4%B1%E6%95%88%E5%9C%BA%E6%99%AF"><span class="toc-number">1.5.1.</span> <span class="toc-text">失效场景</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%80%89%E6%8B%A9%E4%B8%8E%E8%A7%84%E5%88%99"><span class="toc-number">1.5.2.</span> <span class="toc-text">选择与规则</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#EXPLAIN-%E8%AF%A6%E8%A7%A3"><span class="toc-number">2.</span> <span class="toc-text">EXPLAIN 详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#type%EF%BC%88%E8%AE%BF%E9%97%AE%E7%B1%BB%E5%9E%8B-%EF%BC%89"><span class="toc-number">2.1.</span> <span class="toc-text">type（访问类型 ***）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Extra%EF%BC%88%E9%A2%9D%E5%A4%96%E4%BF%A1%E6%81%AF-%EF%BC%89"><span class="toc-number">2.2.</span> <span class="toc-text">Extra（额外信息 ***）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ref%EF%BC%88%E7%B4%A2%E5%BC%95%E5%BC%95%E7%94%A8-%EF%BC%89"><span class="toc-number">2.3.</span> <span class="toc-text">ref（索引引用 **）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#select-type%EF%BC%88%E6%9F%A5%E8%AF%A2%E7%B1%BB%E5%9E%8B-%EF%BC%89"><span class="toc-number">2.4.</span> <span class="toc-text">select_type（查询类型 **）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#rows%EF%BC%88%E9%A2%84%E4%BC%B0%E6%89%AB%E6%8F%8F%E8%A1%8C%E6%95%B0-%EF%BC%89"><span class="toc-number">2.5.</span> <span class="toc-text">rows（预估扫描行数 *）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#filtered%EF%BC%88%E8%BF%87%E6%BB%A4%E6%AF%94%E4%BE%8B-%EF%BC%89"><span class="toc-number">2.6.</span> <span class="toc-text">filtered（过滤比例 *）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#id%EF%BC%88%E6%9F%A5%E8%AF%A2%E6%A0%87%E8%AF%86%E7%AC%A6%EF%BC%89"><span class="toc-number">2.7.</span> <span class="toc-text">id（查询标识符）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#key%EF%BC%88%E5%AE%9E%E9%99%85%E7%94%A8%E7%9A%84%E7%B4%A2%E5%BC%95%EF%BC%89"><span class="toc-number">2.8.</span> <span class="toc-text">key（实际用的索引）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#key-len%EF%BC%88%E7%B4%A2%E5%BC%95%E9%95%BF%E5%BA%A6%EF%BC%89"><span class="toc-number">2.9.</span> <span class="toc-text">key_len（索引长度）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#possible-keys%EF%BC%88%E5%8F%AF%E8%83%BD%E7%94%A8%E7%9A%84%E7%B4%A2%E5%BC%95%EF%BC%89"><span class="toc-number">2.10.</span> <span class="toc-text">possible_keys（可能用的索引）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#table%EF%BC%88%E8%AE%BF%E9%97%AE%E7%9A%84%E8%A1%A8%EF%BC%89"><span class="toc-number">2.11.</span> <span class="toc-text">table（访问的表）</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+<h2 id="索引设计清单与常见误区">索引设计清单与常见误区</h2>
+<h3 id="设计清单（Checklist）">设计清单（Checklist）</h3>
+<p>评审一条 SQL 或设计一张表时，按以下顺序自查：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox2"><label for="checkbox2"></label><strong>先看 EXPLAIN</strong>：type 是否达到 <code>range</code> 及以上？<code>Extra</code> 是否出现 <code>Using filesort</code> / <code>Using temporary</code>？</p>
+</li>
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox3"><label for="checkbox3"></label><strong>单表等值查询</strong>：高频 WHERE 列组成联合索引，等值列在前、范围列在后；</p>
+</li>
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox4"><label for="checkbox4"></label><strong>排序 / 分组</strong>：<code>ORDER BY</code> / <code>GROUP BY</code> 列尽量纳入索引（键顺序需与排序方向一致才能消除 filesort）；</p>
+</li>
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox5"><label for="checkbox5"></label><strong>多表 JOIN</strong>：被驱动表的连接列必须有索引（目标是 type 达 <code>ref</code> 及以上），且两侧列的类型、字符集、排序规则完全一致；</p>
+</li>
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox6"><label for="checkbox6"></label><strong>覆盖优先</strong>：高频查询的 SELECT 列尽量并入联合索引，争取 <code>Extra = Using index</code>，彻底消除回表；</p>
+</li>
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox7"><label for="checkbox7"></label><strong>区分度把关</strong>：先用 <code>COUNT(DISTINCT col) / COUNT(*)</code> 验证，区分度过低的列不要单独建索引；</p>
+</li>
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox8"><label for="checkbox8"></label><strong>控制数量</strong>：OLTP 表单表索引控制在 5 个以内，写多读少的表更要克制；</p>
+</li>
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox9"><label for="checkbox9"></label><strong>统一类型</strong>：关联字段与条件值的类型必须一致，避免隐式类型转换悄悄杀死索引；</p>
+</li>
+<li class="lvl-2">
+<p><input type="checkbox" id="checkbox10"><label for="checkbox10"></label><strong>定期体检</strong>：关注 <code>Handler_read_rnd_next</code> 突增与慢查询日志，借助 <code>performance_schema</code> 统计索引使用率，长期零使用的索引先置 <code>INVISIBLE</code> 验证再下线。</p>
+</li>
+</ul>
+<h3 id="常见误区">常见误区</h3>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>“索引越多越好”</strong>——每个索引都拖慢写入并占用磁盘，多列场景应优先合并为联合索引，而非各建单列索引；</p>
+</li>
+<li class="lvl-3">
+<p><strong>“字段套函数没事”</strong>——<code>WHERE YEAR(create_time) = 2024</code> 会隐式放弃索引，应改写为 <code>create_time BETWEEN '2024-01-01' AND '2024-12-31'</code> 或建函数索引；</p>
+</li>
+<li class="lvl-3">
+<p><strong>“低区分度列也能建索引”</strong>——性别、状态类列的等值条件命中行占比过高，走索引比全表扫描更慢；</p>
+</li>
+<li class="lvl-3">
+<p><strong>“OR 只要一边有索引就行”</strong>——另一边没有索引时整体仍会全表扫描，应改写为 <code>UNION</code>；</p>
+</li>
+<li class="lvl-3">
+<p><strong>“NULL 不能建索引”</strong>——InnoDB 二级索引完全支持 NULL（且允许多个），真正要担心的是 NULL 占比过高导致过滤效果差、统计失真；</p>
+</li>
+<li class="lvl-3">
+<p><strong>“删索引立刻释放空间”</strong>——InnoDB 表空间需执行 <code>OPTIMIZE TABLE</code> 或重建表才会物理收缩（见文首实测提示）。</p>
+</li>
+</ol>
+</blockquote>
+<h3 id="一处经典实战复盘">一处经典实战复盘</h3>
+<blockquote>
+<p>某订单表执行 <code>WHERE merchant_id = ? AND create_time BETWEEN ? AND ? ORDER BY create_time DESC LIMIT 20</code>，起初只有主键索引，慢查询耗时 2s+。逐项诊断：</p>
+<ol>
+<li class="lvl-3">EXPLAIN 显示 <code>type = ALL</code>、<code>Extra = Using filesort</code>——全表扫描 + 额外排序；</li>
+<li class="lvl-3">加联合索引 <code>(merchant_id, create_time DESC)</code>：等值 + 范围完整命中，<code>ORDER BY</code> 也由索引天然完成，filesort 消失；</li>
+<li class="lvl-3">再把高频统计语句的 SELECT 列并入索引，实现覆盖扫描；最终耗时降至毫秒级。</li>
+</ol>
+<p>这则案例印证了本文的主线：<strong>结构决定访问方式，访问方式决定性能</strong>——SQL 调优从来不是“加个索引碰运气”，而是先读懂 EXPLAIN 揭示的访问路径，再反推缺失的索引结构。更多系统级调优手段（配置参数、刷盘策略、慢查询治理等）可继续阅读本站 DB 目录的姊妹篇《MySQL 数据库性能全面优化方案》。</p>
+</blockquote>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/12/27fc28876c1e4f9baacd88ca8f29b266/">https://pengline.cn/2025/12/27fc28876c1e4f9baacd88ca8f29b266/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/MySQL%E7%B4%A2%E5%BC%95/">MySQL索引</a><a class="post-meta__tags" href="/tags/MySQL-EXPLAIN/">MySQL EXPLAIN</a><a class="post-meta__tags" href="/tags/%E8%81%9A%E9%9B%86%E7%B4%A2%E5%BC%95/">聚集索引</a><a class="post-meta__tags" href="/tags/%E8%81%94%E5%90%88%E7%B4%A2%E5%BC%95/">联合索引</a><a class="post-meta__tags" href="/tags/%E8%A6%86%E7%9B%96%E7%B4%A2%E5%BC%95/">覆盖索引</a><a class="post-meta__tags" href="/tags/%E7%B4%A2%E5%BC%95%E4%B8%8B%E6%8E%A8/">索引下推</a><a class="post-meta__tags" href="/tags/%E5%85%A8%E6%96%87%E7%B4%A2%E5%BC%95/">全文索引</a><a class="post-meta__tags" href="/tags/%E7%B4%A2%E5%BC%95%E5%A4%B1%E6%95%88/">索引失效</a><a class="post-meta__tags" href="/tags/%E7%B4%A2%E5%BC%95%E4%BC%98%E5%8C%96/">索引优化</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/12/fb61cae088544f86a4209a47b2ca6a3d/" title="Redis 常见数据结构和数据类型"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">Redis 常见数据结构和数据类型</div></div><div class="info-2"><div class="info-item-1">深入剖析 Redis 的“类型-编码-数据结构”三层对象模型：SDS、压缩列表、快速列表、字典与渐进式 rehash、跳表、整数集合的底层原理与编码切换规则，以及 String/Hash/Set/ZSet 的实践选型与问题规避。</div></div></div></a><a class="pagination-related" href="/2025/12/c48cd69e7a3b47faae3866edeb761422/" title="同步 Mysql 数据的多种方式和策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">同步 Mysql 数据的多种方式和策略</div></div><div class="info-2"><div class="info-item-1">将 MySQL 数据同步至 ES、Redis 等其他数据库，有多种同步策略，各自特点对应不同的应用场景。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/09/a3d9c654efa843ed8446359ed76b5d81/" title="MySQL 数据库性能全面优化方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small161326iKTsw1759047206.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-06</div><div class="info-item-2">MySQL 数据库性能全面优化方案</div></div><div class="info-2"><div class="info-item-1">MySQL 数据库性能优化是系统性工程，涉及SQL语句、表结构、索引、配置、磁盘IO、架构设计等多层面</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B4%A2%E5%BC%95%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.</span> <span class="toc-text">索引详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B4%A2%E5%BC%95%E7%B1%BB%E5%9E%8B"><span class="toc-number">1.1.</span> <span class="toc-text">索引类型</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#B-%E6%A0%91%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.1.</span> <span class="toc-text">B+ 树索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Hash-%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.2.</span> <span class="toc-text">Hash 索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%85%A8%E6%96%87%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.3.</span> <span class="toc-text">全文索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%A9%BA%E9%97%B4%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.4.</span> <span class="toc-text">空间索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%81%9A%E7%B0%87-%E4%B8%BB%E9%94%AE%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.5.</span> <span class="toc-text">聚簇&#x2F;主键索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%9D%9E%E8%81%9A%E7%B0%87-%E9%9D%9E%E4%B8%BB%E9%94%AE%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.6.</span> <span class="toc-text">非聚簇&#x2F;非主键索引</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%BB%84%E5%90%88%E7%B4%A2%E5%BC%95"><span class="toc-number">1.1.7.</span> <span class="toc-text">组合索引</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A6%86%E7%9B%96%E7%B4%A2%E5%BC%95"><span class="toc-number">1.2.</span> <span class="toc-text">覆盖索引</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B4%A2%E5%BC%95%E4%B8%8B%E6%8E%A8"><span class="toc-number">1.3.</span> <span class="toc-text">索引下推</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#8-0-%E7%B4%A2%E5%BC%95%E4%BC%98%E5%8C%96"><span class="toc-number">1.4.</span> <span class="toc-text">8.0 索引优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%84%E5%88%99%E4%B8%8E%E5%A4%B1%E6%95%88"><span class="toc-number">1.5.</span> <span class="toc-text">规则与失效</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%A4%B1%E6%95%88%E5%9C%BA%E6%99%AF"><span class="toc-number">1.5.1.</span> <span class="toc-text">失效场景</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%80%89%E6%8B%A9%E4%B8%8E%E8%A7%84%E5%88%99"><span class="toc-number">1.5.2.</span> <span class="toc-text">选择与规则</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#EXPLAIN-%E8%AF%A6%E8%A7%A3"><span class="toc-number">2.</span> <span class="toc-text">EXPLAIN 详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#type%EF%BC%88%E8%AE%BF%E9%97%AE%E7%B1%BB%E5%9E%8B%EF%BC%8C%E2%98%85%E2%98%85%E2%98%85-%E6%9C%80%E9%87%8D%E8%A6%81%EF%BC%89"><span class="toc-number">2.1.</span> <span class="toc-text">type（访问类型，★★★ 最重要）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Extra%EF%BC%88%E9%A2%9D%E5%A4%96%E4%BF%A1%E6%81%AF%EF%BC%8C%E2%98%85%E2%98%85%E2%98%85-%E6%9C%80%E9%87%8D%E8%A6%81%EF%BC%89"><span class="toc-number">2.2.</span> <span class="toc-text">Extra（额外信息，★★★ 最重要）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ref%EF%BC%88%E7%94%A8%E5%88%B0%E7%9A%84%E7%B4%A2%E5%BC%95%E5%88%97%EF%BC%8C%E2%98%85%E2%98%85%EF%BC%89"><span class="toc-number">2.3.</span> <span class="toc-text">ref（用到的索引列，★★）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#select-type%EF%BC%88%E6%9F%A5%E8%AF%A2%E7%B1%BB%E5%9E%8B%EF%BC%8C%E2%98%85%E2%98%85%EF%BC%89"><span class="toc-number">2.4.</span> <span class="toc-text">select_type（查询类型，★★）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#rows%EF%BC%88%E9%A2%84%E4%BC%B0%E6%89%AB%E6%8F%8F%E8%A1%8C%E6%95%B0%EF%BC%8C%E2%98%85%E2%98%85%EF%BC%89"><span class="toc-number">2.5.</span> <span class="toc-text">rows（预估扫描行数，★★）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#filtered%EF%BC%88%E8%BF%87%E6%BB%A4%E6%AF%94%E4%BE%8B%EF%BC%8C%E2%98%85%EF%BC%89"><span class="toc-number">2.6.</span> <span class="toc-text">filtered（过滤比例，★）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#id%EF%BC%88%E6%9F%A5%E8%AF%A2%E6%A0%87%E8%AF%86%E7%AC%A6%EF%BC%89"><span class="toc-number">2.7.</span> <span class="toc-text">id（查询标识符）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#key%EF%BC%88%E5%AE%9E%E9%99%85%E7%94%A8%E7%9A%84%E7%B4%A2%E5%BC%95%EF%BC%89"><span class="toc-number">2.8.</span> <span class="toc-text">key（实际用的索引）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#key-len%EF%BC%88%E7%B4%A2%E5%BC%95%E9%95%BF%E5%BA%A6%EF%BC%89"><span class="toc-number">2.9.</span> <span class="toc-text">key_len（索引长度）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#possible-keys%EF%BC%88%E5%8F%AF%E8%83%BD%E7%94%A8%E7%9A%84%E7%B4%A2%E5%BC%95%EF%BC%89"><span class="toc-number">2.10.</span> <span class="toc-text">possible_keys（可能用的索引）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#table%EF%BC%88%E8%AE%BF%E9%97%AE%E7%9A%84%E8%A1%A8%EF%BC%89"><span class="toc-number">2.11.</span> <span class="toc-text">table（访问的表）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B4%A2%E5%BC%95%E8%AE%BE%E8%AE%A1%E6%B8%85%E5%8D%95%E4%B8%8E%E5%B8%B8%E8%A7%81%E8%AF%AF%E5%8C%BA"><span class="toc-number">3.</span> <span class="toc-text">索引设计清单与常见误区</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%BE%E8%AE%A1%E6%B8%85%E5%8D%95%EF%BC%88Checklist%EF%BC%89"><span class="toc-number">3.1.</span> <span class="toc-text">设计清单（Checklist）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%B8%E8%A7%81%E8%AF%AF%E5%8C%BA"><span class="toc-number">3.2.</span> <span class="toc-text">常见误区</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%80%E5%A4%84%E7%BB%8F%E5%85%B8%E5%AE%9E%E6%88%98%E5%A4%8D%E7%9B%98"><span class="toc-number">3.3.</span> <span class="toc-text">一处经典实战复盘</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
