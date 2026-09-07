@@ -5,9 +5,9 @@
 <meta property="og:site_name" content="余一叶知秋尽">
 <meta property="og:description" content="基于OpenSearch构建推荐系统，涵盖三模态（视觉&#x2F;音频&#x2F;文本）特征提取与融合、四路召回（I2I&#x2F;U2I&#x2F;热搜&#x2F;探索）、混合检索与RRF融合、滑动窗口用户向量、E&amp;E探索机制、MMR多样性重排等。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small194106Azz0h1758541266.webp">
 <meta property="article:published_time" content="2026-06-09T07:19:42.989Z">
-<meta property="article:modified_time" content="2026-07-24T05:22:20.650Z">
+<meta property="article:modified_time" content="2026-09-07T10:24:16.558Z">
 <meta property="article:author" content="余一叶知秋尽">
 <meta property="article:tag" content="I2I召回">
 <meta property="article:tag" content="OpenSearch">
@@ -20,7 +20,7 @@
 <meta property="article:tag" content="混合检索">
 <meta property="article:tag" content="视频推荐">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/06/1726f4eec04b4cdf873479019b5c604a/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small194106Azz0h1758541266.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/06/1726f4eec04b4cdf873479019b5c604a/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -93,7 +93,25 @@
 
       const theme = saveToLocal.get('theme')
     
-          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
         
       
       const asideStatus = saveToLocal.get('aside-status')
@@ -147,18 +165,18 @@
     toc: true,
     rightside: false,
   },
-  autoDarkmode: false
+  autoDarkmode: true
 }</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
   title: '基于 OpenSearch 构建短视频推荐系统',
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
-}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><a id="darkmode_button" onclick="switchNightMode()" href="javascript:void(0);" title="切换模式"><svg class="mode-icon" width="24" height="24"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><!-- hexo injector head_end start -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">571</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">基于 OpenSearch 构建短视频推荐系统</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">基于 OpenSearch 构建短视频推荐系统</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-06-09T07:19:42.989Z" title="发表于 2026-06-09 15:19:42">2026-06-09</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-07-24T05:22:20.650Z" title="更新于 2026-07-24 13:22:20">2026-07-24</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/">架构</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/%E6%8E%A8%E8%8D%90%E7%B3%BB%E7%BB%9F/">推荐系统</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>视频推荐系统</h1>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">606</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small194106Azz0h1758541266.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">基于 OpenSearch 构建短视频推荐系统</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">基于 OpenSearch 构建短视频推荐系统</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-06-09T07:19:42.989Z" title="发表于 2026-06-09 15:19:42">2026-06-09</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-07T10:24:16.558Z" title="更新于 2026-09-07 18:24:16">2026-09-07</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/">架构</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E6%9E%B6%E6%9E%84/%E6%8E%A8%E8%8D%90%E7%B3%BB%E7%BB%9F/">推荐系统</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>视频推荐系统</h1>
 <ul>
     <li><a href="https://pengline.cn/2026/06/1726f4eec04b4cdf873479019b5c604a">推荐系统架构总览（系统总体架构、多路召回、混合检索、多模态融合、重排策略）</a></li>
     <li><a href="https://pengline.cn/2026/06/198954be50c24c0483353bb975e882d3">阶段一：基于文本向量（文本向量化、BERT推理、双路召回、规则排序、存储架构）</a></li>
@@ -170,74 +188,74 @@
 <h2 id="系统总体架构">系统总体架构</h2>
 <p>娱乐视频推荐系统面临的核心挑战是：<strong>内容量大（亿级）、时效性强（热点更替快）、用户兴趣易变（沉浸式消费）</strong>。基于OpenSearch的向量检索能力，可以构建一个能够实时捕捉用户兴趣变化、快速响应热点，同时兼顾探索与利用平衡的推荐系统。</p>
 <p>整体架构采用经典的<strong>漏斗式设计</strong>，从数据源到最终推荐结果，逐层过滤和精化。</p>
-<pre class="mermaid">graph TB
-    subgraph "数据源层"
+<pre><code class="highlight mermaid">graph TB
+    subgraph &quot;数据源层&quot;
         A1[视频内容库]
         A2[用户行为日志]
         A3[实时点击流]
     end
     
-    subgraph "数据处理层"
-        B1[视频特征提取<br>视觉/音频/文本]
-        B2[用户画像计算<br>长期/短期/实时]
-        B3[实时特征工程<br>行为序列/上下文]
+    subgraph &quot;数据处理层&quot;
+        B1[视频特征提取&lt;br/&gt;视觉/音频/文本]
+        B2[用户画像计算&lt;br/&gt;长期/短期/实时]
+        B3[实时特征工程&lt;br/&gt;行为序列/上下文]
     end
     
-    subgraph "存储层"
-        C1[(原始数据存储<br>S3/OSS)]
-        C2[(用户画像存储<br>DynamoDB/HBase)]
-        C3[(向量索引集群<br>OpenSearch)]
+    subgraph &quot;存储层&quot;
+        C1[(原始数据存储&lt;br/&gt;S3/OSS)]
+        C2[(用户画像存储&lt;br/&gt;DynamoDB/HBase)]
+        C3[(向量索引集群&lt;br/&gt;OpenSearch)]
     end
     
-    subgraph "召回层"
+    subgraph &quot;召回层&quot;
         D1[I2I召回]
         D2[U2I召回]
         D3[热搜召回]
         D4[冷启动召回]
     end
     
-    subgraph "粗排层"
+    subgraph &quot;粗排层&quot;
         P1[粗排过滤]
         P2[轻量级模型]
         P3[候选压缩]
     end
     
-    subgraph "精排层"
+    subgraph &quot;精排层&quot;
         E1[CTR模型打分]
         E2[多目标优化]
         E3[业务规则重排]
     end
     
-    subgraph "服务层"
+    subgraph &quot;服务层&quot;
         F1[推荐API网关]
         F2[推荐编排引擎]
     end
     
-    A1 --> B1
-    A2 --> B2
-    A3 --> B3
+    A1 --&gt; B1
+    A2 --&gt; B2
+    A3 --&gt; B3
     
-    B1 --> C1
-    B2 --> C2
-    B1 --> C3
-    B3 --> C2
+    B1 --&gt; C1
+    B2 --&gt; C2
+    B1 --&gt; C3
+    B3 --&gt; C2
     
-    C3 --> D1
-    C3 --> D2
-    C3 --> D3
-    C3 --> D4
+    C3 --&gt; D1
+    C3 --&gt; D2
+    C3 --&gt; D3
+    C3 --&gt; D4
     
-    D1 --> P1
-    D2 --> P1
-    D3 --> P1
-    D4 --> P1
+    D1 --&gt; P1
+    D2 --&gt; P1
+    D3 --&gt; P1
+    D4 --&gt; P1
     
-    P1 --> E1
-    E1 --> E2
-    E2 --> E3
-    E3 --> F2
-    F1 --> F2
-    F2 --> F1</pre>
+    P1 --&gt; E1
+    E1 --&gt; E2
+    E2 --&gt; E3
+    E3 --&gt; F2
+    F1 --&gt; F2
+    F2 --&gt; F1</code></pre>
 <blockquote>
 <p>数据从左侧流入，经过处理层完成特征提取和向量化，存入OpenSearch形成可检索的向量索引。当推荐请求到达时，推荐引擎并发调用多路召回策略，从OpenSearch中快速获取候选集，经过粗排过滤和精排打分后返回最终结果。整个架构强调<strong>数据与计算分离</strong>、<strong>召回与排序解耦</strong>，便于各层独立演进和优化。</p>
 </blockquote>
@@ -245,90 +263,90 @@
 <h2 id="核心数据流程">核心数据流程</h2>
 <h3 id="视频数据全链路处理">视频数据全链路处理</h3>
 <p>视频从上传到可被推荐，需要经历完整的特征提取和向量化流程。娱乐视频的特殊性在于，仅靠标题和标签远远不够，画面的视觉内容、背景音乐的风格、台词中蕴含的信息都是重要的推荐信号。</p>
-<pre class="mermaid">flowchart TB
-    subgraph "视频上传与预处理"
-        V1[原始视频上传] --> V2[视频转码/分片]
-        V2 --> V3[触发异步特征提取任务]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;视频上传与预处理&quot;
+        V1[原始视频上传] --&gt; V2[视频转码/分片]
+        V2 --&gt; V3[触发异步特征提取任务]
     end
     
-    subgraph "视觉特征提取"
-        V4[FFmpeg均匀抽帧<br>每秒1帧或关键帧] --> V5[CV模型推理]
-        V5 --> V6[场景识别<br>海边/演唱会/城市]
-        V5 --> V7[动作识别<br>跳舞/游戏/运动]
-        V5 --> V8[物体/人脸检测<br>明星/物品/logo]
+    subgraph &quot;视觉特征提取&quot;
+        V4[FFmpeg均匀抽帧&lt;br/&gt;每秒1帧或关键帧] --&gt; V5[CV模型推理]
+        V5 --&gt; V6[场景识别&lt;br/&gt;海边/演唱会/城市]
+        V5 --&gt; V7[动作识别&lt;br/&gt;跳舞/游戏/运动]
+        V5 --&gt; V8[物体/人脸检测&lt;br/&gt;明星/物品/logo]
     end
     
-    subgraph "音频特征提取"
-        V9[音频流分离] --> V10[ASR语音识别]
-        V10 --> V11[台词文本提取]
-        V9 --> V12[BGM识别]
-        V12 --> V13[音乐风格向量<br>欢快/伤感/激昂]
+    subgraph &quot;音频特征提取&quot;
+        V9[音频流分离] --&gt; V10[ASR语音识别]
+        V10 --&gt; V11[台词文本提取]
+        V9 --&gt; V12[BGM识别]
+        V12 --&gt; V13[音乐风格向量&lt;br/&gt;欢快/伤感/激昂]
     end
     
-    subgraph "文本特征提取"
-        V14[标题/描述/标签] --> V15[文本向量化]
-        V11 --> V15
-        V16[OCR画面文字] --> V15
+    subgraph &quot;文本特征提取&quot;
+        V14[标题/描述/标签] --&gt; V15[文本向量化]
+        V11 --&gt; V15
+        V16[OCR画面文字] --&gt; V15
     end
     
-    subgraph "向量存储"
-        V17[多模态向量融合<br>加权拼接或独立存储] --> V18[(OpenSearch索引)]
+    subgraph &quot;向量存储&quot;
+        V17[多模态向量融合&lt;br/&gt;加权拼接或独立存储] --&gt; V18[(OpenSearch索引)]
     end
     
-    V3 --> V4
-    V3 --> V9
-    V3 --> V14
-    V3 --> V16
+    V3 --&gt; V4
+    V3 --&gt; V9
+    V3 --&gt; V14
+    V3 --&gt; V16
     
-    V6 --> V17
-    V7 --> V17
-    V8 --> V17
-    V13 --> V17
-    V15 --> V17</pre>
+    V6 --&gt; V17
+    V7 --&gt; V17
+    V8 --&gt; V17
+    V13 --&gt; V17
+    V15 --&gt; V17</code></pre>
 <blockquote>
 <p>不同模态的向量可以选择融合后存储为单一向量，也可以分别存储为多个向量字段。前者查询简单但灵活性差，后者支持查询时动态调整各模态权重，更适合娱乐视频场景——因为用户可能今天想找同款BGM的视频，明天想看同场景的视频。</p>
 </blockquote>
 <h3 id="用户行为实时处理">用户行为实时处理</h3>
 <p>用户的行为日志需要被实时处理，以生成动态的用户兴趣向量：</p>
-<pre class="mermaid">flowchart TB
-    subgraph "行为采集"
-        U1[播放事件] --> U2[行为消息队列]
-        U3[点赞/评论] --> U2
-        U4[关注/分享] --> U2
-        U5[快进/退出] --> U2
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;行为采集&quot;
+        U1[播放事件] --&gt; U2[行为消息队列]
+        U3[点赞/评论] --&gt; U2
+        U4[关注/分享] --&gt; U2
+        U5[快进/退出] --&gt; U2
     end
     
-    subgraph "实时计算"
-        U6[滑动窗口聚合] --> U7[行为权重计算]
-        U7 --> U8[用户兴趣向量更新]
-        U9[时间衰减因子] --> U7
+    subgraph &quot;实时计算&quot;
+        U6[滑动窗口聚合] --&gt; U7[行为权重计算]
+        U7 --&gt; U8[用户兴趣向量更新]
+        U9[时间衰减因子] --&gt; U7
     end
     
-    subgraph "存储"
+    subgraph &quot;存储&quot;
         U10[(用户画像DB)]
         U11[(用户向量缓存)]
     end
     
-    subgraph "特征输出"
-        U12[长期兴趣向量<br>30天窗口]
-        U13[中期兴趣向量<br>7天窗口]
-        U14[短期兴趣向量<br>1小时窗口]
-        U15[实时兴趣向量<br>最近10次行为]
+    subgraph &quot;特征输出&quot;
+        U12[长期兴趣向量&lt;br/&gt;30天窗口]
+        U13[中期兴趣向量&lt;br/&gt;7天窗口]
+        U14[短期兴趣向量&lt;br/&gt;1小时窗口]
+        U15[实时兴趣向量&lt;br/&gt;最近10次行为]
     end
     
-    U2 --> U6
-    U8 --> U10
-    U8 --> U11
+    U2 --&gt; U6
+    U8 --&gt; U10
+    U8 --&gt; U11
     
-    U10 --> U12
-    U10 --> U13
-    U10 --> U14
-    U11 --> U15</pre>
+    U10 --&gt; U12
+    U10 --&gt; U13
+    U10 --&gt; U14
+    U11 --&gt; U15</code></pre>
 <p>用户行为的权重设计是核心。在娱乐视频场景中，不同行为的信号强度差异很大：</p>
 <figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 行为权重配置示例</span></span><br><span class="line">BEHAVIOR_WEIGHTS = &#123;</span><br><span class="line">    <span class="string">&quot;complete_play&quot;</span>: <span class="number">1.0</span>,      <span class="comment"># 完播：强正向信号</span></span><br><span class="line">    <span class="string">&quot;like&quot;</span>: <span class="number">0.9</span>,                <span class="comment"># 点赞：明确喜好</span></span><br><span class="line">    <span class="string">&quot;share&quot;</span>: <span class="number">1.2</span>,               <span class="comment"># 分享：强烈推荐意愿</span></span><br><span class="line">    <span class="string">&quot;follow_author&quot;</span>: <span class="number">1.1</span>,      <span class="comment"># 关注：对创作者认可</span></span><br><span class="line">    <span class="string">&quot;comment&quot;</span>: <span class="number">0.7</span>,             <span class="comment"># 评论：参与度高</span></span><br><span class="line">    <span class="string">&quot;replay&quot;</span>: <span class="number">0.8</span>,              <span class="comment"># 重播：内容有重复消费价值</span></span><br><span class="line">    <span class="string">&quot;half_play&quot;</span>: <span class="number">0.3</span>,           <span class="comment"># 播放过半：有一定兴趣</span></span><br><span class="line">    <span class="string">&quot;quick_skip&quot;</span>: -<span class="number">0.5</span>,         <span class="comment"># 快速划过：负向信号</span></span><br><span class="line">    <span class="string">&quot;not_interested&quot;</span>: -<span class="number">1.0</span>      <span class="comment"># 明确不感兴趣：强负向</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <h3 id="在线推荐请求处理">在线推荐请求处理</h3>
 <p>用户刷新推荐流时，整个系统的协作时序如下。需要特别注意的是，多路召回是<strong>并发执行</strong>的，这是保证推荐延迟在可接受范围内的关键。</p>
-<pre class="mermaid">sequenceDiagram
+<pre><code class="highlight mermaid">sequenceDiagram
     participant App as 客户端
     participant Gateway as API网关
     participant Engine as 推荐引擎
@@ -337,42 +355,42 @@
     participant PreRank as 粗排服务
     participant Rank as 精排服务
     
-    App->>Gateway: 请求推荐(用户ID, 设备信息)
-    Gateway->>Engine: 转发请求，附带鉴权信息
+    App-&gt;&gt;Gateway: 请求推荐(用户ID, 设备信息)
+    Gateway-&gt;&gt;Engine: 转发请求，附带鉴权信息
     
     par 并行获取上下文数据
-        Engine->>Cache: 获取用户短期兴趣向量
-        Engine->>Cache: 获取最近观看历史(最近20条)
-        Engine->>Cache: 获取负反馈列表(不感兴趣)
+        Engine-&gt;&gt;Cache: 获取用户短期兴趣向量
+        Engine-&gt;&gt;Cache: 获取最近观看历史(最近20条)
+        Engine-&gt;&gt;Cache: 获取负反馈列表(不感兴趣)
     end
     
-    Engine->>Engine: 构建多路召回请求参数
+    Engine-&gt;&gt;Engine: 构建多路召回请求参数
     
     par 多路并发召回(全部请求OpenSearch)
-        Engine->>OS: I2I召回(基于最近观看的视频)
-        Engine->>OS: U2I召回(基于用户兴趣向量)
-        Engine->>OS: 热搜召回(全局热门，不分用户)
-        Engine->>OS: 探索召回(冷启动内容桶)
+        Engine-&gt;&gt;OS: I2I召回(基于最近观看的视频)
+        Engine-&gt;&gt;OS: U2I召回(基于用户兴趣向量)
+        Engine-&gt;&gt;OS: 热搜召回(全局热门，不分用户)
+        Engine-&gt;&gt;OS: 探索召回(冷启动内容桶)
     end
     
-    OS-->>Engine: 各路返回100条，共400条
+    OS--&gt;&gt;Engine: 各路返回100条，共400条
     
-    Engine->>Engine: 合并去重，得到300条左右
+    Engine-&gt;&gt;Engine: 合并去重，得到300条左右
     
-    Engine->>PreRank: 粗排过滤(300→80)
-    PreRank->>PreRank: 轻量级DNN推理
-    PreRank-->>Engine: 返回80条候选
+    Engine-&gt;&gt;PreRank: 粗排过滤(300→80)
+    PreRank-&gt;&gt;PreRank: 轻量级DNN推理
+    PreRank--&gt;&gt;Engine: 返回80条候选
     
-    Engine->>Rank: 精排打分(80→20)
-    Rank->>Rank: GBDT/DIN模型推理
-    Rank-->>Engine: 返回20条精排结果
+    Engine-&gt;&gt;Rank: 精排打分(80→20)
+    Rank-&gt;&gt;Rank: GBDT/DIN模型推理
+    Rank--&gt;&gt;Engine: 返回20条精排结果
     
-    Engine->>Engine: 多样性重排 + 业务规则过滤
+    Engine-&gt;&gt;Engine: 多样性重排 + 业务规则过滤
     
-    Engine-->>Gateway: 返回Top 20推荐列表
-    Gateway-->>App: 返回结果，附带请求ID用于追踪
+    Engine--&gt;&gt;Gateway: 返回Top 20推荐列表
+    Gateway--&gt;&gt;App: 返回结果，附带请求ID用于追踪
     
-    Note over App,Rank: 整个过程目标延迟：< 200ms</pre>
+    Note over App,Rank: 整个过程目标延迟：&lt; 200ms</code></pre>
 <blockquote>
 <p><strong>延迟分析</strong>：整个链路中，OpenSearch的多路召回约占50-80ms（并发执行），粗排约占10-15ms，精排约占30-40ms，其余为网络传输和业务逻辑开销。总体控制在200ms以内是可行的。</p>
 </blockquote>
@@ -412,25 +430,25 @@ $$</p>
 <h3 id="滑动窗口用户向量">滑动窗口用户向量</h3>
 <p>用户兴趣是动态变化的，用户早上可能在看知识科普，晚上可能切换到搞笑娱乐。传统的按天更新用户画像的方式无法捕捉这种变化。滑动窗口机制可以实时追踪用户兴趣的演变。</p>
 <p><strong>滑动窗口机制</strong>是解决这个问题的有效手段：维护用户最近N次（如20次）有效观看记录的兴趣向量，用户每产生一次新的观看，就重新计算这N个向量的加权平均。计算时采用时间衰减——越近的行为权重越高，越旧的行为权重越低。</p>
-<pre class="mermaid">flowchart LR
-    subgraph "行为序列"
-        A[观看视频1] --> B[观看视频2] --> C[观看视频3] --> D[...]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph &quot;行为序列&quot;
+        A[观看视频1] --&gt; B[观看视频2] --&gt; C[观看视频3] --&gt; D[...]
     end
     
-    subgraph "滑动窗口（最近20次）"
-        W1[视频向量 权重0.8] --> W2[视频向量 权重0.9] --> W3[视频向量 权重1.0]
+    subgraph &quot;滑动窗口（最近20次）&quot;
+        W1[视频向量 权重0.8] --&gt; W2[视频向量 权重0.9] --&gt; W3[视频向量 权重1.0]
     end
     
-    subgraph "加权融合"
-        W1 --> Sum[加权平均]
-        W2 --> Sum
-        W3 --> Sum
-        Sum --> UserVec[用户兴趣向量]
+    subgraph &quot;加权融合&quot;
+        W1 --&gt; Sum[加权平均]
+        W2 --&gt; Sum
+        W3 --&gt; Sum
+        Sum --&gt; UserVec[用户兴趣向量]
     end
     
-    D --> W1
-    D --> W2
-    D --> W3</pre>
+    D --&gt; W1
+    D --&gt; W2
+    D --&gt; W3</code></pre>
 <blockquote>
 <p>这个机制的另一个好处是响应快速。用户看完三个跳舞视频后，兴趣向量中跳舞相关维度的权重就会显著上升，下一次请求时OpenSearch就能召回更多跳舞内容。</p>
 </blockquote>
@@ -474,33 +492,33 @@ $$</p>
 <blockquote>
 <p><strong>E&amp;E机制的核心思想</strong>：在不严重损害用户体验的前提下，主动推荐一些用户未曾接触过的新内容，探索用户的潜在兴趣。</p>
 </blockquote>
-<pre class="mermaid">flowchart TB
-    subgraph "流量分配"
-        R[推荐请求] --> E[探索分支 10%]
-        R --> U[利用分支 90%]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;流量分配&quot;
+        R[推荐请求] --&gt; E[探索分支 10%]
+        R --&gt; U[利用分支 90%]
     end
     
-    subgraph "探索策略"
-        E --> N[新视频噪声扰动]
-        E --> L[长尾内容桶]
-        N --> M[曝光]
-        L --> M
+    subgraph &quot;探索策略&quot;
+        E --&gt; N[新视频噪声扰动]
+        E --&gt; L[长尾内容桶]
+        N --&gt; M[曝光]
+        L --&gt; M
     end
     
-    subgraph "利用策略"
-        U --> I[I2I召回]
-        U --> U2[U2I召回]
-        U --> H[热搜召回]
-        I --> M
-        U2 --> M
-        H --> M
+    subgraph &quot;利用策略&quot;
+        U --&gt; I[I2I召回]
+        U --&gt; U2[U2I召回]
+        U --&gt; H[热搜召回]
+        I --&gt; M
+        U2 --&gt; M
+        H --&gt; M
     end
     
-    subgraph "反馈闭环"
-        M --> F[用户反馈]
-        F --> |正反馈| Up[提高探索比例]
-        F --> |负反馈| Down[降低探索比例]
-    end</pre>
+    subgraph &quot;反馈闭环&quot;
+        M --&gt; F[用户反馈]
+        F --&gt; |正反馈| Up[提高探索比例]
+        F --&gt; |负反馈| Down[降低探索比例]
+    end</code></pre>
 <p>具体实现上，可以从一下维度入手：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
@@ -515,27 +533,27 @@ $$</p>
 </ul>
 <h3 id="多样性重排算法（MMR）">多样性重排算法（MMR）</h3>
 <p>即使召回和精排都做得很好，推荐结果仍然可能出现问题——同质化。连续5个跳舞视频、连续3个同一作者的作品，都会让用户感到疲劳。避免推荐结果同质化是提升用户体验的关键。MMR（最大边际相关性）算法可以在相关性和多样性之间取得平衡。</p>
-<pre class="mermaid">flowchart LR
-    subgraph "输入"
-        C[候选集 300条<br>带精排分数]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph &quot;输入&quot;
+        C[候选集 300条&lt;br/&gt;带精排分数]
     end
     
-    subgraph "MMR重排"
-        First[选择最高分视频] --> Loop[循环选择]
-        Loop --> Rel[计算相关性分]
-        Loop --> Div[计算与已选最大相似度]
-        Rel --> Score[MMR分数 = λ×相关 - （1-λ）× 相似]
-        Div --> Score
-        Score --> Select[选择最高分]
-        Select --> Loop
+    subgraph &quot;MMR重排&quot;
+        First[选择最高分视频] --&gt; Loop[循环选择]
+        Loop --&gt; Rel[计算相关性分]
+        Loop --&gt; Div[计算与已选最大相似度]
+        Rel --&gt; Score[MMR分数 = λ×相关 - （1-λ）× 相似]
+        Div --&gt; Score
+        Score --&gt; Select[选择最高分]
+        Select --&gt; Loop
     end
     
-    subgraph "输出"
+    subgraph &quot;输出&quot;
         R[Top 20 多样化列表]
     end
     
-    C --> First
-    Loop --> |完成| R</pre>
+    C --&gt; First
+    Loop --&gt; |完成| R</code></pre>
 <p><strong>MMR（最大边际相关性）重排</strong>是解决同质化问题的经典算法。</p>
 <p>它的核心思想是：在选择推荐结果时，既要考虑视频本身的相关性，也要考虑与已选结果的差异性。具体来说，每选择一条视频加入最终列表，就计算它与已选列表中所有视频的相似度，相似度越高则被选中的可能性越低。</p>
 <p><strong>MMR公式</strong>：<br>
@@ -576,33 +594,33 @@ $$</p>
 <p><strong>文本模态</strong>：包括标题、描述、用户标签，以及ASR转写的台词文本。这部分通过BERT等模型编码为768维向量。</p>
 </li>
 </ul>
-<pre class="mermaid">graph LR
-    subgraph "视频输入"
+<pre><code class="highlight mermaid">graph LR
+    subgraph &quot;视频输入&quot;
         V[原始视频]
     end
     
-    subgraph "模态提取"
-        V1[视觉流] --> Vision[CV模型]
-        V2[音频流] --> Audio[ASR + BGM]
-        V3[文本流] --> Text[BERT]
+    subgraph &quot;模态提取&quot;
+        V1[视觉流] --&gt; Vision[CV模型]
+        V2[音频流] --&gt; Audio[ASR + BGM]
+        V3[文本流] --&gt; Text[BERT]
     end
     
-    subgraph "向量表示"
-        Vision --> VV[视觉向量 512维]
-        Audio --> AV[音频向量 256维]
-        Text --> TV[文本向量 768维]
+    subgraph &quot;向量表示&quot;
+        Vision --&gt; VV[视觉向量 512维]
+        Audio --&gt; AV[音频向量 256维]
+        Text --&gt; TV[文本向量 768维]
     end
     
-    subgraph "融合策略"
-        VV --> Fusion[动态加权融合]
-        AV --> Fusion
-        TV --> Fusion
-        Fusion --> Query[查询向量]
+    subgraph &quot;融合策略&quot;
+        VV --&gt; Fusion[动态加权融合]
+        AV --&gt; Fusion
+        TV --&gt; Fusion
+        Fusion --&gt; Query[查询向量]
     end
     
-    V --> V1
-    V --> V2
-    V --> V3</pre>
+    V --&gt; V1
+    V --&gt; V2
+    V --&gt; V3</code></pre>
 <blockquote>
 <p><strong>存储策略</strong>：建议将三种向量分别存储为OpenSearch中的三个独立字段，而不是预先融合。原因在于，用户在不同场景下的兴趣偏好不同——听歌识曲场景下音频权重应更高，寻找同款拍摄地点场景下视觉权重应更高。查询时根据用户上下文动态决定各模态的权重，灵活性远高于预融合。</p>
 </blockquote>
@@ -665,8 +683,8 @@ $$</p>
 <p><strong>多语言支持</strong>：处理中英文混合的标题和标签</p>
 </li>
 </ul>
-<pre class="mermaid">flowchart TB
-    subgraph "文本来源"
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;文本来源&quot;
         T1[视频标题]
         T2[视频描述]
         T3[用户标签]
@@ -674,42 +692,42 @@ $$</p>
         T5[OCR画面文字]
     end
     
-    subgraph "文本预处理"
-        P1[分词<br>jieba/IK]
+    subgraph &quot;文本预处理&quot;
+        P1[分词&lt;br/&gt;jieba/IK]
         P2[去停用词]
-        P3[实体识别<br>人名/地名/品牌]
+        P3[实体识别&lt;br/&gt;人名/地名/品牌]
     end
     
-    subgraph "向量化"
-        V1[BERT-base-chinese<br>768维]
-        V2[Sentence-BERT<br>句级别向量]
-        V3[TF-IDF<br>关键词权重]
+    subgraph &quot;向量化&quot;
+        V1[BERT-base-chinese&lt;br/&gt;768维]
+        V2[Sentence-BERT&lt;br/&gt;句级别向量]
+        V3[TF-IDF&lt;br/&gt;关键词权重]
     end
     
-    subgraph "后处理"
-        R1[平均池化<br>多源融合]
+    subgraph &quot;后处理&quot;
+        R1[平均池化&lt;br/&gt;多源融合]
         R2[向量归一化]
     end
     
-    subgraph "输出"
+    subgraph &quot;输出&quot;
         O[(text_vector字段)]
     end
     
-    T1 --> P1
-    T2 --> P1
-    T3 --> P1
-    T4 --> P1
-    T5 --> P1
+    T1 --&gt; P1
+    T2 --&gt; P1
+    T3 --&gt; P1
+    T4 --&gt; P1
+    T5 --&gt; P1
     
-    P1 --> V1
-    P1 --> V2
-    P1 --> V3
+    P1 --&gt; V1
+    P1 --&gt; V2
+    P1 --&gt; V3
     
-    V1 --> R1
-    V2 --> R1
-    V3 --> R1
-    R1 --> R2
-    R2 --> O</pre>
+    V1 --&gt; R1
+    V2 --&gt; R1
+    V3 --&gt; R1
+    R1 --&gt; R2
+    R2 --&gt; O</code></pre>
 <table>
 <thead>
 <tr>
@@ -774,48 +792,48 @@ $$</p>
 <p><strong>物体关联推荐</strong>：识别出视频中的特定商品或物品，关联推荐</p>
 </li>
 </ul>
-<pre class="mermaid">flowchart TB
-    subgraph "输入"
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;输入&quot;
         V[原始视频文件]
     end
     
-    subgraph "抽帧策略"
-        F1[均匀抽帧<br>每秒1帧]
-        F2[关键帧提取<br>场景切换处]
-        F3[动态抽帧<br>运动剧烈时加密]
+    subgraph &quot;抽帧策略&quot;
+        F1[均匀抽帧&lt;br/&gt;每秒1帧]
+        F2[关键帧提取&lt;br/&gt;场景切换处]
+        F3[动态抽帧&lt;br/&gt;运动剧烈时加密]
     end
     
-    subgraph "模型推理"
-        M1[场景分类模型<br>ResNet50]
-        M2[动作识别模型<br>VideoMAE]
-        M3[人脸识别模型<br>ArcFace]
-        M4[物体检测模型<br>YOLOv8]
+    subgraph &quot;模型推理&quot;
+        M1[场景分类模型&lt;br/&gt;ResNet50]
+        M2[动作识别模型&lt;br/&gt;VideoMAE]
+        M3[人脸识别模型&lt;br/&gt;ArcFace]
+        M4[物体检测模型&lt;br/&gt;YOLOv8]
     end
     
-    subgraph "特征聚合"
-        A1[帧级特征] --> A2[时序池化<br>平均/最大/注意力]
-        A2 --> A3[视频级视觉向量<br>512维]
+    subgraph &quot;特征聚合&quot;
+        A1[帧级特征] --&gt; A2[时序池化&lt;br/&gt;平均/最大/注意力]
+        A2 --&gt; A3[视频级视觉向量&lt;br/&gt;512维]
     end
     
-    subgraph "输出"
+    subgraph &quot;输出&quot;
         O[(visual_vector字段)]
     end
     
-    V --> F1
-    V --> F2
-    V --> F3
+    V --&gt; F1
+    V --&gt; F2
+    V --&gt; F3
     
-    F1 --> M1
-    F1 --> M2
-    F1 --> M3
-    F1 --> M4
+    F1 --&gt; M1
+    F1 --&gt; M2
+    F1 --&gt; M3
+    F1 --&gt; M4
     
-    M1 --> A1
-    M2 --> A1
-    M3 --> A1
-    M4 --> A1
+    M1 --&gt; A1
+    M2 --&gt; A1
+    M3 --&gt; A1
+    M4 --&gt; A1
     
-    A3 --> O</pre>
+    A3 --&gt; O</code></pre>
 <table>
 <thead>
 <tr>
@@ -880,51 +898,51 @@ $$</p>
 <p><strong>情绪氛围推荐</strong>：识别视频的欢乐/伤感氛围，匹配用户情绪状态</p>
 </li>
 </ul>
-<pre class="mermaid">flowchart TB
-    subgraph "输入"
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;输入&quot;
         A[视频文件]
     end
     
-    subgraph "音频分离"
-        S1[FFmpeg提取音频流] --> S2[人声分离<br>Spleeter/Demucs]
-        S2 --> S3[纯人声轨]
-        S2 --> S4[背景音乐轨]
-        S2 --> S5[音效轨]
+    subgraph &quot;音频分离&quot;
+        S1[FFmpeg提取音频流] --&gt; S2[人声分离&lt;br/&gt;Spleeter/Demucs]
+        S2 --&gt; S3[纯人声轨]
+        S2 --&gt; S4[背景音乐轨]
+        S2 --&gt; S5[音效轨]
     end
     
-    subgraph "语音理解"
-        V1[ASR语音识别<br>Whisper/Paraformer] --> V2[台词文本]
-        V2 --> V3[文本向量化]
-        V3 --> V4[语义理解<br>情感/关键词]
+    subgraph &quot;语音理解&quot;
+        V1[ASR语音识别&lt;br/&gt;Whisper/Paraformer] --&gt; V2[台词文本]
+        V2 --&gt; V3[文本向量化]
+        V3 --&gt; V4[语义理解&lt;br/&gt;情感/关键词]
     end
     
-    subgraph "音乐理解"
-        M1[BGM识别<br>MvTagger] --> M2[音乐风格<br>摇滚/电子/古典]
-        M1 --> M3[情绪标签<br>欢快/悲伤/激昂]
-        M1 --> M4[节奏特征<br>BPM节拍]
+    subgraph &quot;音乐理解&quot;
+        M1[BGM识别&lt;br/&gt;MvTagger] --&gt; M2[音乐风格&lt;br/&gt;摇滚/电子/古典]
+        M1 --&gt; M3[情绪标签&lt;br/&gt;欢快/悲伤/激昂]
+        M1 --&gt; M4[节奏特征&lt;br/&gt;BPM节拍]
     end
     
-    subgraph "特征融合"
-        F1[人声向量] --> F3[音频特征融合]
-        F2[音乐特征] --> F3
-        F3 --> F4[音频向量<br>256维]
+    subgraph &quot;特征融合&quot;
+        F1[人声向量] --&gt; F3[音频特征融合]
+        F2[音乐特征] --&gt; F3
+        F3 --&gt; F4[音频向量&lt;br/&gt;256维]
     end
     
-    subgraph "输出"
+    subgraph &quot;输出&quot;
         O[(audio_vector字段)]
     end
     
-    A --> S1
-    S3 --> V1
-    S4 --> M1
+    A --&gt; S1
+    S3 --&gt; V1
+    S4 --&gt; M1
     
-    V2 --> V3
-    V3 --> F1
-    M2 --> F2
-    M3 --> F2
-    M4 --> F2
+    V2 --&gt; V3
+    V3 --&gt; F1
+    M2 --&gt; F2
+    M3 --&gt; F2
+    M4 --&gt; F2
     
-    F4 --> O</pre>
+    F4 --&gt; O</code></pre>
 <table>
 <thead>
 <tr>
@@ -974,37 +992,37 @@ $$</p>
 </li>
 </ul>
 <h3 id="三模态融合策略">三模态融合策略</h3>
-<pre class="mermaid">flowchart TB
-    subgraph "离线存储"
-        VV[(visual_vector<br>512维)]
-        AV[(audio_vector<br>256维)]
-        TV[(text_vector<br>768维)]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;离线存储&quot;
+        VV[(visual_vector&lt;br/&gt;512维)]
+        AV[(audio_vector&lt;br/&gt;256维)]
+        TV[(text_vector&lt;br/&gt;768维)]
     end
     
-    subgraph "在线查询"
-        Q[推荐请求] --> W[权重计算引擎]
-        W --> |场景识别| W1{当前场景}
+    subgraph &quot;在线查询&quot;
+        Q[推荐请求] --&gt; W[权重计算引擎]
+        W --&gt; |场景识别| W1&#123;当前场景&#125;
     end
     
-    subgraph "权重决策"
-        W1 --> |音乐偏好用户| WA[audio权重↑]
-        W1 --> |视觉偏好用户| WV[visual权重↑]
-        W1 --> |文本搜索场景| WT[text权重↑]
+    subgraph &quot;权重决策&quot;
+        W1 --&gt; |音乐偏好用户| WA[audio权重↑]
+        W1 --&gt; |视觉偏好用户| WV[visual权重↑]
+        W1 --&gt; |文本搜索场景| WT[text权重↑]
     end
     
-    subgraph "向量融合"
-        VV --> Fusion[加权平均融合]
-        AV --> Fusion
-        TV --> Fusion
-        WA --> Fusion
-        WV --> Fusion
-        WT --> Fusion
-        Fusion --> QueryVec[查询向量]
+    subgraph &quot;向量融合&quot;
+        VV --&gt; Fusion[加权平均融合]
+        AV --&gt; Fusion
+        TV --&gt; Fusion
+        WA --&gt; Fusion
+        WV --&gt; Fusion
+        WT --&gt; Fusion
+        Fusion --&gt; QueryVec[查询向量]
     end
     
-    subgraph "检索"
-        QueryVec --> OS[(OpenSearch<br>k-NN检索)]
-    end</pre>
+    subgraph &quot;检索&quot;
+        QueryVec --&gt; OS[(OpenSearch&lt;br/&gt;k-NN检索)]
+    end</code></pre>
 <p><strong>权重决策示例</strong></p>
 <table>
 <thead>
@@ -1103,24 +1121,24 @@ $$</p>
 <p>单一召回策略往往存在盲区，多路召回通过组合不同类型的信号来提高召回覆盖率和准确性。</p>
 <p>不同召回路径的结果需要合并去重，并送入精排阶段。</p>
 </blockquote>
-<pre class="mermaid">graph TB
-    subgraph "召回源"
-        I2I[I2I召回<br>基于视频相似度]
-        U2I[U2I召回<br>基于用户向量]
-        Hot[热搜召回<br>全局热门]
-        Explore[探索召回<br>冷启动/长尾]
+<pre><code class="highlight mermaid">graph TB
+    subgraph &quot;召回源&quot;
+        I2I[I2I召回&lt;br/&gt;基于视频相似度]
+        U2I[U2I召回&lt;br/&gt;基于用户向量]
+        Hot[热搜召回&lt;br/&gt;全局热门]
+        Explore[探索召回&lt;br/&gt;冷启动/长尾]
     end
     
-    subgraph "配额"
-        I2I --> |100条| Merge
-        U2I --> |100条| Merge
-        Hot --> |50条| Merge
-        Explore --> |50条| Merge
+    subgraph &quot;配额&quot;
+        I2I --&gt; |100条| Merge
+        U2I --&gt; |100条| Merge
+        Hot --&gt; |50条| Merge
+        Explore --&gt; |50条| Merge
     end
     
-    subgraph "融合"
-        Merge[合并去重] --> PreRank[送入粗排 300条]
-    end</pre>
+    subgraph &quot;融合&quot;
+        Merge[合并去重] --&gt; PreRank[送入粗排 300条]
+    end</code></pre>
 <table>
 <thead>
 <tr>
@@ -1208,49 +1226,49 @@ $$</p>
 </table>
 <h3 id="I2I（Item-to-Item）召回">I2I（Item to Item）召回</h3>
 <p>I2I召回的核心逻辑是：<strong>用户喜欢物品A，那么也应该喜欢与A相似的物品B</strong>。这里的“相似”基于内容向量计算。在娱乐视频场景中，用户刚看完一个视频，I2I负责找出“下一个最相似”的视频，实现连续观看体验。</p>
-<pre class="mermaid">flowchart LR
-    subgraph "用户行为"
-        U[用户] --> W[观看视频V]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph &quot;用户行为&quot;
+        U[用户] --&gt; W[观看视频V]
     end
     
-    subgraph "OpenSearch查询"
-        W --> Q[取视频V的向量]
-        Q --> OS[(OpenSearch<br>k-NN查询)]
+    subgraph &quot;OpenSearch查询&quot;
+        W --&gt; Q[取视频V的向量]
+        Q --&gt; OS[(OpenSearch&lt;br/&gt;k-NN查询)]
     end
     
-    subgraph "检索结果"
-        OS --> R1[视频V1 相似度0.95]
-        OS --> R2[视频V2 相似度0.89]
-        OS --> R3[视频V3 相似度0.87]
-        OS --> R4[...]
+    subgraph &quot;检索结果&quot;
+        OS --&gt; R1[视频V1 相似度0.95]
+        OS --&gt; R2[视频V2 相似度0.89]
+        OS --&gt; R3[视频V3 相似度0.87]
+        OS --&gt; R4[...]
     end
     
-    subgraph "输出"
-        R1 --> Out[返回Top 100<br>作为召回结果]
-        R2 --> Out
-        R3 --> Out
-    end</pre>
+    subgraph &quot;输出&quot;
+        R1 --&gt; Out[返回Top 100&lt;br/&gt;作为召回结果]
+        R2 --&gt; Out
+        R3 --&gt; Out
+    end</code></pre>
 <blockquote>
 <p>基于用户当前或最近观看的视频，找出与之相似的其他视频。这是最经典的协同过滤思路，适合&quot;看了这个也想看那个&quot;的场景。例如用户看完一个搞笑合集，I2I会推荐其他搞笑视频。这路召回的优点是相关性高、用户接受度好，缺点是容易陷入同质化循环。</p>
 </blockquote>
 <p><strong>实现流程</strong></p>
-<pre class="mermaid">sequenceDiagram
+<pre><code class="highlight mermaid">sequenceDiagram
     participant User as 用户
     participant Engine as 推荐引擎
     participant Cache as 向量缓存
     participant OS as OpenSearch
     
-    User->>Engine: 请求推荐
-    Engine->>Cache: 获取最近观看的视频ID
-    Cache-->>Engine: [video_id_1, video_id_2, ...]
+    User-&gt;&gt;Engine: 请求推荐
+    Engine-&gt;&gt;Cache: 获取最近观看的视频ID
+    Cache--&gt;&gt;Engine: [video_id_1, video_id_2, ...]
     
     loop 对每个观看过的视频
-        Engine->>OS: I2I查询(k=50)
-        OS-->>Engine: 返回相似视频列表
+        Engine-&gt;&gt;OS: I2I查询(k=50)
+        OS--&gt;&gt;Engine: 返回相似视频列表
     end
     
-    Engine->>Engine: 合并去重，按相似度排序
-    Engine-->>User: 返回I2I召回结果</pre>
+    Engine-&gt;&gt;Engine: 合并去重，按相似度排序
+    Engine--&gt;&gt;User: 返回I2I召回结果</code></pre>
 <figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;knn&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;text_vector&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;vector&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="number">0.12</span><span class="punctuation">,</span> <span class="number">-0.34</span><span class="punctuation">,</span> ...<span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;k&quot;</span><span class="punctuation">:</span> <span class="number">100</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;filter&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;bool&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;must_not&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">        <span class="punctuation">&#123;</span> <span class="attr">&quot;terms&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;video_id&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;已观看列表&quot;</span><span class="punctuation">]</span> <span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">]</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
 <p><strong>适用场景</strong></p>
 <table>
@@ -1304,35 +1322,35 @@ $$</p>
 </table>
 <h3 id="U2I（User-to-Item）召回">U2I（User to Item）召回</h3>
 <p>U2I召回的核心逻辑是：<strong>构建用户兴趣向量，直接从全库中检索最匹配的视频</strong>。用户向量是用户历史行为的聚合表示，代表了用户的综合兴趣画像。这种方式不受限于用户已有的观看历史，能发现用户可能感兴趣的新内容。</p>
-<pre class="mermaid">flowchart LR
-    subgraph "用户画像构建"
-        H[用户历史行为] --> A[行为加权]
-        A --> UVec[用户兴趣向量]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph &quot;用户画像构建&quot;
+        H[用户历史行为] --&gt; A[行为加权]
+        A --&gt; UVec[用户兴趣向量]
     end
     
-    subgraph "OpenSearch查询"
-        UVec --> Q[k-NN查询]
-        Q --> OS[(OpenSearch<br>向量索引)]
+    subgraph &quot;OpenSearch查询&quot;
+        UVec --&gt; Q[k-NN查询]
+        Q --&gt; OS[(OpenSearch&lt;br/&gt;向量索引)]
     end
     
-    subgraph "检索结果"
-        OS --> R1[视频V1 相似度0.92]
-        OS --> R2[视频V2 相似度0.88]
-        OS --> R3[视频V3 相似度0.85]
-        OS --> R4[...]
+    subgraph &quot;检索结果&quot;
+        OS --&gt; R1[视频V1 相似度0.92]
+        OS --&gt; R2[视频V2 相似度0.88]
+        OS --&gt; R3[视频V3 相似度0.85]
+        OS --&gt; R4[...]
     end
     
-    subgraph "输出"
-        R1 --> Out[返回Top 100]
-        R2 --> Out
-        R3 --> Out
-    end</pre>
+    subgraph &quot;输出&quot;
+        R1 --&gt; Out[返回Top 100]
+        R2 --&gt; Out
+        R3 --&gt; Out
+    end</code></pre>
 <blockquote>
 <p>直接基于用户的兴趣向量，从全库中检索最匹配的视频。用户的兴趣向量是通过历史观看记录计算得出的长期画像。这路召回的优点是能发现用户可能喜欢但从未看过的新内容，缺点是冷启动用户效果差。</p>
 </blockquote>
 <p><strong>用户向量构建流程</strong></p>
-<pre class="mermaid">flowchart TB
-    subgraph "行为采集"
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;行为采集&quot;
         B1[完播 +1.0]
         B2[点赞 +0.9]
         B3[分享 +1.2]
@@ -1340,24 +1358,24 @@ $$</p>
         B5[快进 -0.5]
     end
     
-    subgraph "视频向量获取"
-        V1[视频A 向量] --> W1[× 权重1.0]
-        V2[视频B 向量] --> W2[× 权重0.9]
-        V3[视频C 向量] --> W3[× 权重1.2]
+    subgraph &quot;视频向量获取&quot;
+        V1[视频A 向量] --&gt; W1[× 权重1.0]
+        V2[视频B 向量] --&gt; W2[× 权重0.9]
+        V3[视频C 向量] --&gt; W3[× 权重1.2]
     end
     
-    subgraph "加权融合"
-        W1 --> Sum[加权求和]
-        W2 --> Sum
-        W3 --> Sum
-        Sum --> Norm[向量归一化]
+    subgraph &quot;加权融合&quot;
+        W1 --&gt; Sum[加权求和]
+        W2 --&gt; Sum
+        W3 --&gt; Sum
+        Sum --&gt; Norm[向量归一化]
     end
     
-    subgraph "时间衰减"
-        T[时间衰减因子] --> Sum
+    subgraph &quot;时间衰减&quot;
+        T[时间衰减因子] --&gt; Sum
     end
     
-    Norm --> UserVec[用户兴趣向量]</pre>
+    Norm --&gt; UserVec[用户兴趣向量]</code></pre>
 <p><strong>多时间窗口用户向量</strong></p>
 <table>
 <thead>
@@ -1447,21 +1465,21 @@ $$</p>
 </table>
 <h3 id="热搜召回（Hot-Popular）">热搜召回（Hot/Popular）</h3>
 <p>热搜召回是最简单的召回策略：<strong>返回全局热门的视频，不针对特定用户做个性化</strong>。它的价值在于兜底和趋势发现。当个性化召回效果不佳时，热搜内容能保证用户总有内容可看；同时，热搜也是用户发现流行趋势的窗口。</p>
-<pre class="mermaid">flowchart LR
-    subgraph "热度计算"
-        V1[播放量] --> Score[热度分数]
-        V2[点赞量] --> Score
-        V3[分享量] --> Score
-        V4[时间衰减] --> Score
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph &quot;热度计算&quot;
+        V1[播放量] --&gt; Score[热度分数]
+        V2[点赞量] --&gt; Score
+        V3[分享量] --&gt; Score
+        V4[时间衰减] --&gt; Score
     end
     
-    subgraph "排序"
-        Score --> Sort[按热度分数排序]
+    subgraph &quot;排序&quot;
+        Score --&gt; Sort[按热度分数排序]
     end
     
-    subgraph "输出"
-        Sort --> Top[Top 100 热门视频]
-    end</pre>
+    subgraph &quot;输出&quot;
+        Sort --&gt; Top[Top 100 热门视频]
+    end</code></pre>
 <blockquote>
 <p>全局热门的视频，不针对特定用户做个性化。这路召回的目的是兜底——当个性化召回效果不佳时，确保用户总能刷到高质量内容。同时，热搜内容也是发现新流行趋势的窗口。</p>
 </blockquote>
@@ -1474,17 +1492,17 @@ $$<br>
 timeDecay = e^\frac{-ageHours} {72}<br>
 $$</p>
 <p><strong>实现方式</strong></p>
-<pre class="mermaid">flowchart TB
-    subgraph "离线计算"
-        O1[每小时统计] --> O2[计算热度分数]
-        O2 --> O3[更新热门视频列表]
-        O3 --> O4[(OpenSearch<br>hot_score字段)]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;离线计算&quot;
+        O1[每小时统计] --&gt; O2[计算热度分数]
+        O2 --&gt; O3[更新热门视频列表]
+        O3 --&gt; O4[(OpenSearch&lt;br/&gt;hot_score字段)]
     end
     
-    subgraph "在线查询"
-        Q1[推荐请求] --> Q2[OpenSearch查询<br>按hot_score降序]
-        Q2 --> Q3[返回Top 100]
-    end</pre>
+    subgraph &quot;在线查询&quot;
+        Q1[推荐请求] --&gt; Q2[OpenSearch查询&lt;br/&gt;按hot_score降序]
+        Q2 --&gt; Q3[返回Top 100]
+    end</code></pre>
 <p><strong>适用场景</strong></p>
 <table>
 <thead>
@@ -1542,70 +1560,71 @@ $$</p>
 </table>
 <h3 id="探索召回（Exploration）">探索召回（Exploration）</h3>
 <p>探索召回的核心目标是<strong>打破信息茧房</strong>。一味推荐用户已知喜欢的内容，短期CTR好看，但长期会导致用户疲劳和流失。探索召回主动推荐用户未曾接触过的新内容，探索潜在兴趣。</p>
-<pre class="mermaid">flowchart TB
-    subgraph "探索对象"
-        N1[新视频<br>发布<1小时] n2[长尾视频<br>播放量低]
-        N3[冷启动视频<br>无行为积累]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;探索对象&quot;
+        N1[新视频&lt;br/&gt;发布小于1小时]
+        N2[长尾视频&lt;br/&gt;播放量低]
+        N3[冷启动视频&lt;br/&gt;无行为积累]
     end
     
-    subgraph "探索策略"
+    subgraph &quot;探索策略&quot;
         S1[向量加噪声]
         S2[强制配额10%]
         S3[随机采样]
     end
     
-    subgraph "探索执行"
-        S1 --> Query[构建探索查询]
-        S2 --> Query
-        S3 --> Query
-        Query --> OS[(OpenSearch)]
+    subgraph &quot;探索执行&quot;
+        S1 --&gt; Query[构建探索查询]
+        S2 --&gt; Query
+        S3 --&gt; Query
+        Query --&gt; OS[OpenSearch]
     end
     
-    subgraph "结果处理"
-        OS --> Result[探索结果]
-        Result --> Merge[与主召回合并]
-    end</1小时]></pre>
+    subgraph &quot;结果处理&quot;
+        OS --&gt; Result[探索结果]
+        Result --&gt; Merge[与主召回合并]
+    end</code></pre>
 <blockquote>
 <p>专门用于解决冷启动和长尾内容发现问题的策略。系统会强制留出一部分流量（例如10%），用于推荐新鲜上架或长期无人问津的视频。这是推荐系统中&quot;探索与利用&quot;权衡的具体体现。</p>
 </blockquote>
 <p><strong>探索策略</strong></p>
-<pre class="mermaid">flowchart LR
-    subgraph "新视频探索"
-        N[新视频向量] --> Add[添加随机噪声]
-        Add --> Query[噪声向量查询]
-        Query --> Result[返回偏离原向量的结果]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph &quot;新视频探索&quot;
+        N[新视频向量] --&gt; Add[添加随机噪声]
+        Add --&gt; Query[噪声向量查询]
+        Query --&gt; Result[返回偏离原向量的结果]
     end
     
-    subgraph "长尾探索"
-        T[小众内容桶] --> Sample[随机采样]
-        Sample --> Direct[直接返回]
+    subgraph &quot;长尾探索&quot;
+        T[小众内容桶] --&gt; Sample[随机采样]
+        Sample --&gt; Direct[直接返回]
     end
     
-    subgraph "兴趣边缘探索"
-        U[用户向量] --> Shift[向量偏移]
-        Shift --> Edge[边缘区域查询]
-    end</pre>
+    subgraph &quot;兴趣边缘探索&quot;
+        U[用户向量] --&gt; Shift[向量偏移]
+        Shift --&gt; Edge[边缘区域查询]
+    end</code></pre>
 <p><strong>反馈闭环</strong></p>
-<pre class="mermaid">flowchart TB
-    subgraph "探索曝光"
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;探索曝光&quot;
         E[探索内容曝光]
     end
     
-    subgraph "用户反馈"
-        E --> |正反馈| P[点赞/完播/分享]
-        E --> |负反馈| N[快速划过/不感兴趣]
+    subgraph &quot;用户反馈&quot;
+        E --&gt; |正反馈| P[点赞/完播/分享]
+        E --&gt; |负反馈| N[快速划过/不感兴趣]
     end
     
-    subgraph "策略调整"
-        P --> Up[增加该类探索比例]
-        N --> Down[减少该类探索比例]
-        N --> Block[加入用户负反馈列表]
+    subgraph &quot;策略调整&quot;
+        P --&gt; Up[增加该类探索比例]
+        N --&gt; Down[减少该类探索比例]
+        N --&gt; Block[加入用户负反馈列表]
     end
     
-    subgraph "用户画像更新"
-        Up --> Profile[更新用户兴趣向量]
-        Down --> Profile
-    end</pre>
+    subgraph &quot;用户画像更新&quot;
+        Up --&gt; Profile[更新用户兴趣向量]
+        Down --&gt; Profile
+    end</code></pre>
 <p><strong>适用场景</strong></p>
 <table>
 <thead>
@@ -1662,22 +1681,22 @@ $$</p>
 </tbody>
 </table>
 <h3 id="多路召回融合">多路召回融合</h3>
-<pre class="mermaid">flowchart TB
-    subgraph "并行召回"
-        I2I[I2I召回<br>100条] --> Merge
-        U2I[U2I召回<br>100条] --> Merge
-        Hot[热搜召回<br>50条] --> Merge
-        Explore[探索召回<br>50条] --> Merge
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;并行召回&quot;
+        I2I[I2I召回&lt;br/&gt;100条] --&gt; Merge
+        U2I[U2I召回&lt;br/&gt;100条] --&gt; Merge
+        Hot[热搜召回&lt;br/&gt;50条] --&gt; Merge
+        Explore[探索召回&lt;br/&gt;50条] --&gt; Merge
     end
     
-    subgraph "融合去重"
-        Merge[结果合并] --> Dedup[按video_id去重]
-        Dedup --> Rank[排序：多源加权分]
+    subgraph &quot;融合去重&quot;
+        Merge[结果合并] --&gt; Dedup[按video_id去重]
+        Dedup --&gt; Rank[排序：多源加权分]
     end
     
-    subgraph "配额分配"
-        Rank --> |保留各源优势| Final[输出300条<br>送入粗排]
-    end</pre>
+    subgraph &quot;配额分配&quot;
+        Rank --&gt; |保留各源优势| Final[输出300条&lt;br/&gt;送入粗排]
+    end</code></pre>
 <blockquote>
 <p><strong>各路召回的配合方式</strong>：四路召回并发执行，各自返回50-100条结果，合并去重后送入粗排。各路的配额可以根据业务效果动态调整——如果发现用户对探索内容的接受度高，可以适当放大探索召回的比例。</p>
 </blockquote>
@@ -1744,11 +1763,11 @@ $$<br>
 $$<br>
 recallSourceScore = \frac{1} {rankPosition + 1}<br>
 $$</p>
-<pre class="mermaid">pie title 推荐流量分配建议
-    "U2I召回" : 35
-    "I2I召回" : 30
-    "热搜召回" : 20
-    "探索召回" : 15</pre>
+<pre><code class="highlight mermaid">pie title 推荐流量分配建议
+    &quot;U2I召回&quot; : 35
+    &quot;I2I召回&quot; : 30
+    &quot;热搜召回&quot; : 20
+    &quot;探索召回&quot; : 15</code></pre>
 <hr>
 <h2 id="粗排层架构设计">粗排层架构设计</h2>
 <p>在工业级推荐系统中，粗排层位于召回和精排之间，承担着<strong>承上启下</strong>的关键作用。</p>
@@ -1767,34 +1786,34 @@ $$</p>
 <p><strong>灵活性</strong>。粗排可以引入召回层无法使用的特征（如用户基础属性、视频统计特征），在不增加太多计算成本的前提下提升筛选精度。</p>
 </li>
 </ol>
-<pre class="mermaid">flowchart LR
-    subgraph "召回层（亿级→千级）"
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph &quot;召回层（亿级→千级）&quot;
         R1[I2I召回 100条]
         R2[U2I召回 100条]
         R3[热搜召回 50条]
         R4[探索召回 50条]
-        R1 --> Merge[合并去重]
-        R2 --> Merge
-        R3 --> Merge
-        R4 --> Merge
-        Merge --> |300条| Pre
+        R1 --&gt; Merge[合并去重]
+        R2 --&gt; Merge
+        R3 --&gt; Merge
+        R4 --&gt; Merge
+        Merge --&gt; |300条| Pre
     end
     
-    subgraph "粗排层（千级→百级）"
-        Pre[粗排过滤] --> PreModel[轻量级模型打分]
-        PreModel --> PreFilter[Top 80筛选]
-        PreFilter --> |80条| Rank
+    subgraph &quot;粗排层（千级→百级）&quot;
+        Pre[粗排过滤] --&gt; PreModel[轻量级模型打分]
+        PreModel --&gt; PreFilter[Top 80筛选]
+        PreFilter --&gt; |80条| Rank
     end
     
-    subgraph "精排层（百级→十级）"
-        Rank[精排模型] --> RankModel[DIN/DeepFM]
-        RankModel --> RankTop[Top 20]
+    subgraph &quot;精排层（百级→十级）&quot;
+        Rank[精排模型] --&gt; RankModel[DIN/DeepFM]
+        RankModel --&gt; RankTop[Top 20]
     end
     
-    subgraph "重排层"
-        RankTop --> Rerank[多样性/业务重排]
-        Rerank --> |20条| Out[最终推荐]
-    end</pre>
+    subgraph &quot;重排层&quot;
+        RankTop --&gt; Rerank[多样性/业务重排]
+        Rerank --&gt; |20条| Out[最终推荐]
+    end</code></pre>
 <h3 id="粗排模型选型">粗排模型选型</h3>
 <p>粗排模型需要在<strong>效果</strong>和<strong>效率</strong>之间取得平衡。以下是三种主流方案：</p>
 <table>
@@ -1844,30 +1863,30 @@ $$</p>
 </tbody>
 </table>
 <p><strong>阶段二推荐方案</strong>：采用<strong>轻量级DNN</strong>，2层隐藏层（256→128），输入特征维度约200维，输出为点击率预估值。</p>
-<pre class="mermaid">graph TB
-    subgraph "双塔粗排模型"
-        subgraph "用户塔"
-            U1[用户ID Embedding] --> UConcat[特征拼接]
-            U2[用户历史行为统计] --> UConcat
-            U3[用户基础属性] --> UConcat
-            UConcat --> UDense1[Dense 256]
-            UDense1 --> UDense2[Dense 128]
-            UDense2 --> UUserVec[用户向量 64维]
+<pre><code class="highlight mermaid">graph TB
+    subgraph &quot;双塔粗排模型&quot;
+        subgraph &quot;用户塔&quot;
+            U1[用户ID Embedding] --&gt; UConcat[特征拼接]
+            U2[用户历史行为统计] --&gt; UConcat
+            U3[用户基础属性] --&gt; UConcat
+            UConcat --&gt; UDense1[Dense 256]
+            UDense1 --&gt; UDense2[Dense 128]
+            UDense2 --&gt; UUserVec[用户向量 64维]
         end
         
-        subgraph "物品塔"
-            I1[视频ID Embedding] --> IConcat[特征拼接]
-            I2[视频类别/标签] --> IConcat
-            I3[视频统计特征] --> IConcat
-            IConcat --> IDense1[Dense 256]
-            IDense1 --> IDense2[Dense 128]
-            IDense2 --> IItemVec[物品向量 64维]
+        subgraph &quot;物品塔&quot;
+            I1[视频ID Embedding] --&gt; IConcat[特征拼接]
+            I2[视频类别/标签] --&gt; IConcat
+            I3[视频统计特征] --&gt; IConcat
+            IConcat --&gt; IDense1[Dense 256]
+            IDense1 --&gt; IDense2[Dense 128]
+            IDense2 --&gt; IItemVec[物品向量 64维]
         end
         
-        UUserVec --> Dot[内积计算]
-        IItemVec --> Dot
-        Dot --> Score[Sigmoid<br>CTR预估]
-    end</pre>
+        UUserVec --&gt; Dot[内积计算]
+        IItemVec --&gt; Dot
+        Dot --&gt; Score[Sigmoid&lt;br/&gt;CTR预估]
+    end</code></pre>
 <h3 id="特征-性能">特征&amp;性能</h3>
 <p>粗排的特征分为三类，相比精排更精简：</p>
 <ul class="lvl-0">
@@ -1910,31 +1929,31 @@ $$</p>
 </ul>
 <h3 id="精排模型架构">精排模型架构</h3>
 <p>阶段二推荐采用<strong>DIN（Deep Interest Network）<strong>模型。DIN的核心创新是</strong>注意力机制</strong>——在预估当前视频的点击率时，对用户历史行为序列中的每个视频计算一个注意力权重，权重越高表示该历史行为与当前视频越相关。</p>
-<pre class="mermaid">graph TB
-    subgraph "DIN精排模型架构"
-        Input[输入特征] --> Concat[特征拼接]
+<pre><code class="highlight mermaid">graph TB
+    subgraph &quot;DIN精排模型架构&quot;
+        Input[输入特征] --&gt; Concat[特征拼接]
         
-        subgraph "用户行为序列处理"
-            Hist[用户历史观看视频ID序列] --> Attn[注意力层]
-            Target[目标视频ID] --> Attn
-            Attn --> Weighted[加权和]
+        subgraph &quot;用户行为序列处理&quot;
+            Hist[用户历史观看视频ID序列] --&gt; Attn[注意力层]
+            Target[目标视频ID] --&gt; Attn
+            Attn --&gt; Weighted[加权和]
         end
         
-        subgraph "其他特征"
-            U1[用户基础特征] --> Concat
-            U2[用户统计特征] --> Concat
-            I1[物品基础特征] --> Concat
-            I2[物品统计特征] --> Concat
-            C1[上下文特征] --> Concat
-            Weighted --> Concat
+        subgraph &quot;其他特征&quot;
+            U1[用户基础特征] --&gt; Concat
+            U2[用户统计特征] --&gt; Concat
+            I1[物品基础特征] --&gt; Concat
+            I2[物品统计特征] --&gt; Concat
+            C1[上下文特征] --&gt; Concat
+            Weighted --&gt; Concat
         end
         
-        Concat --> Dense1[Dense 512<br>ReLU + BN]
-        Dense1 --> Dense2[Dense 256<br>ReLU + BN]
-        Dense2 --> Dense3[Dense 128<br>ReLU + BN]
-        Dense3 --> Dense4[Dense 64<br>ReLU + BN]
-        Dense4 --> Output[Dense 1 + Sigmoid<br>CTR预估]
-    end</pre>
+        Concat --&gt; Dense1[Dense 512&lt;br/&gt;ReLU + BN]
+        Dense1 --&gt; Dense2[Dense 256&lt;br/&gt;ReLU + BN]
+        Dense2 --&gt; Dense3[Dense 128&lt;br/&gt;ReLU + BN]
+        Dense3 --&gt; Dense4[Dense 64&lt;br/&gt;ReLU + BN]
+        Dense4 --&gt; Output[Dense 1 + Sigmoid&lt;br/&gt;CTR预估]
+    end</code></pre>
 <h3 id="行为序列建模">行为序列建模</h3>
 <p>DIN模型的注意力机制是其核心优势。对于用户历史观看的每个视频，计算其与目标视频的相关性权重：</p>
 <p>$$<br>
@@ -2015,34 +2034,34 @@ $$</p>
 <hr>
 <h2 id="版本路线与演进策略">版本路线与演进策略</h2>
 <p>推荐系统的建设不宜一步到位，建议分三个阶段渐进式推进，每个阶段都有明确的产出和验证目标。</p>
-<pre class="mermaid">flowchart TB
-    subgraph S1["阶段一：文本向量召回"]
-        A1[标题+标签向量化] --> A2[基础I2I召回] --> A3[简单用户画像] --> A4[关键词兜底]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph S1[&quot;阶段一：文本向量召回&quot;]
+        A1[标题+标签向量化] --&gt; A2[基础I2I召回] --&gt; A3[简单用户画像] --&gt; A4[关键词兜底]
     end
 
-    subgraph S2["阶段二：多模态召回"]
-        B1[视觉特征接入] --> B2[音频特征接入] --> B3[混合检索] --> B4[多路召回融合]
+    subgraph S2[&quot;阶段二：多模态召回&quot;]
+        B1[视觉特征接入] --&gt; B2[音频特征接入] --&gt; B3[混合检索] --&gt; B4[多路召回融合]
     end
 
-    subgraph S3["阶段三：实时个性化"]
-        C1[滑动窗口用户向量] --> C2[E&E探索机制] --> C3[实时行为流处理] --> C4[DIN精排模型]
+    subgraph S3[&quot;阶段三：实时个性化&quot;]
+        C1[滑动窗口用户向量] --&gt; C2[E&amp;E探索机制] --&gt; C3[实时行为流处理] --&gt; C4[DIN精排模型]
     end
 
-    S1 --> S2 --> S3</pre>
+    S1 --&gt; S2 --&gt; S3</code></pre>
 <h3 id="阶段一：文本向量召回">阶段一：文本向量召回</h3>
 <p>快速上线基础推荐能力，验证OpenSearch集群稳定性。</p>
-<pre class="mermaid">flowchart LR
-    subgraph "阶段一核心能力"
-        A[标题+标签文本向量] --> B[基础I2I召回]
-        B --> C[简单用户画像]
-        C --> D[关键词兜底]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph &quot;阶段一核心能力&quot;
+        A[标题+标签文本向量] --&gt; B[基础I2I召回]
+        B --&gt; C[简单用户画像]
+        C --&gt; D[关键词兜底]
     end
     
-    subgraph "技术指标"
-        E[召回延迟 < 100ms]
+    subgraph &quot;技术指标&quot;
+        E[召回延迟 &lt; 100ms]
         F[QPS ≥ 1000]
-        G[召回准确率 > 60%]
-    end</pre>
+        G[召回准确率 &gt; 60%]
+    end</code></pre>
 <blockquote>
 <p><strong>关键任务</strong>：</p>
 <ol>
@@ -2053,24 +2072,24 @@ $$</p>
 </blockquote>
 <h3 id="阶段二：多模态向量">阶段二：多模态向量</h3>
 <p>提升内容理解深度，改善推荐相关性，同时引入粗排层。</p>
-<pre class="mermaid">flowchart TB
-    subgraph "多模态能力扩展"
-        M1[视觉特征提取] --> M4[多模态融合]
-        M2[音频特征提取] --> M4
-        M3[文本向量优化] --> M4
-        M4 --> M5[混合检索]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;多模态能力扩展&quot;
+        M1[视觉特征提取] --&gt; M4[多模态融合]
+        M2[音频特征提取] --&gt; M4
+        M3[文本向量优化] --&gt; M4
+        M4 --&gt; M5[混合检索]
     end
     
-    subgraph "漏斗分层"
-        M6[召回层升级] --> M7[粗排层引入]
-        M7 --> M8[精排升级到GBDT]
+    subgraph &quot;漏斗分层&quot;
+        M6[召回层升级] --&gt; M7[粗排层引入]
+        M7 --&gt; M8[精排升级到GBDT]
     end
     
-    subgraph "性能优化"
+    subgraph &quot;性能优化&quot;
         M9[索引分片调优]
         M10[向量维度压缩]
         M11[缓存策略]
-    end</pre>
+    end</code></pre>
 <blockquote>
 <p><strong>关键任务</strong>：</p>
 <ol>
@@ -2084,23 +2103,23 @@ $$</p>
 </blockquote>
 <h3 id="阶段三：实时个性化">阶段三：实时个性化</h3>
 <p>实现秒级兴趣追踪，提供深度个性化体验。</p>
-<pre class="mermaid">flowchart TB
-    subgraph "实时能力"
-        R1[滑动窗口用户向量] --> R4[实时兴趣追踪]
-        R2[近线行为流处理] --> R4
-        R3[负反馈实时生效] --> R4
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph &quot;实时能力&quot;
+        R1[滑动窗口用户向量] --&gt; R4[实时兴趣追踪]
+        R2[近线行为流处理] --&gt; R4
+        R3[负反馈实时生效] --&gt; R4
     end
 
-    subgraph "探索机制"
-        R5[E&E策略] --> R6[冷启动优化] --> R7[长尾内容发现]
+    subgraph &quot;探索机制&quot;
+        R5[E&amp;E策略] --&gt; R6[冷启动优化] --&gt; R7[长尾内容发现]
     end
 
-    subgraph "精排优化"
-        R8[DIN模型] --> R9[用户序列建模] --> R10[CTR预估]
+    subgraph &quot;精排优化&quot;
+        R8[DIN模型] --&gt; R9[用户序列建模] --&gt; R10[CTR预估]
     end
 
-    实时能力 --> 探索机制
-    探索机制 --> 精排优化</pre>
+    实时能力 --&gt; 探索机制
+    探索机制 --&gt; 精排优化</code></pre>
 <blockquote>
 <p><strong>关键任务</strong>：</p>
 <ol>
@@ -2231,7 +2250,7 @@ $$</p>
 <blockquote>
 <p>这套架构已经在多个娱乐视频平台得到验证，能够支撑千万级DAU、亿级视频库的推荐场景。</p>
 </blockquote>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/06/1726f4eec04b4cdf873479019b5c604a/">https://pengline.cn/2026/06/1726f4eec04b4cdf873479019b5c604a/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/OpenSearch/">OpenSearch</a><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2/">混合检索</a><a class="post-meta__tags" href="/tags/%E6%8E%A8%E8%8D%90%E7%B3%BB%E7%BB%9F/">推荐系统</a><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a class="post-meta__tags" href="/tags/I2I%E5%8F%AC%E5%9B%9E/">I2I召回</a><a class="post-meta__tags" href="/tags/U2I%E5%8F%AC%E5%9B%9E/">U2I召回</a><a class="post-meta__tags" href="/tags/%E8%A7%86%E9%A2%91%E6%8E%A8%E8%8D%90/">视频推荐</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E6%A8%A1%E6%80%81%E5%AD%A6%E4%B9%A0/">多模态学习</a><a class="post-meta__tags" href="/tags/%E5%8F%AC%E5%9B%9E%E7%AD%96%E7%95%A5/">召回策略</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/06/198954be50c24c0483353bb975e882d3/" title="基于 OpenSearch + 文本向量的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144740598175514474060.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">基于 OpenSearch + 文本向量的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建文本向量推荐系统，涵盖系统架构设计、离线数据处理Pipeline、OpenSearch/Redis/HBase多级存储架构、BERT推理服务部署、双路召回（I2I/U2I）实现、规则排序策略。</div></div></div></a><a class="pagination-related" href="/2026/05/f6bdb468a82d411c970148a7fd1de52c/" title="剧本分镜智能体（PenShot）向量检索"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1730166918792173016691849.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）向量检索</div></div><div class="info-2"><div class="info-item-1">深入解析 PenShot 剧本分镜智能体的向量检索原理与实现，涵盖余弦相似度计算、索引存储结构、重排序优化等核心技术，并提供完整的问题排查指南和最佳实践。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/06/9509f9a6b42748bab6acf320d3419eeb/" title="基于 OpenSearch + 多模态融合的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1642751157273164275115763.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-18</div><div class="info-item-2">基于 OpenSearch + 多模态融合的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建多模态娱乐视频推荐系统，涵盖视觉/音频/文本三模态特征提取、独立存储与动态权重融合、混合检索与RRF融合、多路召回升级及推理服务扩展，适合推荐系统架构师参考。</div></div></div></a><a class="pagination-related" href="/2026/06/198954be50c24c0483353bb975e882d3/" title="基于 OpenSearch + 文本向量的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144740598175514474060.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-09</div><div class="info-item-2">基于 OpenSearch + 文本向量的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建文本向量推荐系统，涵盖系统架构设计、离线数据处理Pipeline、OpenSearch/Redis/HBase多级存储架构、BERT推理服务部署、双路召回（I2I/U2I）实现、规则排序策略。</div></div></div></a><a class="pagination-related" href="/2026/07/1253d04858e94ba2a6856cc795b01c8b/" title="短视频推荐系统之多路并行召回策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-09</div><div class="info-item-2">短视频推荐系统之多路并行召回策略</div></div><div class="info-2"><div class="info-item-1">短视频推荐系统中的多路并行召回策略：I2I召回、U2I召回、热搜召回、探索召回的设计原理、实现机制与适用场景，多模态向量融合、滑动窗口用户画像、自适应探索强度及结果融合排序等。</div></div></div></a><a class="pagination-related" href="/2026/07/af0a363a828649bbbbfc42583dbfb2a9/" title="基于OpenSearch + Milvus的混合召回策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-03</div><div class="info-item-2">基于OpenSearch + Milvus的混合召回策略</div></div><div class="info-2"><div class="info-item-1">深入对比分析Milvus与OpenSearch在向量检索领域的架构设计与技术原理，涵盖索引算法（HNSW/IVF/PQ）、量化压缩、硬件加速等核心机制，并结合推荐系统场景给出混合检索架构的实践方案。</div></div></div></a><a class="pagination-related" href="/2026/07/094031edb39c4505aefb6b0572381e03/" title="短视频推荐系统之用户画像构建方法"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746446968174574644625.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-11</div><div class="info-item-2">短视频推荐系统之用户画像构建方法</div></div><div class="info-2"><div class="info-item-1">短视频推荐系统中用户画像的构建：显式与隐式画像融合、标签画像与向量画像双轨构建、滑动窗口实时更新机制、时间衰减策略、行为序列建模及画像存储架构，从静态标签到动态兴趣表征的演进路径。</div></div></div></a><a class="pagination-related" href="/2026/06/fdf378a9c224457d9486acd099a34db7/" title="基于 OpenSearch + 个性化精排的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-20</div><div class="info-item-2">基于 OpenSearch + 个性化精排的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建个性化精排推荐系统，涵盖Flink实时行为流处理、滑动窗口用户向量实时更新、DIN深度兴趣网络精排模型、自适应E&E探索机制及完整四层漏斗架构。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">视频推荐系统</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B3%BB%E7%BB%9F%E6%80%BB%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="toc-number">1.1.</span> <span class="toc-text">系统总体架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%95%B0%E6%8D%AE%E6%B5%81%E7%A8%8B"><span class="toc-number">1.2.</span> <span class="toc-text">核心数据流程</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%86%E9%A2%91%E6%95%B0%E6%8D%AE%E5%85%A8%E9%93%BE%E8%B7%AF%E5%A4%84%E7%90%86"><span class="toc-number">1.2.1.</span> <span class="toc-text">视频数据全链路处理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%A8%E6%88%B7%E8%A1%8C%E4%B8%BA%E5%AE%9E%E6%97%B6%E5%A4%84%E7%90%86"><span class="toc-number">1.2.2.</span> <span class="toc-text">用户行为实时处理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%A8%E7%BA%BF%E6%8E%A8%E8%8D%90%E8%AF%B7%E6%B1%82%E5%A4%84%E7%90%86"><span class="toc-number">1.2.3.</span> <span class="toc-text">在线推荐请求处理</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E6%8A%80%E6%9C%AF%E5%AE%9E%E7%8E%B0"><span class="toc-number">1.3.</span> <span class="toc-text">关键技术实现</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#OpenSearch%E7%B4%A2%E5%BC%95%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.3.1.</span> <span class="toc-text">OpenSearch索引设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2%EF%BC%88%E5%90%91%E9%87%8F-%E5%85%B3%E9%94%AE%E8%AF%8D%EF%BC%89"><span class="toc-number">1.3.2.</span> <span class="toc-text">混合检索（向量+关键词）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%BB%91%E5%8A%A8%E7%AA%97%E5%8F%A3%E7%94%A8%E6%88%B7%E5%90%91%E9%87%8F"><span class="toc-number">1.3.3.</span> <span class="toc-text">滑动窗口用户向量</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8E%A2%E7%B4%A2%E4%B8%8E%E5%88%A9%E7%94%A8%EF%BC%88E-E%EF%BC%89%E6%9C%BA%E5%88%B6"><span class="toc-number">1.3.4.</span> <span class="toc-text">探索与利用（E&amp;E）机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%A0%B7%E6%80%A7%E9%87%8D%E6%8E%92%E7%AE%97%E6%B3%95%EF%BC%88MMR%EF%BC%89"><span class="toc-number">1.3.5.</span> <span class="toc-text">多样性重排算法（MMR）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E5%90%91%E9%87%8F%E8%9E%8D%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.4.</span> <span class="toc-text">多模态向量融合策略</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%87%E6%9C%AC%E6%A8%A1%E6%80%81"><span class="toc-number">1.4.1.</span> <span class="toc-text">文本模态</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%86%E8%A7%89%E6%A8%A1%E6%80%81"><span class="toc-number">1.4.2.</span> <span class="toc-text">视觉模态</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9F%B3%E9%A2%91%E6%A8%A1%E6%80%81"><span class="toc-number">1.4.3.</span> <span class="toc-text">音频模态</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%89%E6%A8%A1%E6%80%81%E8%9E%8D%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.4.4.</span> <span class="toc-text">三模态融合策略</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E8%9E%8D%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.5.</span> <span class="toc-text">多路召回融合策略</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#I2I%EF%BC%88Item-to-Item%EF%BC%89%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.5.1.</span> <span class="toc-text">I2I（Item to Item）召回</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#U2I%EF%BC%88User-to-Item%EF%BC%89%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.5.2.</span> <span class="toc-text">U2I（User to Item）召回</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%83%AD%E6%90%9C%E5%8F%AC%E5%9B%9E%EF%BC%88Hot-Popular%EF%BC%89"><span class="toc-number">1.5.3.</span> <span class="toc-text">热搜召回（Hot&#x2F;Popular）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8E%A2%E7%B4%A2%E5%8F%AC%E5%9B%9E%EF%BC%88Exploration%EF%BC%89"><span class="toc-number">1.5.4.</span> <span class="toc-text">探索召回（Exploration）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E8%9E%8D%E5%90%88"><span class="toc-number">1.5.5.</span> <span class="toc-text">多路召回融合</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B2%97%E6%8E%92%E5%B1%82%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.6.</span> <span class="toc-text">粗排层架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B2%97%E6%8E%92%E6%A8%A1%E5%9E%8B%E9%80%89%E5%9E%8B"><span class="toc-number">1.6.1.</span> <span class="toc-text">粗排模型选型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%89%B9%E5%BE%81-%E6%80%A7%E8%83%BD"><span class="toc-number">1.6.2.</span> <span class="toc-text">特征&amp;性能</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B2%BE%E6%8E%92%E5%B1%82%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.7.</span> <span class="toc-text">精排层架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B2%BE%E6%8E%92%E6%A8%A1%E5%9E%8B%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.1.</span> <span class="toc-text">精排模型架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A1%8C%E4%B8%BA%E5%BA%8F%E5%88%97%E5%BB%BA%E6%A8%A1"><span class="toc-number">1.7.2.</span> <span class="toc-text">行为序列建模</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E7%9B%AE%E6%A0%87%E4%BC%98%E5%8C%96"><span class="toc-number">1.7.3.</span> <span class="toc-text">多目标优化</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%89%88%E6%9C%AC%E8%B7%AF%E7%BA%BF%E4%B8%8E%E6%BC%94%E8%BF%9B%E7%AD%96%E7%95%A5"><span class="toc-number">1.8.</span> <span class="toc-text">版本路线与演进策略</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%98%B6%E6%AE%B5%E4%B8%80%EF%BC%9A%E6%96%87%E6%9C%AC%E5%90%91%E9%87%8F%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.8.1.</span> <span class="toc-text">阶段一：文本向量召回</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%98%B6%E6%AE%B5%E4%BA%8C%EF%BC%9A%E5%A4%9A%E6%A8%A1%E6%80%81%E5%90%91%E9%87%8F"><span class="toc-number">1.8.2.</span> <span class="toc-text">阶段二：多模态向量</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%98%B6%E6%AE%B5%E4%B8%89%EF%BC%9A%E5%AE%9E%E6%97%B6%E4%B8%AA%E6%80%A7%E5%8C%96"><span class="toc-number">1.8.3.</span> <span class="toc-text">阶段三：实时个性化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%89%88%E6%9C%AC%E6%BC%94%E8%BF%9B%E5%AF%B9%E6%AF%94"><span class="toc-number">1.8.4.</span> <span class="toc-text">版本演进对比</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E5%BA%94%E5%AF%B9%E7%AD%96%E7%95%A5"><span class="toc-number">1.9.</span> <span class="toc-text">常见问题与应对策略</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">1.10.</span> <span class="toc-text">总结</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/06/1726f4eec04b4cdf873479019b5c604a/">https://pengline.cn/2026/06/1726f4eec04b4cdf873479019b5c604a/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/OpenSearch/">OpenSearch</a><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2/">混合检索</a><a class="post-meta__tags" href="/tags/%E6%8E%A8%E8%8D%90%E7%B3%BB%E7%BB%9F/">推荐系统</a><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E6%A8%A1%E6%80%81%E5%AD%A6%E4%B9%A0/">多模态学习</a><a class="post-meta__tags" href="/tags/%E5%8F%AC%E5%9B%9E%E7%AD%96%E7%95%A5/">召回策略</a><a class="post-meta__tags" href="/tags/I2I%E5%8F%AC%E5%9B%9E/">I2I召回</a><a class="post-meta__tags" href="/tags/U2I%E5%8F%AC%E5%9B%9E/">U2I召回</a><a class="post-meta__tags" href="/tags/%E8%A7%86%E9%A2%91%E6%8E%A8%E8%8D%90/">视频推荐</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small194106Azz0h1758541266.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/06/198954be50c24c0483353bb975e882d3/" title="基于 OpenSearch + 文本向量的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small221437yj1D11756131277.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">基于 OpenSearch + 文本向量的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建文本向量推荐系统，涵盖系统架构设计、离线数据处理Pipeline、OpenSearch/Redis/HBase多级存储架构、BERT推理服务部署、双路召回（I2I/U2I）实现、规则排序策略。</div></div></div></a><a class="pagination-related" href="/2026/05/f6bdb468a82d411c970148a7fd1de52c/" title="剧本分镜智能体（PenShot）向量检索"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small220807fLgw21759154887.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）向量检索</div></div><div class="info-2"><div class="info-item-1">深入解析 PenShot 剧本分镜智能体的向量检索原理与实现，涵盖余弦相似度计算、索引存储结构、重排序优化等核心技术，并提供完整的问题排查指南和最佳实践。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/06/9509f9a6b42748bab6acf320d3419eeb/" title="基于 OpenSearch + 多模态融合的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-18</div><div class="info-item-2">基于 OpenSearch + 多模态融合的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建多模态娱乐视频推荐系统，涵盖视觉/音频/文本三模态特征提取、独立存储与动态权重融合、混合检索与RRF融合、多路召回升级及推理服务扩展，适合推荐系统架构师参考。</div></div></div></a><a class="pagination-related" href="/2026/06/198954be50c24c0483353bb975e882d3/" title="基于 OpenSearch + 文本向量的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small221437yj1D11756131277.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-09</div><div class="info-item-2">基于 OpenSearch + 文本向量的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建文本向量推荐系统，涵盖系统架构设计、离线数据处理Pipeline、OpenSearch/Redis/HBase多级存储架构、BERT推理服务部署、双路召回（I2I/U2I）实现、规则排序策略。</div></div></div></a><a class="pagination-related" href="/2026/07/1253d04858e94ba2a6856cc795b01c8b/" title="短视频推荐系统之多路并行召回策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small212735BzxFx1756646855.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-09</div><div class="info-item-2">短视频推荐系统之多路并行召回策略</div></div><div class="info-2"><div class="info-item-1">短视频推荐系统中的多路并行召回策略：I2I召回、U2I召回、热搜召回、探索召回的设计原理、实现机制与适用场景，多模态向量融合、滑动窗口用户画像、自适应探索强度及结果融合排序等。</div></div></div></a><a class="pagination-related" href="/2026/07/af0a363a828649bbbbfc42583dbfb2a9/" title="基于OpenSearch + Milvus的混合召回策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small204025vlPNF1760100025.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-03</div><div class="info-item-2">基于OpenSearch + Milvus的混合召回策略</div></div><div class="info-2"><div class="info-item-1">深入对比分析Milvus与OpenSearch在向量检索领域的架构设计与技术原理，涵盖索引算法（HNSW/IVF/PQ）、量化压缩、硬件加速等核心机制，并结合推荐系统场景给出混合检索架构的实践方案。</div></div></div></a><a class="pagination-related" href="/2026/07/094031edb39c4505aefb6b0572381e03/" title="短视频推荐系统之用户画像构建方法"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small230936xI6rH1758467376.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-11</div><div class="info-item-2">短视频推荐系统之用户画像构建方法</div></div><div class="info-2"><div class="info-item-1">短视频推荐系统中用户画像的构建：显式与隐式画像融合、标签画像与向量画像双轨构建、滑动窗口实时更新机制、时间衰减策略、行为序列建模及画像存储架构，从静态标签到动态兴趣表征的演进路径。</div></div></div></a><a class="pagination-related" href="/2026/06/fdf378a9c224457d9486acd099a34db7/" title="基于 OpenSearch + 个性化精排的推荐系统"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860445980163886044557.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-20</div><div class="info-item-2">基于 OpenSearch + 个性化精排的推荐系统</div></div><div class="info-2"><div class="info-item-1">基于OpenSearch构建个性化精排推荐系统，涵盖Flink实时行为流处理、滑动窗口用户向量实时更新、DIN深度兴趣网络精排模型、自适应E&E探索机制及完整四层漏斗架构。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">视频推荐系统</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B3%BB%E7%BB%9F%E6%80%BB%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="toc-number">1.1.</span> <span class="toc-text">系统总体架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%95%B0%E6%8D%AE%E6%B5%81%E7%A8%8B"><span class="toc-number">1.2.</span> <span class="toc-text">核心数据流程</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%86%E9%A2%91%E6%95%B0%E6%8D%AE%E5%85%A8%E9%93%BE%E8%B7%AF%E5%A4%84%E7%90%86"><span class="toc-number">1.2.1.</span> <span class="toc-text">视频数据全链路处理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%A8%E6%88%B7%E8%A1%8C%E4%B8%BA%E5%AE%9E%E6%97%B6%E5%A4%84%E7%90%86"><span class="toc-number">1.2.2.</span> <span class="toc-text">用户行为实时处理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%A8%E7%BA%BF%E6%8E%A8%E8%8D%90%E8%AF%B7%E6%B1%82%E5%A4%84%E7%90%86"><span class="toc-number">1.2.3.</span> <span class="toc-text">在线推荐请求处理</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E6%8A%80%E6%9C%AF%E5%AE%9E%E7%8E%B0"><span class="toc-number">1.3.</span> <span class="toc-text">关键技术实现</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#OpenSearch%E7%B4%A2%E5%BC%95%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.3.1.</span> <span class="toc-text">OpenSearch索引设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2%EF%BC%88%E5%90%91%E9%87%8F-%E5%85%B3%E9%94%AE%E8%AF%8D%EF%BC%89"><span class="toc-number">1.3.2.</span> <span class="toc-text">混合检索（向量+关键词）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%BB%91%E5%8A%A8%E7%AA%97%E5%8F%A3%E7%94%A8%E6%88%B7%E5%90%91%E9%87%8F"><span class="toc-number">1.3.3.</span> <span class="toc-text">滑动窗口用户向量</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8E%A2%E7%B4%A2%E4%B8%8E%E5%88%A9%E7%94%A8%EF%BC%88E-E%EF%BC%89%E6%9C%BA%E5%88%B6"><span class="toc-number">1.3.4.</span> <span class="toc-text">探索与利用（E&amp;E）机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%A0%B7%E6%80%A7%E9%87%8D%E6%8E%92%E7%AE%97%E6%B3%95%EF%BC%88MMR%EF%BC%89"><span class="toc-number">1.3.5.</span> <span class="toc-text">多样性重排算法（MMR）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%A8%A1%E6%80%81%E5%90%91%E9%87%8F%E8%9E%8D%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.4.</span> <span class="toc-text">多模态向量融合策略</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%87%E6%9C%AC%E6%A8%A1%E6%80%81"><span class="toc-number">1.4.1.</span> <span class="toc-text">文本模态</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A7%86%E8%A7%89%E6%A8%A1%E6%80%81"><span class="toc-number">1.4.2.</span> <span class="toc-text">视觉模态</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9F%B3%E9%A2%91%E6%A8%A1%E6%80%81"><span class="toc-number">1.4.3.</span> <span class="toc-text">音频模态</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%89%E6%A8%A1%E6%80%81%E8%9E%8D%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.4.4.</span> <span class="toc-text">三模态融合策略</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E8%9E%8D%E5%90%88%E7%AD%96%E7%95%A5"><span class="toc-number">1.5.</span> <span class="toc-text">多路召回融合策略</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#I2I%EF%BC%88Item-to-Item%EF%BC%89%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.5.1.</span> <span class="toc-text">I2I（Item to Item）召回</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#U2I%EF%BC%88User-to-Item%EF%BC%89%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.5.2.</span> <span class="toc-text">U2I（User to Item）召回</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%83%AD%E6%90%9C%E5%8F%AC%E5%9B%9E%EF%BC%88Hot-Popular%EF%BC%89"><span class="toc-number">1.5.3.</span> <span class="toc-text">热搜召回（Hot&#x2F;Popular）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8E%A2%E7%B4%A2%E5%8F%AC%E5%9B%9E%EF%BC%88Exploration%EF%BC%89"><span class="toc-number">1.5.4.</span> <span class="toc-text">探索召回（Exploration）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E8%9E%8D%E5%90%88"><span class="toc-number">1.5.5.</span> <span class="toc-text">多路召回融合</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B2%97%E6%8E%92%E5%B1%82%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.6.</span> <span class="toc-text">粗排层架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B2%97%E6%8E%92%E6%A8%A1%E5%9E%8B%E9%80%89%E5%9E%8B"><span class="toc-number">1.6.1.</span> <span class="toc-text">粗排模型选型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%89%B9%E5%BE%81-%E6%80%A7%E8%83%BD"><span class="toc-number">1.6.2.</span> <span class="toc-text">特征&amp;性能</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B2%BE%E6%8E%92%E5%B1%82%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.7.</span> <span class="toc-text">精排层架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B2%BE%E6%8E%92%E6%A8%A1%E5%9E%8B%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.1.</span> <span class="toc-text">精排模型架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A1%8C%E4%B8%BA%E5%BA%8F%E5%88%97%E5%BB%BA%E6%A8%A1"><span class="toc-number">1.7.2.</span> <span class="toc-text">行为序列建模</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E7%9B%AE%E6%A0%87%E4%BC%98%E5%8C%96"><span class="toc-number">1.7.3.</span> <span class="toc-text">多目标优化</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%89%88%E6%9C%AC%E8%B7%AF%E7%BA%BF%E4%B8%8E%E6%BC%94%E8%BF%9B%E7%AD%96%E7%95%A5"><span class="toc-number">1.8.</span> <span class="toc-text">版本路线与演进策略</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%98%B6%E6%AE%B5%E4%B8%80%EF%BC%9A%E6%96%87%E6%9C%AC%E5%90%91%E9%87%8F%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.8.1.</span> <span class="toc-text">阶段一：文本向量召回</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%98%B6%E6%AE%B5%E4%BA%8C%EF%BC%9A%E5%A4%9A%E6%A8%A1%E6%80%81%E5%90%91%E9%87%8F"><span class="toc-number">1.8.2.</span> <span class="toc-text">阶段二：多模态向量</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%98%B6%E6%AE%B5%E4%B8%89%EF%BC%9A%E5%AE%9E%E6%97%B6%E4%B8%AA%E6%80%A7%E5%8C%96"><span class="toc-number">1.8.3.</span> <span class="toc-text">阶段三：实时个性化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%89%88%E6%9C%AC%E6%BC%94%E8%BF%9B%E5%AF%B9%E6%AF%94"><span class="toc-number">1.8.4.</span> <span class="toc-text">版本演进对比</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E4%B8%8E%E5%BA%94%E5%AF%B9%E7%AD%96%E7%95%A5"><span class="toc-number">1.9.</span> <span class="toc-text">常见问题与应对策略</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">1.10.</span> <span class="toc-text">总结</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
@@ -2325,7 +2344,7 @@ $$</p>
 
     const runMermaidFn = () => runMermaid($mermaid)
     btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
-    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js').then(runMermaidFn)
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://unpkg.com/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
   }
 
   btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
@@ -2408,4 +2427,4 @@ $$</p>
   } else {
     window.loadOtherComment = loadGiscus
   }
-})()</script></div><script src="/js/custom/sun_moon.js" async></script><script src="/js/custom/mermaid-zoom.js"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script src="/js/custom/auto_dark.js" async></script><script src="/js/custom/mermaid-zoom.js"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

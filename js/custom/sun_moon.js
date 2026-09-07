@@ -1,28 +1,41 @@
 function switchNightMode() {
-  document.querySelector('body').insertAdjacentHTML('beforeend', '<div class="Cuteen_DarkSky"><div class="Cuteen_DarkPlanet"></div></div>'),
-    setTimeout(function() {
-      document.querySelector('body').classList.contains('DarkMode') ? (document.querySelector('body').classList.remove('DarkMode'), localStorage.setItem('isDark', '0'), document.getElementById('modeicon').setAttribute('xlink:href', '#icon-moon')) : (document.querySelector('body').classList.add('DarkMode'), localStorage.setItem('isDark', '1'), document.getElementById('modeicon').setAttribute('xlink:href', '#icon-sun')),
-        setTimeout(function() {
-          document.getElementsByClassName('Cuteen_DarkSky')[0].style.transition = 'opacity 3s';
-          document.getElementsByClassName('Cuteen_DarkSky')[0].style.opacity = '0';
-          setTimeout(function() {
-            document.getElementsByClassName('Cuteen_DarkSky')[0].remove();
-          }, 1e3);
-        }, 2e3)
-    })
-  const nowMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
+  // 1. 插入 Cuteen 切换动画元素
+  const body = document.body;
+  body.insertAdjacentHTML('beforeend', '<div class="Cuteen_DarkSky"><div class="Cuteen_DarkPlanet"></div></div>');
+
+  // 动画淡出与清理逻辑
+  setTimeout(() => {
+    const darkSky = document.getElementsByClassName('Cuteen_DarkSky')[0];
+    if (darkSky) {
+      darkSky.style.transition = 'opacity 1s'; // 调整过度流畅度
+      darkSky.style.opacity = '0';
+      setTimeout(() => darkSky.remove(), 1000);
+    }
+  }, 1000);
+
+  // 2. 判断当前 Butterfly 主题模式并切换
+  const nowMode = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const modeIcon = document.getElementById('modeicon');
+
   if (nowMode === 'light') {
-    btf.activateDarkMode()
-    btf.saveToLocal.set('theme', 'dark', 2)
-    GLOBAL_CONFIG.Snackbar !== undefined && btf.snackbarShow(GLOBAL_CONFIG.Snackbar.day_to_night)
-    document.getElementById('modeicon').setAttribute('xlink:href', '#icon-sun')
+    // 切换到黑夜模式
+    btf.activateDarkMode();
+    btf.saveToLocal.set('theme', 'dark', 2);
+    if (modeIcon) modeIcon.setAttribute('xlink:href', '#icon-sun');
+    if (typeof GLOBAL_CONFIG !== 'undefined' && GLOBAL_CONFIG.Snackbar) {
+      btf.snackbarShow(GLOBAL_CONFIG.Snackbar.day_to_night);
+    }
   } else {
-    btf.activateLightMode()
-    btf.saveToLocal.set('theme', 'light', 2)
-    document.querySelector('body').classList.add('DarkMode'), document.getElementById('modeicon').setAttribute('xlink:href', '#icon-moon')
+    // 切换到白天模式
+    btf.activateLightMode();
+    btf.saveToLocal.set('theme', 'light', 2);
+    if (modeIcon) modeIcon.setAttribute('xlink:href', '#icon-moon');
   }
-  // handle some cases
-  typeof utterancesTheme === 'function' && utterancesTheme()
-  typeof FB === 'object' && window.loadFBComment()
-  window.DISQUS && document.getElementById('disqus_thread').children.length && setTimeout(() => window.disqusReset(), 200)
+
+  // 3. 处理评论组件适配
+  typeof utterancesTheme === 'function' && utterancesTheme();
+  typeof FB === 'object' && window.loadFBComment();
+  if (window.DISQUS && document.getElementById('disqus_thread')?.children.length) {
+    setTimeout(() => window.disqusReset(), 200);
+  }
 }

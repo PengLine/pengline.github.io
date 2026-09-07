@@ -5,7 +5,7 @@
 <meta property="og:site_name" content="余一叶知秋尽">
 <meta property="og:description" content="深入解析多维度召回体系：GraphRAG知识图谱、三层记忆系统、混合检索策略（BM25+向量+图谱）、自迭代优化闭环及多智能体协作架构，通过“记忆中枢”实现高精度、高召回率的剧本分镜智能检索。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp">
 <meta property="article:published_time" content="2026-04-30T16:00:00.000Z">
 <meta property="article:modified_time" content="2026-08-31T10:19:27.926Z">
 <meta property="article:author" content="余一叶知秋尽">
@@ -32,7 +32,7 @@
 <meta property="article:tag" content="重排序">
 <meta property="article:tag" content="长短时记忆">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -105,7 +105,25 @@
 
       const theme = saveToLocal.get('theme')
     
-          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
         
       
       const asideStatus = saveToLocal.get('aside-status')
@@ -159,18 +177,18 @@
     toc: true,
     rightside: false,
   },
-  autoDarkmode: false
+  autoDarkmode: true
 }</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
   title: '剧本分镜智能体（PenShot）召回策略',
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
-}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><a id="darkmode_button" onclick="switchNightMode()" href="javascript:void(0);" title="切换模式"><svg class="mode-icon" width="24" height="24"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><!-- hexo injector head_end start -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">571</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体（PenShot）召回策略</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体（PenShot）召回策略</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-30T16:00:00.000Z" title="发表于 2026-05-01 00:00:00">2026-05-01</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-08-31T10:19:27.926Z" title="更新于 2026-08-31 18:19:27">2026-08-31</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/PenShot/">PenShot</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot 召回策略</h1>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">606</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体（PenShot）召回策略</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体（PenShot）召回策略</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-30T16:00:00.000Z" title="发表于 2026-05-01 00:00:00">2026-05-01</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-08-31T10:19:27.926Z" title="更新于 2026-08-31 18:19:27">2026-08-31</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/PenShot/">PenShot</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot 召回策略</h1>
 <p>深入解析 PenShot 的多维召回体系：从 GraphRAG 到自迭代优化，构建智能剧本分镜的“记忆中枢”</p>
 <p>相关链接：<a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">GitHub</a> | <a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/">官网</a> | <a href="https://pengline.cn/2026/02/7e6cd67dd5ee45248f2276ac145555f5">文档</a>  （<a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">架构设计</a> · <a href="https://pengline.cn/2026/02/df16e7d36e5d41d2ad9d7934b28f94e4">集成指南</a> · <a href="https://pengline.cn/2026/02/b027d930c0b84ba6abd24bbef7d78afc">MCP Server</a> ·  <a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">一致性策略</a> · <a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027">RAG 增强</a>）</p>
 <hr>
@@ -252,24 +270,24 @@
 </blockquote>
 <h3 id="平滑演进">平滑演进</h3>
 <p>本智能体短期支持短剧单次交互，长期支持电影/动漫/电视剧长剧本”的需求，需要选择一套具备<strong>平滑演进能力</strong>的技术方案。核心原则是：短期方案作为长期的组件或简化版，避免未来重构。</p>
-<pre class="mermaid">flowchart LR
-    subgraph 短期[短剧模式<br>单次交互 / 10万字以内]
-        A1[用户输入<br>剧本/创意] --> A2[混合检索<br>关键词+向量]
-        A2 --> A3[单智能体<br>端到端生成]
-        A3 --> A4[输出短剧成片]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph 短期[短剧模式&lt;br&gt;单次交互 / 10万字以内]
+        A1[用户输入&lt;br&gt;剧本/创意] --&gt; A2[混合检索&lt;br&gt;关键词+向量]
+        A2 --&gt; A3[单智能体&lt;br&gt;端到端生成]
+        A3 --&gt; A4[输出短剧成片]
     end
 
-    subgraph 长期[长剧本模式<br>电影/动漫/电视剧]
-        B1[长文本输入<br>10万-百万字] --> B2[语义索引<br>分层切片+事件图谱]
-        B2 --> B3[多智能体协作<br>编剧/分镜/视觉/质检]
-        B3 --> B4[长记忆存储<br>角色/场景/世界观]
-        B4 --> B5[GraphRAG<br>关系增强检索]
-        B5 --> B6[输出长片/剧集]
+    subgraph 长期[长剧本模式&lt;br&gt;电影/动漫/电视剧]
+        B1[长文本输入&lt;br&gt;10万-百万字] --&gt; B2[语义索引&lt;br&gt;分层切片+事件图谱]
+        B2 --&gt; B3[多智能体协作&lt;br&gt;编剧/分镜/视觉/质检]
+        B3 --&gt; B4[长记忆存储&lt;br&gt;角色/场景/世界观]
+        B4 --&gt; B5[GraphRAG&lt;br&gt;关系增强检索]
+        B5 --&gt; B6[输出长片/剧集]
     end
 
-    A4 -.->|能力升级<br>组件复用| B3
-    A2 -.->|技术演进| B5
-    A3 -.->|架构扩展| B4
+    A4 -.-&gt;|能力升级&lt;br&gt;组件复用| B3
+    A2 -.-&gt;|技术演进| B5
+    A3 -.-&gt;|架构扩展| B4
     
     style A1 fill:#e1f5fe
     style A2 fill:#b3e5fc
@@ -278,7 +296,7 @@
     style B2 fill:#ffe0b2
     style B3 fill:#ffb74d
     style B4 fill:#ff9800
-    style B5 fill:#f57c00</pre>
+    style B5 fill:#f57c00</code></pre>
 <h4 id="单次交互模式（短剧）">单次交互模式（短剧）</h4>
 <p>短剧（单集2-5分钟，总时长20-60分钟）的核心需求是<strong>快速响应</strong>和<strong>成本可控</strong>。</p>
 <table>
@@ -370,10 +388,10 @@
 </tbody>
 </table>
 <p><strong>多智能体协作架构</strong></p>
-<pre class="mermaid">flowchart TD
+<pre><code class="highlight mermaid">flowchart TD
     subgraph U[用户交互层]
-        U1[用户输入<br>剧本创意/要求]
-        U2[终端输出<br>分镜脚本/资产]
+        U1[用户输入&lt;br&gt;剧本创意/要求]
+        U2[终端输出&lt;br&gt;分镜脚本/资产]
     end
 
     subgraph D[决策层 - 导演Agent]
@@ -385,17 +403,17 @@
 
     subgraph E[执行层 - 智能体池]
         direction LR
-        E1[编剧Agent<br>剧本细化/台词生成]
-        E2[分镜Agent<br>镜头语言/构图]
-        E3[视觉Agent<br>角色/场景生成]
-        E4[技术Agent<br>格式转换/输出]
+        E1[编剧Agent&lt;br&gt;剧本细化/台词生成]
+        E2[分镜Agent&lt;br&gt;镜头语言/构图]
+        E3[视觉Agent&lt;br&gt;角色/场景生成]
+        E4[技术Agent&lt;br&gt;格式转换/输出]
     end
 
     subgraph M[记忆与检索层]
-        M1[长期记忆库<br>角色/世界观/资产]
-        M2[短期记忆库<br>当前会话/场景]
-        M3[GraphRAG引擎<br>关系增强检索]
-        M4[混合检索引擎<br>关键词+向量]
+        M1[长期记忆库&lt;br&gt;角色/世界观/资产]
+        M2[短期记忆库&lt;br&gt;当前会话/场景]
+        M3[GraphRAG引擎&lt;br&gt;关系增强检索]
+        M4[混合检索引擎&lt;br&gt;关键词+向量]
     end
 
     subgraph S[监督层 - 质检Agent]
@@ -405,15 +423,15 @@
         S4[反馈回路]
     end
 
-    U1 --> D
-    D -->|任务分发| E
-    E <-->|读写| M
-    E -->|生成结果| S
-    S -->|通过| U2
-    S -->|不通过| D
-    S -.->|反馈信号| M
+    U1 --&gt; D
+    D --&gt;|任务分发| E
+    E &lt;--&gt;|读写| M
+    E --&gt;|生成结果| S
+    S --&gt;|通过| U2
+    S --&gt;|不通过| D
+    S -.-&gt;|反馈信号| M
     
-    D <-->|状态同步| M</--></--></pre>
+    D &lt;--&gt;|状态同步| M</code></pre>
 <table>
 <thead>
 <tr>
@@ -503,7 +521,7 @@
 </tbody>
 </table>
 <h3 id="已实现的核心能力">已实现的核心能力</h3>
-<pre class="mermaid">mindmap
+<pre><code class="highlight mermaid">mindmap
   PenShot召回策略
     模板缓存
       21条成功模板
@@ -523,63 +541,63 @@
     多智能体
       工作流串联
       上下文传递
-      结果共享</pre>
+      结果共享</code></pre>
 <hr>
 <h2 id="召回策略全景架构">召回策略全景架构</h2>
 <h3 id="整体架构图">整体架构图</h3>
-<pre class="mermaid">flowchart TB
-    subgraph Input[" 输入层"]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph Input[&quot; 输入层&quot;]
         Q[用户查询/剧本输入]
         C[上下文信息]
         H[历史记录]
     end
 
-    subgraph Recall[" 多路召回层"]
+    subgraph Recall[&quot; 多路召回层&quot;]
         direction TB
-        RK[关键词召回<br>BM25/精确匹配]
-        RV[向量召回<br>语义相似度]
-        RG[GraphRAG<br>知识图谱]
-        RM[记忆召回<br>长/短时记忆]
-        RT[模板召回<br>历史成功案例]
+        RK[关键词召回&lt;br/&gt;BM25/精确匹配]
+        RV[向量召回&lt;br/&gt;语义相似度]
+        RG[GraphRAG&lt;br/&gt;知识图谱]
+        RM[记忆召回&lt;br/&gt;长/短时记忆]
+        RT[模板召回&lt;br/&gt;历史成功案例]
     end
 
-    subgraph Fusion[" 融合与重排序层"]
+    subgraph Fusion[&quot; 融合与重排序层&quot;]
         RF[结果融合]
         RR[重排序Reranker]
         DF[去重与过滤]
     end
 
-    subgraph Output[" 输出层"]
+    subgraph Output[&quot; 输出层&quot;]
         RS[召回结果]
         Score[相关性分数]
         Meta[元数据]
     end
 
-    subgraph Feedback[" 反馈层"]
+    subgraph Feedback[&quot; 反馈层&quot;]
         Audit[质量审计]
         Repair[自动修复]
         Learn[经验学习]
     end
 
-    Q --> Recall
-    C --> Recall
-    H --> Recall
+    Q --&gt; Recall
+    C --&gt; Recall
+    H --&gt; Recall
     
-    RK --> Fusion
-    RV --> Fusion
-    RG --> Fusion
-    RM --> Fusion
-    RT --> Fusion
+    RK --&gt; Fusion
+    RV --&gt; Fusion
+    RG --&gt; Fusion
+    RM --&gt; Fusion
+    RT --&gt; Fusion
     
-    Fusion --> Output
-    Output --> Feedback
-    Feedback -->|优化| Recall
+    Fusion --&gt; Output
+    Output --&gt; Feedback
+    Feedback --&gt;|优化| Recall
 
     style Input fill:#e1f5fe
     style Recall fill:#fff3e0
     style Fusion fill:#e8f5e9
     style Output fill:#fce4ec
-    style Feedback fill:#f3e5f5</pre>
+    style Feedback fill:#f3e5f5</code></pre>
 <h3 id="设计目标">设计目标</h3>
 <p>PenShot 召回系统针对剧本分镜场景的特殊需求，设定了以下核心设计目标：</p>
 <ul class="lvl-0">
@@ -665,7 +683,7 @@
 高权重策略（精确匹配、语义向量、记忆系统）在融合排序中占主导地位，因为它们直接关系到分镜质量的核心要素。中权重策略（关键词、知识图谱）作为补充，提供额外的召回路以应对边缘情况。</p>
 </blockquote>
 <h3 id="多路召回序列图">多路召回序列图</h3>
-<pre class="mermaid">sequenceDiagram
+<pre><code class="highlight mermaid">sequenceDiagram
     participant User as 用户/剧本
     participant Router as 召回路由器
     participant Keyword as 关键词召回
@@ -675,28 +693,28 @@
     participant Rerank as 重排序器
     participant Output as 输出
 
-    User->>Router: 查询请求
+    User-&gt;&gt;Router: 查询请求
     
     par 并行召回
-        Router->>Keyword: 触发关键词召回
-        Keyword-->>Router: 结果集K1
+        Router-&gt;&gt;Keyword: 触发关键词召回
+        Keyword--&gt;&gt;Router: 结果集K1
     and
-        Router->>Vector: 触发向量召回
-        Vector-->>Router: 结果集K2
+        Router-&gt;&gt;Vector: 触发向量召回
+        Vector--&gt;&gt;Router: 结果集K2
     and
-        Router->>Graph: 触发图谱召回
-        Graph-->>Router: 结果集K3
+        Router-&gt;&gt;Graph: 触发图谱召回
+        Graph--&gt;&gt;Router: 结果集K3
     and
-        Router->>Memory: 触发记忆召回
-        Memory-->>Router: 结果集K4
+        Router-&gt;&gt;Memory: 触发记忆召回
+        Memory--&gt;&gt;Router: 结果集K4
     end
     
-    Router->>Router: 合并去重(取top_k*2)
-    Router->>Rerank: 重排序
-    Rerank-->>Router: 精排结果
+    Router-&gt;&gt;Router: 合并去重(取top_k*2)
+    Router-&gt;&gt;Rerank: 重排序
+    Rerank--&gt;&gt;Router: 精排结果
     
-    Router->>Output: 最终召回结果
-    Output-->>User: 返回</pre>
+    Router-&gt;&gt;Output: 最终召回结果
+    Output--&gt;&gt;User: 返回</code></pre>
 <hr>
 <h2 id="混合检索策略详解">混合检索策略详解</h2>
 <h3 id="核心解决的问题">核心解决的问题</h3>
@@ -739,61 +757,61 @@
 </tbody>
 </table>
 <h3 id="混合检索流程图">混合检索流程图</h3>
-<pre class="mermaid">flowchart LR
-    subgraph Query["查询处理"]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph Query[&quot;查询处理&quot;]
         Q[原始查询]
         QP[查询解析]
         QE[向量化]
     end
 
-    subgraph MultiRecall["多路召回"]
+    subgraph MultiRecall[&quot;多路召回&quot;]
         direction TB
         
-        subgraph Exact["精确匹配"]
+        subgraph Exact[&quot;精确匹配&quot;]
             H1[Hash索引]
             H2[正则匹配]
         end
         
-        subgraph Sparse["稀疏检索"]
+        subgraph Sparse[&quot;稀疏检索&quot;]
             B1[BM25]
             B2[TF-IDF]
         end
         
-        subgraph Dense["稠密检索"]
+        subgraph Dense[&quot;稠密检索&quot;]
             D1[BGE向量]
             D2[CrossEncoder]
         end
         
-        subgraph Structured["结构化"]
+        subgraph Structured[&quot;结构化&quot;]
             S1[标签过滤]
             S2[时间范围]
         end
     end
 
-    subgraph Fusion["融合策略"]
+    subgraph Fusion[&quot;融合策略&quot;]
         RRF[倒数排序融合 RRF]
         WSum[加权求和]
         CL[学习排序 LTR]
     end
 
-    Q --> QP --> QE
-    QP --> Exact
-    QE --> Dense
-    QP --> Sparse
-    QP --> Structured
+    Q --&gt; QP --&gt; QE
+    QP --&gt; Exact
+    QE --&gt; Dense
+    QP --&gt; Sparse
+    QP --&gt; Structured
     
-    Exact --> RRF
-    Sparse --> RRF
-    Dense --> RRF
-    Structured --> WSum
+    Exact --&gt; RRF
+    Sparse --&gt; RRF
+    Dense --&gt; RRF
+    Structured --&gt; WSum
     
-    RRF --> CL
-    WSum --> CL
-    CL --> Result[最终结果]
+    RRF --&gt; CL
+    WSum --&gt; CL
+    CL --&gt; Result[最终结果]
 
     style Query fill:#e3f2fd
     style MultiRecall fill:#fff8e1
-    style Fusion fill:#e8f5e9</pre>
+    style Fusion fill:#e8f5e9</code></pre>
 <h3 id="融合算法说明">融合算法说明</h3>
 <p><strong>倒数排序融合（RRF）</strong><br>
 RRF是混合检索中最常用的融合算法。它的核心思想是：对每个召回源的结果独立排序，然后计算每个文档的RRF分数。</p>
@@ -822,8 +840,8 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
 </blockquote>
 <p>GraphRAG通过在向量检索的基础上构建知识图谱来解决这些问题。图谱中包含“角色-事件-场景”等实体，以及它们之间的各种关系（互动、因果、时序等）。</p>
 <h3 id="知识图谱架构">知识图谱架构</h3>
-<pre class="mermaid">graph TB
-    subgraph Entities["实体层"]
+<pre><code class="highlight mermaid">graph TB
+    subgraph Entities[&quot;实体层&quot;]
         C[角色实体]
         S[场景实体]
         P[道具实体]
@@ -832,35 +850,35 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
         T[时间实体]
     end
     
-    subgraph Relations["关系层"]
-        R1[角色-角色<br>关系/对话]
-        R2[角色-场景<br>出现在]
-        R3[角色-道具<br>持有/使用]
-        R4[事件-事件<br>因果/时序]
-        R5[场景-场景<br>转换/过渡]
+    subgraph Relations[&quot;关系层&quot;]
+        R1[角色-角色&lt;br/&gt;关系/对话]
+        R2[角色-场景&lt;br/&gt;出现在]
+        R3[角色-道具&lt;br/&gt;持有/使用]
+        R4[事件-事件&lt;br/&gt;因果/时序]
+        R5[场景-场景&lt;br/&gt;转换/过渡]
     end
     
-    subgraph Properties["属性层"]
-        A1[角色属性<br>性格/外貌/台词]
-        A2[场景属性<br>氛围/光线/时间]
-        A3[事件属性<br>情感/强度/时长]
+    subgraph Properties[&quot;属性层&quot;]
+        A1[角色属性&lt;br/&gt;性格/外貌/台词]
+        A2[场景属性&lt;br/&gt;氛围/光线/时间]
+        A3[事件属性&lt;br/&gt;情感/强度/时长]
     end
     
-    C --> R1
-    C --> R2
-    C --> R3
-    S --> R2
-    S --> R5
-    P --> R3
-    E --> R4
-    E --> A3
+    C --&gt; R1
+    C --&gt; R2
+    C --&gt; R3
+    S --&gt; R2
+    S --&gt; R5
+    P --&gt; R3
+    E --&gt; R4
+    E --&gt; A3
     
-    C --> A1
-    S --> A2
+    C --&gt; A1
+    S --&gt; A2
 
     style Entities fill:#e3f2fd
     style Relations fill:#fff3e0
-    style Properties fill:#e8f5e9</pre>
+    style Properties fill:#e8f5e9</code></pre>
 <p><strong>实体类型说明</strong></p>
 <table>
 <thead>
@@ -947,7 +965,7 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
 </tbody>
 </table>
 <h3 id="GraphRAG检索流程">GraphRAG检索流程</h3>
-<pre class="mermaid">sequenceDiagram
+<pre><code class="highlight mermaid">sequenceDiagram
     participant User as 用户查询
     participant Parser as 查询解析器
     participant Graph as 知识图谱
@@ -955,30 +973,30 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
     participant Fusion as 融合引擎
     participant Output as 输出
 
-    User->>Parser: "男主发现助手背叛"
+    User-&gt;&gt;Parser: &quot;男主发现助手背叛&quot;
     
-    Parser->>Parser: 实体识别
-    Note over Parser: 实体: {男主, 助手, 背叛}
+    Parser-&gt;&gt;Parser: 实体识别
+    Note over Parser: 实体: &#123;男主, 助手, 背叛&#125;
     
     par 图谱遍历
-        Parser->>Graph: 查找"男主"节点
-        Graph-->>Parser: 男主属性、关系
-        Parser->>Graph: 查找"助手"节点
-        Graph-->>Parser: 助手属性、关系
-        Parser->>Graph: 查找"背叛"事件
-        Graph-->>Parser: 背叛事件、因果关系
+        Parser-&gt;&gt;Graph: 查找&quot;男主&quot;节点
+        Graph--&gt;&gt;Parser: 男主属性、关系
+        Parser-&gt;&gt;Graph: 查找&quot;助手&quot;节点
+        Graph--&gt;&gt;Parser: 助手属性、关系
+        Parser-&gt;&gt;Graph: 查找&quot;背叛&quot;事件
+        Graph--&gt;&gt;Parser: 背叛事件、因果关系
     and 向量检索
-        Parser->>Vector: 相似语义检索
-        Vector-->>Parser: 相关片段
+        Parser-&gt;&gt;Vector: 相似语义检索
+        Vector--&gt;&gt;Parser: 相关片段
     end
     
-    Parser->>Fusion: 提交多路结果
+    Parser-&gt;&gt;Fusion: 提交多路结果
     
-    Fusion->>Fusion: 图谱推理
+    Fusion-&gt;&gt;Fusion: 图谱推理
     Note over Fusion: 推理: 男主→关系→助手→背叛事件
     
-    Fusion->>Output: 召回结果
-    Output-->>User: 相关分镜/台词</pre>
+    Fusion-&gt;&gt;Output: 召回结果
+    Output--&gt;&gt;User: 相关分镜/台词</code></pre>
 <h3 id="图谱构建与检索示例">图谱构建与检索示例</h3>
 <figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># graph_rag_demo.py</span></span><br><span class="line"><span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">GraphRAG演示 - 知识图谱构建与推理检索</span></span><br><span class="line"><span class="string">&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">GraphRAGDemo</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;GraphRAG核心逻辑演示&quot;&quot;&quot;</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="comment"># 实体存储</span></span><br><span class="line">        <span class="variable language_">self</span>.entities = &#123;&#125;</span><br><span class="line">        <span class="comment"># 关系存储（邻接表）</span></span><br><span class="line">        <span class="variable language_">self</span>.relations = &#123;&#125;</span><br><span class="line">        <span class="comment"># 实体类型索引</span></span><br><span class="line">        <span class="variable language_">self</span>.type_index = &#123;&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">build_from_script</span>(<span class="params">self, script_data</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">        从剧本构建知识图谱</span></span><br><span class="line"><span class="string">        </span></span><br><span class="line"><span class="string">        构建步骤：</span></span><br><span class="line"><span class="string">        1. 添加角色实体 - 每个角色成为图中的一个节点</span></span><br><span class="line"><span class="string">        2. 添加场景实体 - 每个场景成为图中的一个节点</span></span><br><span class="line"><span class="string">        3. 添加事件实体 - 每个动作/对话成为事件节点</span></span><br><span class="line"><span class="string">        4. 建立关系边 - 根据剧本内容建立实体间的连接</span></span><br><span class="line"><span class="string">        &quot;&quot;&quot;</span></span><br><span class="line">        <span class="built_in">print</span>(<span class="string">&quot;构建知识图谱...&quot;</span>)</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 1. 添加角色实体</span></span><br><span class="line">        <span class="keyword">for</span> char <span class="keyword">in</span> script_data.get(<span class="string">&quot;characters&quot;</span>, []):</span><br><span class="line">            <span class="variable language_">self</span>._add_entity(</span><br><span class="line">                entity_id=<span class="string">f&quot;char_<span class="subst">&#123;char[<span class="string">&#x27;name&#x27;</span>]&#125;</span>&quot;</span>,</span><br><span class="line">                name=char[<span class="string">&quot;name&quot;</span>],</span><br><span class="line">                entity_type=<span class="string">&quot;character&quot;</span>,</span><br><span class="line">                properties=&#123;</span><br><span class="line">                    <span class="string">&quot;gender&quot;</span>: char.get(<span class="string">&quot;gender&quot;</span>),</span><br><span class="line">                    <span class="string">&quot;role&quot;</span>: char.get(<span class="string">&quot;role&quot;</span>),</span><br><span class="line">                    <span class="string">&quot;description&quot;</span>: char.get(<span class="string">&quot;description&quot;</span>)</span><br><span class="line">                &#125;</span><br><span class="line">            )</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 2. 添加场景实体</span></span><br><span class="line">        <span class="keyword">for</span> scene <span class="keyword">in</span> script_data.get(<span class="string">&quot;scenes&quot;</span>, []):</span><br><span class="line">            <span class="variable language_">self</span>._add_entity(</span><br><span class="line">                entity_id=<span class="string">f&quot;scene_<span class="subst">&#123;scene[<span class="string">&#x27;id&#x27;</span>]&#125;</span>&quot;</span>,</span><br><span class="line">                name=scene.get(<span class="string">&quot;location&quot;</span>, <span class="string">&quot;&quot;</span>),</span><br><span class="line">                entity_type=<span class="string">&quot;scene&quot;</span>,</span><br><span class="line">                properties=&#123;</span><br><span class="line">                    <span class="string">&quot;time&quot;</span>: scene.get(<span class="string">&quot;time_of_day&quot;</span>),</span><br><span class="line">                    <span class="string">&quot;weather&quot;</span>: scene.get(<span class="string">&quot;weather&quot;</span>)</span><br><span class="line">                &#125;</span><br><span class="line">            )</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 3. 添加事件实体和关系</span></span><br><span class="line">        <span class="keyword">for</span> scene <span class="keyword">in</span> script_data.get(<span class="string">&quot;scenes&quot;</span>, []):</span><br><span class="line">            scene_id = <span class="string">f&quot;scene_<span class="subst">&#123;scene[<span class="string">&#x27;id&#x27;</span>]&#125;</span>&quot;</span></span><br><span class="line">            <span class="keyword">for</span> elem <span class="keyword">in</span> scene.get(<span class="string">&quot;elements&quot;</span>, []):</span><br><span class="line">                event_id = <span class="string">f&quot;event_<span class="subst">&#123;elem[<span class="string">&#x27;id&#x27;</span>]&#125;</span>&quot;</span></span><br><span class="line">                <span class="variable language_">self</span>._add_entity(</span><br><span class="line">                    entity_id=event_id,</span><br><span class="line">                    name=elem.get(<span class="string">&quot;content&quot;</span>, <span class="string">&quot;&quot;</span>)[:<span class="number">30</span>],</span><br><span class="line">                    entity_type=elem.get(<span class="string">&quot;type&quot;</span>, <span class="string">&quot;action&quot;</span>),</span><br><span class="line">                    properties=&#123;</span><br><span class="line">                        <span class="string">&quot;emotion&quot;</span>: elem.get(<span class="string">&quot;emotion&quot;</span>),</span><br><span class="line">                        <span class="string">&quot;intensity&quot;</span>: elem.get(<span class="string">&quot;intensity&quot;</span>, <span class="number">0.5</span>)</span><br><span class="line">                    &#125;</span><br><span class="line">                )</span><br><span class="line">                <span class="comment"># 事件发生在场景中</span></span><br><span class="line">                <span class="variable language_">self</span>._add_relation(event_id, scene_id, <span class="string">&quot;occurs_in&quot;</span>)</span><br><span class="line">                </span><br><span class="line">                <span class="comment"># 如果事件涉及角色，建立关系</span></span><br><span class="line">                <span class="keyword">if</span> elem.get(<span class="string">&quot;character&quot;</span>):</span><br><span class="line">                    char_id = <span class="string">f&quot;char_<span class="subst">&#123;elem[<span class="string">&#x27;character&#x27;</span>]&#125;</span>&quot;</span></span><br><span class="line">                    <span class="variable language_">self</span>._add_relation(char_id, event_id, <span class="string">&quot;performs&quot;</span>)</span><br><span class="line">        </span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;图谱构建完成: <span class="subst">&#123;<span class="built_in">len</span>(self.entities)&#125;</span>个实体, <span class="subst">&#123;self._count_relations()&#125;</span>条关系&quot;</span>)</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">retrieve</span>(<span class="params">self, query, context=<span class="literal">None</span></span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">        图谱检索 - 结合实体识别和关系推理</span></span><br><span class="line"><span class="string">        </span></span><br><span class="line"><span class="string">        检索流程：</span></span><br><span class="line"><span class="string">        1. 从查询中识别实体</span></span><br><span class="line"><span class="string">        2. 在图中定位这些实体节点</span></span><br><span class="line"><span class="string">        3. 进行广度优先遍历，收集关联实体</span></span><br><span class="line"><span class="string">        4. 对路径进行相关性排序</span></span><br><span class="line"><span class="string">        &quot;&quot;&quot;</span></span><br><span class="line">        <span class="comment"># 1. 实体识别</span></span><br><span class="line">        entities = <span class="variable language_">self</span>._extract_entities(query)</span><br><span class="line">        <span class="keyword">if</span> context:</span><br><span class="line">            entities.update(<span class="variable language_">self</span>._extract_context_entities(context))</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">if</span> <span class="keyword">not</span> entities:</span><br><span class="line">            <span class="keyword">return</span> []</span><br><span class="line">        </span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;识别实体: <span class="subst">&#123;entities&#125;</span>&quot;</span>)</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 2. 广度优先遍历</span></span><br><span class="line">        results = []</span><br><span class="line">        visited = <span class="built_in">set</span>(entities)</span><br><span class="line">        queue = [(e, <span class="number">0</span>, [e]) <span class="keyword">for</span> e <span class="keyword">in</span> entities]</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">while</span> queue:</span><br><span class="line">            current, depth, path = queue.pop(<span class="number">0</span>)</span><br><span class="line">            </span><br><span class="line">            <span class="keyword">if</span> depth &gt; <span class="number">3</span>:  <span class="comment"># 限制遍历深度</span></span><br><span class="line">                <span class="keyword">continue</span></span><br><span class="line">            </span><br><span class="line">            <span class="comment"># 获取邻居节点</span></span><br><span class="line">            neighbors = <span class="variable language_">self</span>.relations.get(current, [])</span><br><span class="line">            </span><br><span class="line">            <span class="keyword">for</span> neighbor <span class="keyword">in</span> neighbors:</span><br><span class="line">                <span class="keyword">if</span> neighbor <span class="keyword">not</span> <span class="keyword">in</span> visited:</span><br><span class="line">                    visited.add(neighbor)</span><br><span class="line">                    new_path = path + [neighbor]</span><br><span class="line">                    </span><br><span class="line">                    results.append(&#123;</span><br><span class="line">                        <span class="string">&quot;entity_id&quot;</span>: neighbor,</span><br><span class="line">                        <span class="string">&quot;entity&quot;</span>: <span class="variable language_">self</span>.entities.get(neighbor),</span><br><span class="line">                        <span class="string">&quot;path&quot;</span>: new_path,</span><br><span class="line">                        <span class="string">&quot;depth&quot;</span>: depth + <span class="number">1</span></span><br><span class="line">                    &#125;)</span><br><span class="line">                    </span><br><span class="line">                    queue.append((neighbor, depth + <span class="number">1</span>, new_path))</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 3. 排序</span></span><br><span class="line">        results.sort(key=<span class="keyword">lambda</span> x: (x[<span class="string">&quot;depth&quot;</span>], <span class="variable language_">self</span>._path_score(x[<span class="string">&quot;path&quot;</span>])))</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">return</span> results</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_extract_entities</span>(<span class="params">self, text</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;从文本中提取实体&quot;&quot;&quot;</span></span><br><span class="line">        entities = <span class="built_in">set</span>()</span><br><span class="line">        <span class="keyword">for</span> entity_id, entity <span class="keyword">in</span> <span class="variable language_">self</span>.entities.items():</span><br><span class="line">            <span class="keyword">if</span> entity[<span class="string">&quot;name&quot;</span>] <span class="keyword">and</span> entity[<span class="string">&quot;name&quot;</span>] <span class="keyword">in</span> text:</span><br><span class="line">                entities.add(entity_id)</span><br><span class="line">            <span class="comment"># 检查属性匹配</span></span><br><span class="line">            <span class="keyword">if</span> entity[<span class="string">&quot;entity_type&quot;</span>] == <span class="string">&quot;character&quot;</span>:</span><br><span class="line">                <span class="keyword">if</span> entity[<span class="string">&quot;name&quot;</span>] <span class="keyword">in</span> text:</span><br><span class="line">                    entities.add(entity_id)</span><br><span class="line">        <span class="keyword">return</span> entities</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_extract_context_entities</span>(<span class="params">self, context</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;从上下文中提取实体（当前角色、当前场景等）&quot;&quot;&quot;</span></span><br><span class="line">        entities = <span class="built_in">set</span>()</span><br><span class="line">        <span class="keyword">if</span> <span class="string">&quot;current_character&quot;</span> <span class="keyword">in</span> context:</span><br><span class="line">            char_id = <span class="string">f&quot;char_<span class="subst">&#123;context[<span class="string">&#x27;current_character&#x27;</span>]&#125;</span>&quot;</span></span><br><span class="line">            <span class="keyword">if</span> char_id <span class="keyword">in</span> <span class="variable language_">self</span>.entities:</span><br><span class="line">                entities.add(char_id)</span><br><span class="line">        <span class="keyword">if</span> <span class="string">&quot;current_scene&quot;</span> <span class="keyword">in</span> context:</span><br><span class="line">            scene_id = <span class="string">f&quot;scene_<span class="subst">&#123;context[<span class="string">&#x27;current_scene&#x27;</span>]&#125;</span>&quot;</span></span><br><span class="line">            <span class="keyword">if</span> scene_id <span class="keyword">in</span> <span class="variable language_">self</span>.entities:</span><br><span class="line">                entities.add(scene_id)</span><br><span class="line">        <span class="keyword">return</span> entities</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_path_score</span>(<span class="params">self, path</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;计算路径相关性分数&quot;&quot;&quot;</span></span><br><span class="line">        <span class="comment"># 路径越短分数越高</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">1.0</span> / (<span class="built_in">len</span>(path) + <span class="number">1</span>)</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_add_entity</span>(<span class="params">self, entity_id, name, entity_type, properties=<span class="literal">None</span></span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;添加实体&quot;&quot;&quot;</span></span><br><span class="line">        <span class="variable language_">self</span>.entities[entity_id] = &#123;</span><br><span class="line">            <span class="string">&quot;id&quot;</span>: entity_id,</span><br><span class="line">            <span class="string">&quot;name&quot;</span>: name,</span><br><span class="line">            <span class="string">&quot;entity_type&quot;</span>: entity_type,</span><br><span class="line">            <span class="string">&quot;properties&quot;</span>: properties <span class="keyword">or</span> &#123;&#125;</span><br><span class="line">        &#125;</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">if</span> entity_type <span class="keyword">not</span> <span class="keyword">in</span> <span class="variable language_">self</span>.type_index:</span><br><span class="line">            <span class="variable language_">self</span>.type_index[entity_type] = []</span><br><span class="line">        <span class="variable language_">self</span>.type_index[entity_type].append(entity_id)</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">if</span> entity_id <span class="keyword">not</span> <span class="keyword">in</span> <span class="variable language_">self</span>.relations:</span><br><span class="line">            <span class="variable language_">self</span>.relations[entity_id] = []</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_add_relation</span>(<span class="params">self, from_id, to_id, rel_type</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;添加关系&quot;&quot;&quot;</span></span><br><span class="line">        <span class="keyword">if</span> from_id <span class="keyword">not</span> <span class="keyword">in</span> <span class="variable language_">self</span>.relations:</span><br><span class="line">            <span class="variable language_">self</span>.relations[from_id] = []</span><br><span class="line">        <span class="variable language_">self</span>.relations[from_id].append(to_id)</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_count_relations</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;统计关系数量&quot;&quot;&quot;</span></span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">sum</span>(<span class="built_in">len</span>(v) <span class="keyword">for</span> v <span class="keyword">in</span> <span class="variable language_">self</span>.relations.values())</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment"># 演示数据</span></span><br><span class="line">demo_script = &#123;</span><br><span class="line">    <span class="string">&quot;title&quot;</span>: <span class="string">&quot;雨中的约定&quot;</span>,</span><br><span class="line">    <span class="string">&quot;characters&quot;</span>: [</span><br><span class="line">        &#123;<span class="string">&quot;name&quot;</span>: <span class="string">&quot;林小雨&quot;</span>, <span class="string">&quot;gender&quot;</span>: <span class="string">&quot;女&quot;</span>, <span class="string">&quot;role&quot;</span>: <span class="string">&quot;主角&quot;</span>&#125;,</span><br><span class="line">        &#123;<span class="string">&quot;name&quot;</span>: <span class="string">&quot;陈阳&quot;</span>, <span class="string">&quot;gender&quot;</span>: <span class="string">&quot;男&quot;</span>, <span class="string">&quot;role&quot;</span>: <span class="string">&quot;主角&quot;</span>&#125;</span><br><span class="line">    ],</span><br><span class="line">    <span class="string">&quot;scenes&quot;</span>: [</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="string">&quot;id&quot;</span>: <span class="string">&quot;scene_001&quot;</span>,</span><br><span class="line">            <span class="string">&quot;location&quot;</span>: <span class="string">&quot;咖啡店外&quot;</span>,</span><br><span class="line">            <span class="string">&quot;time_of_day&quot;</span>: <span class="string">&quot;下午&quot;</span>,</span><br><span class="line">            <span class="string">&quot;weather&quot;</span>: <span class="string">&quot;雨天&quot;</span>,</span><br><span class="line">            <span class="string">&quot;elements&quot;</span>: [</span><br><span class="line">                &#123;<span class="string">&quot;id&quot;</span>: <span class="string">&quot;elem_001&quot;</span>, <span class="string">&quot;type&quot;</span>: <span class="string">&quot;action&quot;</span>, <span class="string">&quot;character&quot;</span>: <span class="string">&quot;林小雨&quot;</span>, </span><br><span class="line">                 <span class="string">&quot;content&quot;</span>: <span class="string">&quot;林小雨蹲在长椅旁擦拭湿漉漉的书&quot;</span>, <span class="string">&quot;emotion&quot;</span>: <span class="string">&quot;anxious&quot;</span>&#125;,</span><br><span class="line">                &#123;<span class="string">&quot;id&quot;</span>: <span class="string">&quot;elem_002&quot;</span>, <span class="string">&quot;type&quot;</span>: <span class="string">&quot;action&quot;</span>, <span class="string">&quot;character&quot;</span>: <span class="string">&quot;陈阳&quot;</span>, </span><br><span class="line">                 <span class="string">&quot;content&quot;</span>: <span class="string">&quot;陈阳急刹车，书掉进水洼&quot;</span>, <span class="string">&quot;emotion&quot;</span>: <span class="string">&quot;surprise&quot;</span>&#125;,</span><br><span class="line">                &#123;<span class="string">&quot;id&quot;</span>: <span class="string">&quot;elem_003&quot;</span>, <span class="string">&quot;type&quot;</span>: <span class="string">&quot;dialogue&quot;</span>, <span class="string">&quot;character&quot;</span>: <span class="string">&quot;陈阳&quot;</span>, </span><br><span class="line">                 <span class="string">&quot;content&quot;</span>: <span class="string">&quot;对不起！这书是你的？&quot;</span>, <span class="string">&quot;emotion&quot;</span>: <span class="string">&quot;apologetic&quot;</span>&#125;</span><br><span class="line">            ]</span><br><span class="line">        &#125;</span><br><span class="line">    ]</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> __name__ == <span class="string">&quot;__main__&quot;</span>:</span><br><span class="line">    graph = GraphRAGDemo()</span><br><span class="line">    graph.build_from_script(demo_script)</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 测试检索</span></span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;\n&quot;</span> + <span class="string">&quot;=&quot;</span>*<span class="number">50</span>)</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;测试检索: &#x27;陈阳道歉&#x27;&quot;</span>)</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;=&quot;</span>*<span class="number">50</span>)</span><br><span class="line">    </span><br><span class="line">    results = graph.retrieve(<span class="string">&quot;陈阳道歉&quot;</span>)</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">for</span> r <span class="keyword">in</span> results[:<span class="number">5</span>]:</span><br><span class="line">        entity = r[<span class="string">&quot;entity&quot;</span>]</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;  - <span class="subst">&#123;entity[<span class="string">&#x27;entity_type&#x27;</span>]&#125;</span>: <span class="subst">&#123;entity[<span class="string">&#x27;name&#x27;</span>]&#125;</span> (深度: <span class="subst">&#123;r[<span class="string">&#x27;depth&#x27;</span>]&#125;</span>)&quot;</span>)</span><br></pre></td></tr></table></figure>
 <hr>
@@ -1018,47 +1036,47 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
 </table>
 <p>这些问题的根源在于：生成新内容时，系统“忘记”了之前已经建立的设定。长短时记忆系统通过分层存储来解决这个问题。</p>
 <h3 id="三层记忆架构">三层记忆架构</h3>
-<pre class="mermaid">flowchart TB
-    subgraph ShortTerm["短期记忆 (Short-Term)"]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph ShortTerm[&quot;短期记忆 (Short-Term)&quot;]
         S1[会话上下文]
         S2[当前状态]
         S3[临时变量]
-        S_LRU[LRU淘汰<br>容量:20, TTL:1h]
+        S_LRU[LRU淘汰&lt;br/&gt;容量:20, TTL:1h]
     end
     
-    subgraph MediumTerm["中期记忆 (Medium-Term)"]
+    subgraph MediumTerm[&quot;中期记忆 (Medium-Term)&quot;]
         M1[阶段摘要]
         M2[关键决策]
         M3[修复记录]
-        M_Compress[压缩存储<br>Max Tokens:500]
+        M_Compress[压缩存储&lt;br/&gt;Max Tokens:500]
     end
     
-    subgraph LongTerm["长期记忆 (Long-Term)"]
+    subgraph LongTerm[&quot;长期记忆 (Long-Term)&quot;]
         L1[角色设定]
         L2[场景模板]
         L3[成功案例]
         L4[学习模式]
-        L_Vector[向量索引<br>78条文档]
+        L_Vector[向量索引&lt;br/&gt;78条文档]
     end
     
-    subgraph Access["访问接口"]
+    subgraph Access[&quot;访问接口&quot;]
         A_Write[写入API]
         A_Read[读取API]
         A_Search[语义搜索]
         A_Summary[摘要生成]
     end
     
-    ShortTerm --> MediumTerm
-    MediumTerm --> LongTerm
+    ShortTerm --&gt; MediumTerm
+    MediumTerm --&gt; LongTerm
     
-    Access --> ShortTerm
-    Access --> MediumTerm
-    Access --> LongTerm
+    Access --&gt; ShortTerm
+    Access --&gt; MediumTerm
+    Access --&gt; LongTerm
 
     style ShortTerm fill:#e3f2fd
     style MediumTerm fill:#fff3e0
     style LongTerm fill:#e8f5e9
-    style Access fill:#fce4ec</pre>
+    style Access fill:#fce4ec</code></pre>
 <p><strong>三层记忆的职责划分</strong></p>
 <table>
 <thead>
@@ -1146,20 +1164,20 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
 <p>长期记忆通过向量索引实现语义检索，目前已存储78条文档，使用768维的BGE嵌入模型。</p>
 </blockquote>
 <h3 id="记忆生命周期">记忆生命周期</h3>
-<pre class="mermaid">stateDiagram-v2
-    [*] --> 短期记忆: 新交互产生
+<pre><code class="highlight mermaid">stateDiagram-v2
+    [*] --&gt; 短期记忆: 新交互产生
     
-    短期记忆 --> 短期记忆: 更新/访问
-    短期记忆 --> 中期记忆: 阶段结束/总结
-    短期记忆 --> [*]: TTL过期/LRU淘汰
+    短期记忆 --&gt; 短期记忆: 更新/访问
+    短期记忆 --&gt; 中期记忆: 阶段结束/总结
+    短期记忆 --&gt; [*]: TTL过期/LRU淘汰
     
-    中期记忆 --> 中期记忆: 追加摘要
-    中期记忆 --> 长期记忆: 重要模式/重复出现
-    中期记忆 --> [*]: 任务完成/清理
+    中期记忆 --&gt; 中期记忆: 追加摘要
+    中期记忆 --&gt; 长期记忆: 重要模式/重复出现
+    中期记忆 --&gt; [*]: 任务完成/清理
     
-    长期记忆 --> 长期记忆: 向量化存储
-    长期记忆 --> 短期记忆: 语义检索召回
-    长期记忆 --> [*]: 长期保留
+    长期记忆 --&gt; 长期记忆: 向量化存储
+    长期记忆 --&gt; 短期记忆: 语义检索召回
+    长期记忆 --&gt; [*]: 长期保留
     
     note right of 短期记忆
         容量: 20条
@@ -1177,7 +1195,7 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
         向量维度: 768
         文档数: 78
         LlamaIndex
-    end note</pre>
+    end note</code></pre>
 <h3 id="记忆系统示例">记忆系统示例</h3>
 <figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br></pre></td><td class="code"><pre><span class="line"><span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">记忆系统演示 - 三层记忆的存储与检索</span></span><br><span class="line"><span class="string">&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">from</span> datetime <span class="keyword">import</span> datetime, timedelta</span><br><span class="line"><span class="keyword">from</span> collections <span class="keyword">import</span> OrderedDict</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">ShortTermMemory</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;短期记忆 - LRU缓存 + TTL过期&quot;&quot;&quot;</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, max_size=<span class="number">20</span>, ttl_seconds=<span class="number">3600</span></span>):</span><br><span class="line">        <span class="variable language_">self</span>.max_size = max_size</span><br><span class="line">        <span class="variable language_">self</span>.ttl = ttl_seconds</span><br><span class="line">        <span class="variable language_">self</span>._store = OrderedDict()  <span class="comment"># key -&gt; (value, timestamp)</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">set</span>(<span class="params">self, key, value</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;存储短期记忆&quot;&quot;&quot;</span></span><br><span class="line">        <span class="comment"># 容量控制</span></span><br><span class="line">        <span class="keyword">if</span> <span class="built_in">len</span>(<span class="variable language_">self</span>._store) &gt;= <span class="variable language_">self</span>.max_size:</span><br><span class="line">            <span class="variable language_">self</span>._store.popitem(last=<span class="literal">False</span>)</span><br><span class="line">        <span class="variable language_">self</span>._store[key] = (value, datetime.now())</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get</span>(<span class="params">self, key</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取短期记忆（自动检查过期）&quot;&quot;&quot;</span></span><br><span class="line">        <span class="keyword">if</span> key <span class="keyword">not</span> <span class="keyword">in</span> <span class="variable language_">self</span>._store:</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">None</span></span><br><span class="line">        </span><br><span class="line">        value, timestamp = <span class="variable language_">self</span>._store[key]</span><br><span class="line">        <span class="keyword">if</span> datetime.now() - timestamp &gt; timedelta(seconds=<span class="variable language_">self</span>.ttl):</span><br><span class="line">            <span class="keyword">del</span> <span class="variable language_">self</span>._store[key]</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">None</span></span><br><span class="line">        </span><br><span class="line">        <span class="comment"># LRU: 移到末尾</span></span><br><span class="line">        <span class="variable language_">self</span>._store.move_to_end(key)</span><br><span class="line">        <span class="keyword">return</span> value</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_all</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取所有未过期的记忆&quot;&quot;&quot;</span></span><br><span class="line">        result = &#123;&#125;</span><br><span class="line">        <span class="keyword">for</span> key, (value, timestamp) <span class="keyword">in</span> <span class="built_in">list</span>(<span class="variable language_">self</span>._store.items()):</span><br><span class="line">            <span class="keyword">if</span> datetime.now() - timestamp &lt;= timedelta(seconds=<span class="variable language_">self</span>.ttl):</span><br><span class="line">                result[key] = value</span><br><span class="line">            <span class="keyword">else</span>:</span><br><span class="line">                <span class="keyword">del</span> <span class="variable language_">self</span>._store[key]</span><br><span class="line">        <span class="keyword">return</span> result</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">MediumTermMemory</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;中期记忆 - 阶段摘要存储&quot;&quot;&quot;</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, max_tokens=<span class="number">500</span></span>):</span><br><span class="line">        <span class="variable language_">self</span>.max_tokens = max_tokens</span><br><span class="line">        <span class="variable language_">self</span>.summaries = &#123;&#125;  <span class="comment"># stage -&gt; summary</span></span><br><span class="line">        <span class="variable language_">self</span>._current_tokens = <span class="number">0</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">add_summary</span>(<span class="params">self, stage, summary</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;添加阶段摘要&quot;&quot;&quot;</span></span><br><span class="line">        <span class="comment"># 估算token数（简单按字符数/2估算）</span></span><br><span class="line">        estimated_tokens = <span class="built_in">len</span>(summary) // <span class="number">2</span></span><br><span class="line">        </span><br><span class="line">        <span class="keyword">if</span> <span class="variable language_">self</span>._current_tokens + estimated_tokens &gt; <span class="variable language_">self</span>.max_tokens:</span><br><span class="line">            <span class="comment"># 触发压缩：保留最重要的信息</span></span><br><span class="line">            summary = <span class="variable language_">self</span>._compress(summary)</span><br><span class="line">            estimated_tokens = <span class="built_in">len</span>(summary) // <span class="number">2</span></span><br><span class="line">        </span><br><span class="line">        <span class="variable language_">self</span>.summaries[stage] = summary</span><br><span class="line">        <span class="variable language_">self</span>._current_tokens += estimated_tokens</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_summary</span>(<span class="params">self, stage=<span class="literal">None</span></span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取摘要&quot;&quot;&quot;</span></span><br><span class="line">        <span class="keyword">if</span> stage:</span><br><span class="line">            <span class="keyword">return</span> <span class="variable language_">self</span>.summaries.get(stage)</span><br><span class="line">        <span class="keyword">return</span> <span class="variable language_">self</span>.summaries</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_compress</span>(<span class="params">self, text</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;压缩文本（保留关键信息）&quot;&quot;&quot;</span></span><br><span class="line">        <span class="comment"># 简化实现：取前200字符 + &quot;...&quot;</span></span><br><span class="line">        <span class="keyword">if</span> <span class="built_in">len</span>(text) &gt; <span class="number">200</span>:</span><br><span class="line">            <span class="keyword">return</span> text[:<span class="number">200</span>] + <span class="string">&quot;...&quot;</span></span><br><span class="line">        <span class="keyword">return</span> text</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">LongTermMemory</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;长期记忆 - 向量存储 + 语义检索&quot;&quot;&quot;</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="comment"># 模拟向量存储</span></span><br><span class="line">        <span class="variable language_">self</span>.documents = []  <span class="comment"># 实际使用向量数据库</span></span><br><span class="line">        <span class="variable language_">self</span>.id_counter = <span class="number">0</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">store</span>(<span class="params">self, content, metadata</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;存储长期记忆&quot;&quot;&quot;</span></span><br><span class="line">        doc_id = <span class="string">f&quot;doc_<span class="subst">&#123;self.id_counter&#125;</span>&quot;</span></span><br><span class="line">        <span class="variable language_">self</span>.id_counter += <span class="number">1</span></span><br><span class="line">        </span><br><span class="line">        <span class="variable language_">self</span>.documents.append(&#123;</span><br><span class="line">            <span class="string">&quot;id&quot;</span>: doc_id,</span><br><span class="line">            <span class="string">&quot;content&quot;</span>: content,</span><br><span class="line">            <span class="string">&quot;metadata&quot;</span>: metadata,</span><br><span class="line">            <span class="string">&quot;timestamp&quot;</span>: datetime.now()</span><br><span class="line">        &#125;)</span><br><span class="line">        </span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;存储长期记忆: <span class="subst">&#123;doc_id&#125;</span> - <span class="subst">&#123;content[:<span class="number">50</span>]&#125;</span>...&quot;</span>)</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">search</span>(<span class="params">self, query, top_k=<span class="number">3</span></span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;语义检索（模拟）&quot;&quot;&quot;</span></span><br><span class="line">        <span class="comment"># 实际实现使用向量相似度计算</span></span><br><span class="line">        results = []</span><br><span class="line">        query_lower = query.lower()</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">for</span> doc <span class="keyword">in</span> <span class="variable language_">self</span>.documents:</span><br><span class="line">            <span class="comment"># 简单的关键词匹配（实际应用使用向量检索）</span></span><br><span class="line">            content_lower = doc[<span class="string">&quot;content&quot;</span>].lower()</span><br><span class="line">            score = <span class="number">0</span></span><br><span class="line">            <span class="keyword">for</span> word <span class="keyword">in</span> query_lower.split():</span><br><span class="line">                <span class="keyword">if</span> word <span class="keyword">in</span> content_lower:</span><br><span class="line">                    score += <span class="number">1</span></span><br><span class="line">            </span><br><span class="line">            <span class="keyword">if</span> score &gt; <span class="number">0</span>:</span><br><span class="line">                results.append(&#123;</span><br><span class="line">                    <span class="string">&quot;id&quot;</span>: doc[<span class="string">&quot;id&quot;</span>],</span><br><span class="line">                    <span class="string">&quot;content&quot;</span>: doc[<span class="string">&quot;content&quot;</span>],</span><br><span class="line">                    <span class="string">&quot;metadata&quot;</span>: doc[<span class="string">&quot;metadata&quot;</span>],</span><br><span class="line">                    <span class="string">&quot;score&quot;</span>: score / <span class="built_in">len</span>(query_lower.split())</span><br><span class="line">                &#125;)</span><br><span class="line">        </span><br><span class="line">        results.sort(key=<span class="keyword">lambda</span> x: -x[<span class="string">&quot;score&quot;</span>])</span><br><span class="line">        <span class="keyword">return</span> results[:top_k]</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">MemorySystemDemo</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;记忆系统完整演示&quot;&quot;&quot;</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="variable language_">self</span>.short_term = ShortTermMemory()</span><br><span class="line">        <span class="variable language_">self</span>.medium_term = MediumTermMemory()</span><br><span class="line">        <span class="variable language_">self</span>.long_term = LongTermMemory()</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">process_interaction</span>(<span class="params">self, user_input, response</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">        处理一次交互</span></span><br><span class="line"><span class="string">        </span></span><br><span class="line"><span class="string">        流程：存储短期记忆 -&gt; 检查是否需要阶段总结 -&gt; 评估是否需要长期存储</span></span><br><span class="line"><span class="string">        &quot;&quot;&quot;</span></span><br><span class="line">        <span class="comment"># 1. 存储到短期记忆</span></span><br><span class="line">        <span class="variable language_">self</span>.short_term.<span class="built_in">set</span>(<span class="string">f&quot;interaction_<span class="subst">&#123;datetime.now().timestamp()&#125;</span>&quot;</span>, &#123;</span><br><span class="line">            <span class="string">&quot;input&quot;</span>: user_input,</span><br><span class="line">            <span class="string">&quot;response&quot;</span>: response,</span><br><span class="line">            <span class="string">&quot;timestamp&quot;</span>: datetime.now()</span><br><span class="line">        &#125;)</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 2. 如果是重要结果，存储到中期记忆</span></span><br><span class="line">        <span class="keyword">if</span> <span class="built_in">len</span>(user_input) &gt; <span class="number">100</span> <span class="keyword">or</span> <span class="string">&quot;完成&quot;</span> <span class="keyword">in</span> response:</span><br><span class="line">            <span class="variable language_">self</span>.medium_term.add_summary(</span><br><span class="line">                <span class="string">f&quot;stage_<span class="subst">&#123;datetime.now().strftime(<span class="string">&#x27;%H%M%S&#x27;</span>)&#125;</span>&quot;</span>,</span><br><span class="line">                <span class="string">f&quot;输入: <span class="subst">&#123;user_input[:<span class="number">100</span>]&#125;</span>... 输出: <span class="subst">&#123;response[:<span class="number">100</span>]&#125;</span>...&quot;</span></span><br><span class="line">            )</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 3. 如果是高质量结果，存储到长期记忆</span></span><br><span class="line">        <span class="keyword">if</span> <span class="string">&quot;通过&quot;</span> <span class="keyword">in</span> response <span class="keyword">or</span> <span class="string">&quot;成功&quot;</span> <span class="keyword">in</span> response:</span><br><span class="line">            <span class="variable language_">self</span>.long_term.store(</span><br><span class="line">                content=<span class="string">f&quot;输入: <span class="subst">&#123;user_input&#125;</span>\n输出: <span class="subst">&#123;response&#125;</span>&quot;</span>,</span><br><span class="line">                metadata=&#123;<span class="string">&quot;quality&quot;</span>: <span class="string">&quot;high&quot;</span>, <span class="string">&quot;timestamp&quot;</span>: datetime.now().isoformat()&#125;</span><br><span class="line">            )</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get_context</span>(<span class="params">self, query</span>):</span><br><span class="line">        <span class="string">&quot;&quot;&quot;获取上下文（用于LLM提示）&quot;&quot;&quot;</span></span><br><span class="line">        context_parts = []</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 短期记忆</span></span><br><span class="line">        recent = <span class="variable language_">self</span>.short_term.get_all()</span><br><span class="line">        <span class="keyword">if</span> recent:</span><br><span class="line">            context_parts.append(<span class="string">&quot;【最近的交互】&quot;</span>)</span><br><span class="line">            <span class="keyword">for</span> key, value <span class="keyword">in</span> <span class="built_in">list</span>(recent.items())[-<span class="number">3</span>:]:</span><br><span class="line">                context_parts.append(<span class="string">f&quot;  - 输入: <span class="subst">&#123;value[<span class="string">&#x27;input&#x27;</span>][:<span class="number">50</span>]&#125;</span>...&quot;</span>)</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 中期记忆</span></span><br><span class="line">        summaries = <span class="variable language_">self</span>.medium_term.get_summary()</span><br><span class="line">        <span class="keyword">if</span> summaries:</span><br><span class="line">            context_parts.append(<span class="string">&quot;【阶段摘要】&quot;</span>)</span><br><span class="line">            <span class="keyword">for</span> stage, summary <span class="keyword">in</span> summaries.items():</span><br><span class="line">                context_parts.append(<span class="string">f&quot;  - <span class="subst">&#123;stage&#125;</span>: <span class="subst">&#123;summary[:<span class="number">80</span>]&#125;</span>...&quot;</span>)</span><br><span class="line">        </span><br><span class="line">        <span class="comment"># 长期记忆（语义检索）</span></span><br><span class="line">        similar = <span class="variable language_">self</span>.long_term.search(query)</span><br><span class="line">        <span class="keyword">if</span> similar:</span><br><span class="line">            context_parts.append(<span class="string">&quot;【相关历史案例】&quot;</span>)</span><br><span class="line">            <span class="keyword">for</span> doc <span class="keyword">in</span> similar:</span><br><span class="line">                context_parts.append(<span class="string">f&quot;  - <span class="subst">&#123;doc[<span class="string">&#x27;content&#x27;</span>][:<span class="number">80</span>]&#125;</span>... (相关度: <span class="subst">&#123;doc[<span class="string">&#x27;score&#x27;</span>]:<span class="number">.2</span>f&#125;</span>)&quot;</span>)</span><br><span class="line">        </span><br><span class="line">        <span class="keyword">return</span> <span class="string">&quot;\n&quot;</span>.join(context_parts)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment"># 演示</span></span><br><span class="line"><span class="keyword">if</span> __name__ == <span class="string">&quot;__main__&quot;</span>:</span><br><span class="line">    memory = MemorySystemDemo()</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 模拟多次交互</span></span><br><span class="line">    interactions = [</span><br><span class="line">        (<span class="string">&quot;生成林小雨在雨中等待的分镜&quot;</span>, <span class="string">&quot;已生成分镜：中景，林小雨蹲在长椅旁... 审查通过&quot;</span>),</span><br><span class="line">        (<span class="string">&quot;调整光线为更柔和的阴天光&quot;</span>, <span class="string">&quot;已调整：Fujifilm ETERNA色调，阴天自然光... 审查通过&quot;</span>),</span><br><span class="line">        (<span class="string">&quot;陈阳的雨衣颜色是什么&quot;</span>, <span class="string">&quot;陈阳穿着亮黄色雨衣，来自scene_001的角色设定&quot;</span>),</span><br><span class="line">    ]</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">for</span> inp, out <span class="keyword">in</span> interactions:</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;\n用户: <span class="subst">&#123;inp&#125;</span>&quot;</span>)</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;系统: <span class="subst">&#123;out&#125;</span>&quot;</span>)</span><br><span class="line">        memory.process_interaction(inp, out)</span><br><span class="line">    </span><br><span class="line">    <span class="comment"># 获取上下文</span></span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;\n&quot;</span> + <span class="string">&quot;=&quot;</span>*<span class="number">50</span>)</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;当前上下文（用于下一轮生成）&quot;</span>)</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;=&quot;</span>*<span class="number">50</span>)</span><br><span class="line">    context = memory.get_context(<span class="string">&quot;雨天的场景氛围&quot;</span>)</span><br><span class="line">    <span class="built_in">print</span>(context)</span><br></pre></td></tr></table></figure>
 <hr>
@@ -1195,44 +1213,44 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
 </blockquote>
 <p>这个闭环让系统能够从自己的错误中学习，实现自我进化。</p>
 <h3 id="自迭代优化流程图">自迭代优化流程图</h3>
-<pre class="mermaid">flowchart LR
-    subgraph Generate["生成阶段"]
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph Generate[&quot;生成阶段&quot;]
         G1[用户查询]
         G2[多路召回]
         G3[LLM生成]
     end
     
-    subgraph Audit["质检阶段"]
+    subgraph Audit[&quot;质检阶段&quot;]
         A1[规则检查]
         A2[LLM连贯性检查]
         A3[一致性验证]
         A4[问题分类]
     end
     
-    subgraph Repair["修复阶段"]
+    subgraph Repair[&quot;修复阶段&quot;]
         R1[问题分析]
         R2[定位根源]
         R3[定向召回]
         R4[重新生成]
     end
     
-    subgraph Learn["学习阶段"]
+    subgraph Learn[&quot;学习阶段&quot;]
         L1[记录成功模式]
         L2[更新权重]
         L3[优化策略]
     end
     
-    G1 --> G2 --> G3
-    G3 --> A1 --> A2 --> A3 --> A4
+    G1 --&gt; G2 --&gt; G3
+    G3 --&gt; A1 --&gt; A2 --&gt; A3 --&gt; A4
     
-    A4 -->|有严重问题| R1
-    R1 --> R2 --> R3 --> R4
+    A4 --&gt;|有严重问题| R1
+    R1 --&gt; R2 --&gt; R3 --&gt; R4
     
-    R4 -->|修复成功| L1
-    L1 --> L2 --> L3
-    L3 --> G2
+    R4 --&gt;|修复成功| L1
+    L1 --&gt; L2 --&gt; L3
+    L3 --&gt; G2
     
-    A4 -->|通过| L1</pre>
+    A4 --&gt;|通过| L1</code></pre>
 <h3 id="质检维度详解">质检维度详解</h3>
 <p>PenShot的自动质检覆盖10+个维度，每个维度都有明确的检查规则和严重程度分级：</p>
 <ul class="lvl-0">
@@ -1382,55 +1400,55 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
 </ul>
 </blockquote>
 <h3 id="多智能体协作架构">多智能体协作架构</h3>
-<pre class="mermaid">flowchart TB
-    subgraph Coordinator["协作协调层"]
+<pre><code class="highlight mermaid">flowchart TB
+    subgraph Coordinator[&quot;协作协调层&quot;]
         C[上下文管理器]
         R[路由决策器]
     end
     
-    subgraph Agents["智能体层"]
-        subgraph Parser["脚本解析器"]
+    subgraph Agents[&quot;智能体层&quot;]
+        subgraph Parser[&quot;脚本解析器&quot;]
             PA[角色召回]
             PS[场景召回]
             PD[对话召回]
         end
         
-        subgraph Segmenter["分镜生成器"]
+        subgraph Segmenter[&quot;分镜生成器&quot;]
             SA[镜头类型召回]
             SS[构图召回]
             SM[运镜召回]
         end
         
-        subgraph Splitter["视频分割器"]
+        subgraph Splitter[&quot;视频分割器&quot;]
             SPA[动作断点召回]
             SPT[时间节点召回]
             SPD[对话停顿召回]
         end
         
-        subgraph Converter["提示词转换器"]
+        subgraph Converter[&quot;提示词转换器&quot;]
             CA[风格召回]
             CL[光线召回]
             CC[色彩召回]
         end
     end
     
-    subgraph Shared["共享层"]
+    subgraph Shared[&quot;共享层&quot;]
         SK[知识图谱]
         SMem[记忆系统]
         STemp[模板库]
     end
     
-    Coordinator --> Agents
+    Coordinator --&gt; Agents
     
-    Parser --> Shared
-    Segmenter --> Shared
-    Splitter --> Shared
-    Converter --> Shared
+    Parser --&gt; Shared
+    Segmenter --&gt; Shared
+    Splitter --&gt; Shared
+    Converter --&gt; Shared
     
-    Agents -.-> |协作调用| Agents2
-    Agents2 -.-> Agents</pre>
+    Agents -.-&gt; |协作调用| Agents2
+    Agents2 -.-&gt; Agents</code></pre>
 <h3 id="智能体间协作序列">智能体间协作序列</h3>
-<pre class="mermaid">sequenceDiagram
+<pre><code class="highlight mermaid">sequenceDiagram
     participant User as 用户
     participant Parser as 脚本解析器
     participant Segmenter as 分镜生成器
@@ -1438,30 +1456,30 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
     participant Converter as 提示词转换器
     participant Memory as 共享记忆
 
-    User->>Parser: 提交剧本
+    User-&gt;&gt;Parser: 提交剧本
     
-    Parser->>Parser: 解析角色/场景
-    Parser->>Memory: 存储解析结果
+    Parser-&gt;&gt;Parser: 解析角色/场景
+    Parser-&gt;&gt;Memory: 存储解析结果
     
-    Parser->>Segmenter: 传递角色+场景信息
+    Parser-&gt;&gt;Segmenter: 传递角色+场景信息
     
-    Segmenter->>Segmenter: 生成分镜序列
-    Segmenter->>Memory: 存储分镜结果
+    Segmenter-&gt;&gt;Segmenter: 生成分镜序列
+    Segmenter-&gt;&gt;Memory: 存储分镜结果
     
-    Segmenter->>Splitter: 传递分镜序列
+    Segmenter-&gt;&gt;Splitter: 传递分镜序列
     
-    Splitter->>Splitter: 分割长镜头
-    Splitter->>Memory: 存储分割结果
+    Splitter-&gt;&gt;Splitter: 分割长镜头
+    Splitter-&gt;&gt;Memory: 存储分割结果
     
-    Splitter->>Converter: 传递片段信息
+    Splitter-&gt;&gt;Converter: 传递片段信息
     
-    Converter->>Converter: 生成提示词
-    Converter->>Memory: 检索相似模板
+    Converter-&gt;&gt;Converter: 生成提示词
+    Converter-&gt;&gt;Memory: 检索相似模板
     
-    Memory-->>Converter: 返回历史模板
+    Memory--&gt;&gt;Converter: 返回历史模板
     
-    Converter->>Converter: 融合生成最终提示词
-    Converter->>User: 输出结果</pre>
+    Converter-&gt;&gt;Converter: 融合生成最终提示词
+    Converter-&gt;&gt;User: 输出结果</code></pre>
 <hr>
 <h2 id="相关链接">相关链接</h2>
 <p><strong>核心文档</strong></p>
@@ -1518,7 +1536,7 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
 <p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com">PenShot 官网</a></p>
 </li>
 </ul>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/">https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E5%89%A7%E6%9C%AC%E5%88%86%E9%95%9C/">剧本分镜</a><a class="post-meta__tags" href="/tags/%E8%A7%92%E8%89%B2%E4%B8%80%E8%87%B4%E6%80%A7/">角色一致性</a><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2/">混合检索</a><a class="post-meta__tags" href="/tags/RRF%E8%9E%8D%E5%90%88/">RRF融合</a><a class="post-meta__tags" href="/tags/neopen/">neopen</a><a class="post-meta__tags" href="/tags/%E7%9F%AD%E5%89%A7%E5%88%86%E9%95%9C/">短剧分镜</a><a class="post-meta__tags" href="/tags/%E6%99%BA%E8%83%BD%E5%88%86%E9%95%9C/">智能分镜</a><a class="post-meta__tags" href="/tags/PenShot/">PenShot</a><a class="post-meta__tags" href="/tags/story-shot-agent/">story-shot-agent</a><a class="post-meta__tags" href="/tags/%E5%89%A7%E6%9C%AC%E5%8F%AC%E5%9B%9E/">剧本召回</a><a class="post-meta__tags" href="/tags/%E8%A7%92%E8%89%B2%E5%8F%AC%E5%9B%9E/">角色召回</a><a class="post-meta__tags" href="/tags/%E5%9C%BA%E6%99%AF%E5%8F%AC%E5%9B%9E/">场景召回</a><a class="post-meta__tags" href="/tags/GraphRAG/">GraphRAG</a><a class="post-meta__tags" href="/tags/%E9%95%BF%E7%9F%AD%E6%97%B6%E8%AE%B0%E5%BF%86/">长短时记忆</a><a class="post-meta__tags" href="/tags/%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96/">自迭代优化</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%8D%8F%E4%BD%9C/">多智能体协作</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E5%9B%BE%E8%B0%B1/">知识图谱</a><a class="post-meta__tags" href="/tags/BM25/">BM25</a><a class="post-meta__tags" href="/tags/%E9%87%8D%E6%8E%92%E5%BA%8F/">重排序</a><a class="post-meta__tags" href="/tags/%E5%9C%BA%E6%99%AF%E8%BF%9E%E7%BB%AD%E6%80%A7/">场景连续性</a><a class="post-meta__tags" href="/tags/%E8%B4%A8%E6%A3%80%E9%97%AD%E7%8E%AF/">质检闭环</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/05/3aafd2e52ad348ce823486c6389b3c26/" title="分布式任务调度（NeoTask）去中心化"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193133vUdYM1755689493.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">分布式任务调度（NeoTask）去中心化</div></div><div class="info-2"><div class="info-item-1">阐述 NeoTask 去中心化架构的设计原理，包括对等节点模型、抢占式任务消费机制、本地队列预取、节点生命周期管理和水平扩展能力，通过无主架构实现高可用与线性扩展。</div></div></div></a><a class="pagination-related" href="/2026/04/b2fdbe6ef0044bbb9e12b2c3ce9b3e06/" title="剧本分镜智能体（PenShot）版本演进"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small204229In3bP1756557749.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）版本演进</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作全流程一致性。基于LangGraph多智能体协作，集成记忆系统与向量知识库，支持超长剧本、复杂镜头语言和多模型适配。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/05/1c76b03cdafb48eb96ae6655f551f0e2/" title="PenShot 重排序如何提升召回质量"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1642751157273164275115763.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-14</div><div class="info-item-2">PenShot 重排序如何提升召回质量</div></div><div class="info-2"><div class="info-item-1">深入讲解重排序在多路召回中的原理与应用，通过CrossEncoder实现查询与文档的细粒度交互，有效解决多源分数不可比和语义相似度局限，显著提升排序质量。</div></div></div></a><a class="pagination-related" href="/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e/" title="剧本分镜智能体（PenShot）一致性策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）一致性策略</div></div><div class="info-2"><div class="info-item-1">PenShot 全局一致性保障策略。涵盖角色/场景/道具/动作连续性检查、向量数据库语义检索、记忆管理（短期/中期/长期）、状态快照机制、连续性锚点传递、修复参数反馈闭环。</div></div></div></a><a class="pagination-related" href="/2026/02/7e6cd67dd5ee45248f2276ac145555f5/" title="NLP 剧本分镜智能体（PenShot）"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1704300572353170430057255.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">NLP 剧本分镜智能体（PenShot）</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作连贯性。支持LangGraph多智能体协作、MCP协议、向量记忆检索、质量审查与自动修复。</div></div></div></a><a class="pagination-related" href="/2026/04/1e7f1f2a5a184427b4711cc7c1903027/" title="剧本分镜智能体（PenShot）RAG 知识库"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-23</div><div class="info-item-2">剧本分镜智能体（PenShot）RAG 知识库</div></div><div class="info-2"><div class="info-item-1">深入解析 PenShot 中 RAG 知识库的完整设计与实现，涵盖基于 LlamaIndex 的向量知识库架构、短期/中期/长期三层记忆管理机制、统一知识路由器的检索策略、提示词模板的自动积累与复用，以及各工作流节点的知识集成方式。详细展示了系统如何实现语义检索、经验积累和智能增强的正向循环。</div></div></div></a><a class="pagination-related" href="/2026/05/f6bdb468a82d411c970148a7fd1de52c/" title="剧本分镜智能体（PenShot）向量检索"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1730166918792173016691849.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-21</div><div class="info-item-2">剧本分镜智能体（PenShot）向量检索</div></div><div class="info-2"><div class="info-item-1">深入解析 PenShot 剧本分镜智能体的向量检索原理与实现，涵盖余弦相似度计算、索引存储结构、重排序优化等核心技术，并提供完整的问题排查指南和最佳实践。</div></div></div></a><a class="pagination-related" href="/2026/02/1d2c855e77484ca19045fb8a5c3040db/" title="剧本分镜智能体（PenShot）技术架构"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1743560732214174356073226.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）技术架构</div></div><div class="info-2"><div class="info-item-1">PenShot 整体技术架构设计。基于 LangGraph 的多智能体协作框架，包含剧本解析、镜头拆分、视频分段、提示词转换、质量审查、连续性守护六大智能体，以及错误处理、人工干预等控制节点。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot 召回策略</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B8%B8%E7%94%A8%E5%8F%AC%E5%9B%9E%E6%96%B9%E6%A1%88"><span class="toc-number">1.1.</span> <span class="toc-text">常用召回方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%B9%E6%A1%88%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.1.1.</span> <span class="toc-text">方案详解</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B3%E6%BB%91%E6%BC%94%E8%BF%9B"><span class="toc-number">1.1.2.</span> <span class="toc-text">平滑演进</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%8D%95%E6%AC%A1%E4%BA%A4%E4%BA%92%E6%A8%A1%E5%BC%8F%EF%BC%88%E7%9F%AD%E5%89%A7%EF%BC%89"><span class="toc-number">1.1.2.1.</span> <span class="toc-text">单次交互模式（短剧）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%B6%85%E9%95%BF%E5%89%A7%E6%9C%AC%E6%94%AF%E6%8C%81%EF%BC%88%E7%94%B5%E5%BD%B1%EF%BC%89"><span class="toc-number">1.1.2.2.</span> <span class="toc-text">超长剧本支持（电影）</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%B2%E5%AE%9E%E7%8E%B0%E7%9A%84%E6%A0%B8%E5%BF%83%E8%83%BD%E5%8A%9B"><span class="toc-number">1.1.3.</span> <span class="toc-text">已实现的核心能力</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%AC%E5%9B%9E%E7%AD%96%E7%95%A5%E5%85%A8%E6%99%AF%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.</span> <span class="toc-text">召回策略全景架构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E5%9B%BE"><span class="toc-number">1.2.1.</span> <span class="toc-text">整体架构图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%BE%E8%AE%A1%E7%9B%AE%E6%A0%87"><span class="toc-number">1.2.2.</span> <span class="toc-text">设计目标</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AC%E5%9B%9E%E7%AD%96%E7%95%A5%E7%9F%A9%E9%98%B5"><span class="toc-number">1.2.3.</span> <span class="toc-text">召回策略矩阵</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E5%BA%8F%E5%88%97%E5%9B%BE"><span class="toc-number">1.2.4.</span> <span class="toc-text">多路召回序列图</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.3.</span> <span class="toc-text">混合检索策略详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%A7%A3%E5%86%B3%E7%9A%84%E9%97%AE%E9%A2%98"><span class="toc-number">1.3.1.</span> <span class="toc-text">核心解决的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2%E6%B5%81%E7%A8%8B%E5%9B%BE"><span class="toc-number">1.3.2.</span> <span class="toc-text">混合检索流程图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%9E%8D%E5%90%88%E7%AE%97%E6%B3%95%E8%AF%B4%E6%98%8E"><span class="toc-number">1.3.3.</span> <span class="toc-text">融合算法说明</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Demo%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.3.4.</span> <span class="toc-text">Demo示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#GraphRAG%E7%9F%A5%E8%AF%86%E5%9B%BE%E8%B0%B1"><span class="toc-number">1.4.</span> <span class="toc-text">GraphRAG知识图谱</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%A7%A3%E5%86%B3%E7%9A%84%E9%97%AE%E9%A2%98-2"><span class="toc-number">1.4.1.</span> <span class="toc-text">核心解决的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E5%9B%BE%E8%B0%B1%E6%9E%B6%E6%9E%84"><span class="toc-number">1.4.2.</span> <span class="toc-text">知识图谱架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#GraphRAG%E6%A3%80%E7%B4%A2%E6%B5%81%E7%A8%8B"><span class="toc-number">1.4.3.</span> <span class="toc-text">GraphRAG检索流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9B%BE%E8%B0%B1%E6%9E%84%E5%BB%BA%E4%B8%8E%E6%A3%80%E7%B4%A2%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.4.4.</span> <span class="toc-text">图谱构建与检索示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%95%BF%E7%9F%AD%E6%97%B6%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F"><span class="toc-number">1.5.</span> <span class="toc-text">长短时记忆系统</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%A7%A3%E5%86%B3%E7%9A%84%E9%97%AE%E9%A2%98-3"><span class="toc-number">1.5.1.</span> <span class="toc-text">核心解决的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%89%E5%B1%82%E8%AE%B0%E5%BF%86%E6%9E%B6%E6%9E%84"><span class="toc-number">1.5.2.</span> <span class="toc-text">三层记忆架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F"><span class="toc-number">1.5.3.</span> <span class="toc-text">记忆生命周期</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.5.4.</span> <span class="toc-text">记忆系统示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF"><span class="toc-number">1.6.</span> <span class="toc-text">自迭代优化闭环</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%A7%A3%E5%86%B3%E7%9A%84%E9%97%AE%E9%A2%98-4"><span class="toc-number">1.6.1.</span> <span class="toc-text">核心解决的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96%E6%B5%81%E7%A8%8B%E5%9B%BE"><span class="toc-number">1.6.2.</span> <span class="toc-text">自迭代优化流程图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B4%A8%E6%A3%80%E7%BB%B4%E5%BA%A6%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.6.3.</span> <span class="toc-text">质检维度详解</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96%E6%B5%81%E7%A8%8B%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.6.4.</span> <span class="toc-text">自迭代优化流程详解</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.6.5.</span> <span class="toc-text">自迭代优化示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%8D%8F%E4%BD%9C%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.7.</span> <span class="toc-text">多智能体协作召回</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%8D%8F%E4%BD%9C%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.1.</span> <span class="toc-text">多智能体协作架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%99%BA%E8%83%BD%E4%BD%93%E9%97%B4%E5%8D%8F%E4%BD%9C%E5%BA%8F%E5%88%97"><span class="toc-number">1.7.2.</span> <span class="toc-text">智能体间协作序列</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.8.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/">https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E5%89%A7%E6%9C%AC%E5%88%86%E9%95%9C/">剧本分镜</a><a class="post-meta__tags" href="/tags/%E8%A7%92%E8%89%B2%E4%B8%80%E8%87%B4%E6%80%A7/">角色一致性</a><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2/">混合检索</a><a class="post-meta__tags" href="/tags/RRF%E8%9E%8D%E5%90%88/">RRF融合</a><a class="post-meta__tags" href="/tags/neopen/">neopen</a><a class="post-meta__tags" href="/tags/%E7%9F%AD%E5%89%A7%E5%88%86%E9%95%9C/">短剧分镜</a><a class="post-meta__tags" href="/tags/%E6%99%BA%E8%83%BD%E5%88%86%E9%95%9C/">智能分镜</a><a class="post-meta__tags" href="/tags/PenShot/">PenShot</a><a class="post-meta__tags" href="/tags/story-shot-agent/">story-shot-agent</a><a class="post-meta__tags" href="/tags/%E9%87%8D%E6%8E%92%E5%BA%8F/">重排序</a><a class="post-meta__tags" href="/tags/%E5%89%A7%E6%9C%AC%E5%8F%AC%E5%9B%9E/">剧本召回</a><a class="post-meta__tags" href="/tags/%E8%A7%92%E8%89%B2%E5%8F%AC%E5%9B%9E/">角色召回</a><a class="post-meta__tags" href="/tags/%E5%9C%BA%E6%99%AF%E5%8F%AC%E5%9B%9E/">场景召回</a><a class="post-meta__tags" href="/tags/GraphRAG/">GraphRAG</a><a class="post-meta__tags" href="/tags/%E9%95%BF%E7%9F%AD%E6%97%B6%E8%AE%B0%E5%BF%86/">长短时记忆</a><a class="post-meta__tags" href="/tags/%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96/">自迭代优化</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%8D%8F%E4%BD%9C/">多智能体协作</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E5%9B%BE%E8%B0%B1/">知识图谱</a><a class="post-meta__tags" href="/tags/BM25/">BM25</a><a class="post-meta__tags" href="/tags/%E5%9C%BA%E6%99%AF%E8%BF%9E%E7%BB%AD%E6%80%A7/">场景连续性</a><a class="post-meta__tags" href="/tags/%E8%B4%A8%E6%A3%80%E9%97%AD%E7%8E%AF/">质检闭环</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/05/3aafd2e52ad348ce823486c6389b3c26/" title="分布式任务调度（NeoTask）去中心化"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755143910372175514391020.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">分布式任务调度（NeoTask）去中心化</div></div><div class="info-2"><div class="info-item-1">阐述 NeoTask 去中心化架构的设计原理，包括对等节点模型、抢占式任务消费机制、本地队列预取、节点生命周期管理和水平扩展能力，通过无主架构实现高可用与线性扩展。</div></div></div></a><a class="pagination-related" href="/2026/04/b2fdbe6ef0044bbb9e12b2c3ce9b3e06/" title="剧本分镜智能体（PenShot）版本演进"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/171084628467171084628487.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）版本演进</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作全流程一致性。基于LangGraph多智能体协作，集成记忆系统与向量知识库，支持超长剧本、复杂镜头语言和多模型适配。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/05/1c76b03cdafb48eb96ae6655f551f0e2/" title="PenShot 重排序如何提升召回质量"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-14</div><div class="info-item-2">PenShot 重排序如何提升召回质量</div></div><div class="info-2"><div class="info-item-1">深入讲解重排序在多路召回中的原理与应用，通过CrossEncoder实现查询与文档的细粒度交互，有效解决多源分数不可比和语义相似度局限，显著提升排序质量。</div></div></div></a><a class="pagination-related" href="/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e/" title="剧本分镜智能体（PenShot）一致性策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746443697174574644362.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）一致性策略</div></div><div class="info-2"><div class="info-item-1">PenShot 全局一致性保障策略。涵盖角色/场景/道具/动作连续性检查、向量数据库语义检索、记忆管理（短期/中期/长期）、状态快照机制、连续性锚点传递、修复参数反馈闭环。</div></div></div></a><a class="pagination-related" href="/2026/02/7e6cd67dd5ee45248f2276ac145555f5/" title="NLP 剧本分镜智能体（PenShot）"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753762079722175376207982.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">NLP 剧本分镜智能体（PenShot）</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作连贯性。支持LangGraph多智能体协作、MCP协议、向量记忆检索、质量审查与自动修复。</div></div></div></a><a class="pagination-related" href="/2026/04/1e7f1f2a5a184427b4711cc7c1903027/" title="剧本分镜智能体（PenShot）RAG 知识库"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1727147141745172714714181.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-23</div><div class="info-item-2">剧本分镜智能体（PenShot）RAG 知识库</div></div><div class="info-2"><div class="info-item-1">深入解析 PenShot 中 RAG 知识库的完整设计与实现，涵盖基于 LlamaIndex 的向量知识库架构、短期/中期/长期三层记忆管理机制、统一知识路由器的检索策略、提示词模板的自动积累与复用，以及各工作流节点的知识集成方式。详细展示了系统如何实现语义检索、经验积累和智能增强的正向循环。</div></div></div></a><a class="pagination-related" href="/2026/05/f6bdb468a82d411c970148a7fd1de52c/" title="剧本分镜智能体（PenShot）向量检索"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small220807fLgw21759154887.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-21</div><div class="info-item-2">剧本分镜智能体（PenShot）向量检索</div></div><div class="info-2"><div class="info-item-1">深入解析 PenShot 剧本分镜智能体的向量检索原理与实现，涵盖余弦相似度计算、索引存储结构、重排序优化等核心技术，并提供完整的问题排查指南和最佳实践。</div></div></div></a><a class="pagination-related" href="/2026/02/1d2c855e77484ca19045fb8a5c3040db/" title="剧本分镜智能体（PenShot）技术架构"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1704300572353170430057255.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）技术架构</div></div><div class="info-2"><div class="info-item-1">PenShot 整体技术架构设计。基于 LangGraph 的多智能体协作框架，包含剧本解析、镜头拆分、视频分段、提示词转换、质量审查、连续性守护六大智能体，以及错误处理、人工干预等控制节点。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot 召回策略</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B8%B8%E7%94%A8%E5%8F%AC%E5%9B%9E%E6%96%B9%E6%A1%88"><span class="toc-number">1.1.</span> <span class="toc-text">常用召回方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%B9%E6%A1%88%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.1.1.</span> <span class="toc-text">方案详解</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B3%E6%BB%91%E6%BC%94%E8%BF%9B"><span class="toc-number">1.1.2.</span> <span class="toc-text">平滑演进</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%8D%95%E6%AC%A1%E4%BA%A4%E4%BA%92%E6%A8%A1%E5%BC%8F%EF%BC%88%E7%9F%AD%E5%89%A7%EF%BC%89"><span class="toc-number">1.1.2.1.</span> <span class="toc-text">单次交互模式（短剧）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%B6%85%E9%95%BF%E5%89%A7%E6%9C%AC%E6%94%AF%E6%8C%81%EF%BC%88%E7%94%B5%E5%BD%B1%EF%BC%89"><span class="toc-number">1.1.2.2.</span> <span class="toc-text">超长剧本支持（电影）</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%B2%E5%AE%9E%E7%8E%B0%E7%9A%84%E6%A0%B8%E5%BF%83%E8%83%BD%E5%8A%9B"><span class="toc-number">1.1.3.</span> <span class="toc-text">已实现的核心能力</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%AC%E5%9B%9E%E7%AD%96%E7%95%A5%E5%85%A8%E6%99%AF%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.</span> <span class="toc-text">召回策略全景架构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%E5%9B%BE"><span class="toc-number">1.2.1.</span> <span class="toc-text">整体架构图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%BE%E8%AE%A1%E7%9B%AE%E6%A0%87"><span class="toc-number">1.2.2.</span> <span class="toc-text">设计目标</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AC%E5%9B%9E%E7%AD%96%E7%95%A5%E7%9F%A9%E9%98%B5"><span class="toc-number">1.2.3.</span> <span class="toc-text">召回策略矩阵</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E8%B7%AF%E5%8F%AC%E5%9B%9E%E5%BA%8F%E5%88%97%E5%9B%BE"><span class="toc-number">1.2.4.</span> <span class="toc-text">多路召回序列图</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.3.</span> <span class="toc-text">混合检索策略详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%A7%A3%E5%86%B3%E7%9A%84%E9%97%AE%E9%A2%98"><span class="toc-number">1.3.1.</span> <span class="toc-text">核心解决的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2%E6%B5%81%E7%A8%8B%E5%9B%BE"><span class="toc-number">1.3.2.</span> <span class="toc-text">混合检索流程图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%9E%8D%E5%90%88%E7%AE%97%E6%B3%95%E8%AF%B4%E6%98%8E"><span class="toc-number">1.3.3.</span> <span class="toc-text">融合算法说明</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Demo%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.3.4.</span> <span class="toc-text">Demo示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#GraphRAG%E7%9F%A5%E8%AF%86%E5%9B%BE%E8%B0%B1"><span class="toc-number">1.4.</span> <span class="toc-text">GraphRAG知识图谱</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%A7%A3%E5%86%B3%E7%9A%84%E9%97%AE%E9%A2%98-2"><span class="toc-number">1.4.1.</span> <span class="toc-text">核心解决的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E5%9B%BE%E8%B0%B1%E6%9E%B6%E6%9E%84"><span class="toc-number">1.4.2.</span> <span class="toc-text">知识图谱架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#GraphRAG%E6%A3%80%E7%B4%A2%E6%B5%81%E7%A8%8B"><span class="toc-number">1.4.3.</span> <span class="toc-text">GraphRAG检索流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9B%BE%E8%B0%B1%E6%9E%84%E5%BB%BA%E4%B8%8E%E6%A3%80%E7%B4%A2%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.4.4.</span> <span class="toc-text">图谱构建与检索示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%95%BF%E7%9F%AD%E6%97%B6%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F"><span class="toc-number">1.5.</span> <span class="toc-text">长短时记忆系统</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%A7%A3%E5%86%B3%E7%9A%84%E9%97%AE%E9%A2%98-3"><span class="toc-number">1.5.1.</span> <span class="toc-text">核心解决的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%89%E5%B1%82%E8%AE%B0%E5%BF%86%E6%9E%B6%E6%9E%84"><span class="toc-number">1.5.2.</span> <span class="toc-text">三层记忆架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F"><span class="toc-number">1.5.3.</span> <span class="toc-text">记忆生命周期</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.5.4.</span> <span class="toc-text">记忆系统示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96%E9%97%AD%E7%8E%AF"><span class="toc-number">1.6.</span> <span class="toc-text">自迭代优化闭环</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%A7%A3%E5%86%B3%E7%9A%84%E9%97%AE%E9%A2%98-4"><span class="toc-number">1.6.1.</span> <span class="toc-text">核心解决的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96%E6%B5%81%E7%A8%8B%E5%9B%BE"><span class="toc-number">1.6.2.</span> <span class="toc-text">自迭代优化流程图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B4%A8%E6%A3%80%E7%BB%B4%E5%BA%A6%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.6.3.</span> <span class="toc-text">质检维度详解</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96%E6%B5%81%E7%A8%8B%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.6.4.</span> <span class="toc-text">自迭代优化流程详解</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E8%BF%AD%E4%BB%A3%E4%BC%98%E5%8C%96%E7%A4%BA%E4%BE%8B"><span class="toc-number">1.6.5.</span> <span class="toc-text">自迭代优化示例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%8D%8F%E4%BD%9C%E5%8F%AC%E5%9B%9E"><span class="toc-number">1.7.</span> <span class="toc-text">多智能体协作召回</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%8D%8F%E4%BD%9C%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.1.</span> <span class="toc-text">多智能体协作架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%99%BA%E8%83%BD%E4%BD%93%E9%97%B4%E5%8D%8F%E4%BD%9C%E5%BA%8F%E5%88%97"><span class="toc-number">1.7.2.</span> <span class="toc-text">智能体间协作序列</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.8.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
@@ -1612,7 +1630,7 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
 
     const runMermaidFn = () => runMermaid($mermaid)
     btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
-    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js').then(runMermaidFn)
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://unpkg.com/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
   }
 
   btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
@@ -1695,4 +1713,4 @@ RRF是混合检索中最常用的融合算法。它的核心思想是：对每�
   } else {
     window.loadOtherComment = loadGiscus
   }
-})()</script></div><script src="/js/custom/sun_moon.js" async></script><script src="/js/custom/mermaid-zoom.js"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script src="/js/custom/auto_dark.js" async></script><script src="/js/custom/mermaid-zoom.js"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
