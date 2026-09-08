@@ -1,13 +1,13 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>JVM 几种常用垃圾收集器的比较 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="Java 中四种主流垃圾收集器（Serial、Parallel、CMS、G1）的特点、适用场景以及典型优化方案。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>JVM 几种常用垃圾收集器的比较 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="从 Serial、Parallel、CMS、G1 到 ZGC、Shenandoah，系统对比六种 JVM 垃圾收集器的并行&#x2F;并发原理、停顿表现与适用场景，并给出大堆与低延迟场景的选型与调优建议。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="JVM 几种常用垃圾收集器的比较">
 <meta property="og:url" content="https://pengline.cn/2025/11/bbd3588b364c411b9d216db736b34a97/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="Java 中四种主流垃圾收集器（Serial、Parallel、CMS、G1）的特点、适用场景以及典型优化方案。">
+<meta property="og:description" content="从 Serial、Parallel、CMS、G1 到 ZGC、Shenandoah，系统对比六种 JVM 垃圾收集器的并行&#x2F;并发原理、停顿表现与适用场景，并给出大堆与低延迟场景的选型与调优建议。">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small221427alvR01759155267.webp">
 <meta property="article:published_time" content="2025-11-28T16:00:00.000Z">
-<meta property="article:modified_time" content="2025-12-05T14:42:48.702Z">
+<meta property="article:modified_time" content="2026-09-07T11:12:33.133Z">
 <meta property="article:author" content="余一叶知秋尽">
 <meta property="article:tag" content="CMS收集器">
 <meta property="article:tag" content="G1收集器">
@@ -169,12 +169,12 @@
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
-}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><a id="darkmode_button" onclick="switchNightMode()" href="javascript:void(0);" title="切换模式"><svg class="mode-icon" width="24" height="24"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><!-- hexo injector head_end start -->
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">606</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">50</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small221427alvR01759155267.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">JVM 几种常用垃圾收集器的比较</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">JVM 几种常用垃圾收集器的比较</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-11-28T16:00:00.000Z" title="发表于 2025-11-29 00:00:00">2025-11-29</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2025-12-05T14:42:48.702Z" title="更新于 2025-12-05 22:42:48">2025-12-05</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/">Java</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/JVM/">JVM</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>几种常用垃圾收集器（GC），包括 <strong>Serial（串行）</strong>、<strong>Parallel（并行）</strong>、<strong>CMS（Concurrent Mark-Sweep，并发标记清除）</strong> 和 <strong>G1（Garbage-First，并发）</strong> 收集器。</p>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">110</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">612</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small221427alvR01759155267.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">JVM 几种常用垃圾收集器的比较</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">JVM 几种常用垃圾收集器的比较</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-11-28T16:00:00.000Z" title="发表于 2025-11-29 00:00:00">2025-11-29</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-07T11:12:33.133Z" title="更新于 2026-09-07 19:12:33">2026-09-07</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/">Java</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/JVM/">JVM</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>几种常用垃圾收集器（GC），包括 <strong>Serial（串行）</strong>、<strong>Parallel（并行）</strong>、<strong>CMS（Concurrent Mark-Sweep，并发标记清除）</strong>、<strong>G1（Garbage-First，并发）</strong>、<strong>ZGC</strong> 与 <strong>Shenandoah</strong> 收集器，覆盖从单线程串行到并发压缩的完整演进路线。</p>
 <table>
 <thead>
 <tr>
@@ -305,7 +305,7 @@
 <p>不适合服务器端高并发或大堆应用。</p>
 </li>
 </ul>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">-XX:+UseSerialGC	<span class="comment"># 启用</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">-XX:+UseSerialGC    <span class="comment"># 启用</span></span><br></pre></td></tr></table></figure>
 </blockquote>
 <p><strong>优化建议</strong></p>
 <blockquote>
@@ -427,7 +427,7 @@
 <p><strong>不适用于大堆</strong>（碎片问题严重）或 <strong>高分配速率</strong> 场景。</p>
 </li>
 </ul>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">-XX:+UseConcMarkSweepGC		<span class="comment"># 启用</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">-XX:+UseConcMarkSweepGC        <span class="comment"># 启用</span></span><br></pre></td></tr></table></figure>
 </blockquote>
 <p><strong>优化建议</strong></p>
 <blockquote>
@@ -551,7 +551,7 @@
 <p>不适合堆 &lt; 4GB（Region 开销占比过高）。</p>
 </li>
 </ul>
-<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">-XX:+UseG1GC	<span class="comment"># 启用</span></span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">-XX:+UseG1GC    <span class="comment"># 启用</span></span><br></pre></td></tr></table></figure>
 </blockquote>
 <p><strong>优化建议</strong></p>
 <blockquote>
@@ -749,8 +749,298 @@
 </tbody>
 </table>
 <h2 id="ZGC-收集器">ZGC 收集器</h2>
+<p>针对 <strong>超大堆 + 极低延迟</strong> 场景设计的收集器，目标是<strong>把停顿时间压到亚毫秒级（通常 &lt;1ms），且不随堆大小增长</strong>。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>版本历程</strong>：JDK 11（JEP 333）作为实验特性引入，JDK 15（JEP 377）转正；JDK 21（JEP 439）进一步提供<strong>分代 ZGC</strong>，降低跨代引用维护成本、提升回收效率（默认启用）。</p>
+</li>
+<li class="lvl-2">
+<p>与 G1 相比，ZGC 把标记、转移等重活几乎全部放到并发阶段，仅根扫描等极小工作需要 STW。</p>
+</li>
+</ul>
+<h3 id="核心设计：染色指针-读屏障">核心设计：染色指针 + 读屏障</h3>
+<table>
+<thead>
+<tr>
+<th>设计</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Region 分区</strong></td>
+<td>堆划分为可动态创建/销毁的 Region，分 <strong>Small（2MB）/ Medium（32MB）/ Large</strong> 三类，按对象大小选择分配区；分代版本会进一步区分年轻/老年代 Region</td>
+</tr>
+<tr>
+<td><strong>染色指针</strong></td>
+<td>利用 64 位指针高位空闲位（低 42 位寻址，最大支持 4TB 堆）编码 <strong>Marked0 / Marked1 / Remapped / Finalizable</strong> 等状态，对象的 GC 状态直接存在引用本身，读指针即可判断，无需访问对象头</td>
+</tr>
+<tr>
+<td><strong>读屏障</strong></td>
+<td>应用线程每次<strong>从堆中加载引用</strong>时执行一段检查：若指针状态异常（如指向尚未重映射的对象），则定位新地址并“自愈”引用</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>与 G1/CMS 在<strong>写</strong>路径做文章不同，ZGC 的屏障落在<strong>读</strong>路径上：每次引用加载都有少量开销，换取的是几乎可以忽略的 STW。</p>
+</blockquote>
+<h3 id="回收过程（并发转移为核心）">回收过程（并发转移为核心）</h3>
+<pre><code class="highlight mermaid">flowchart LR
+    A[并发标记&lt;br/&gt;Mark] --&gt; B[转移准备&lt;br/&gt;Prepare Relocation]
+    B --&gt; C[并发转移&lt;br/&gt;Relocate]
+    C --&gt; D[并发重映射&lt;br/&gt;Remap]
+    D -.-&gt;|并入下轮标记| A</code></pre>
+<ol>
+<li class="lvl-3">
+<p><strong>并发标记（Mark）</strong>：并发遍历对象图标记存活对象，同时记录引用变更。</p>
+</li>
+<li class="lvl-3">
+<p><strong>转移准备（Prepare Relocation）</strong>：筛选回收价值高的 Region，建立<strong>转移表（forwarding table）</strong>，记录对象新旧地址的映射。</p>
+</li>
+<li class="lvl-3">
+<p><strong>并发转移（Relocate）</strong>：并发搬移存活对象。应用线程若访问旧地址，读屏障发现指针未重映射，查转移表跳转到新地址，并<strong>顺手把引用“自愈”为新地址</strong>（自愈后的对象下次访问不再走屏障）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>并发重映射（Remap）</strong>：修正对象图内其余指向旧地址的引用；ZGC 巧妙地把 Remap 与下一轮 Mark 合并执行，省去一轮遍历开销。</p>
+</li>
+</ol>
+<p><strong>优点与代价</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>停顿与堆大小无关</strong>：几十 GB 到 TB 级堆都能保持毫秒级停顿，P99 延迟稳定。</p>
+</li>
+<li class="lvl-2">
+<p><strong>代价是吞吐</strong>：读屏障让每次引用加载都有额外开销，多数压测下吞吐略低于 G1；并发回收能力有限，<strong>分配速率持续高于回收速率</strong>（对象“出生”过快）时会退化为同步回收，出现长停顿。</p>
+</li>
+<li class="lvl-2">
+<p>适合<strong>延迟极其敏感、堆很大</strong>的场景：在线交易、实时推荐、游戏服务端等。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>使用建议</strong></p>
+<blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">-XX:+UseZGC          <span class="comment"># JDK 15+ 直接启用</span></span><br><span class="line"><span class="comment"># JDK 11~14 需解锁实验特性：</span></span><br><span class="line">-XX:+UnlockExperimentalVMOptions -XX:+UseZGC</span><br></pre></td></tr></table></figure>
+<ul class="lvl-1">
+<li class="lvl-2">建议配合 <code>-Xlog:gc*</code> 观察并发周期与停顿；ZGC 调参点少，优先保证<strong>堆容量充足</strong>（并发转移期间需同时容纳新旧对象）。</li>
+<li class="lvl-2">分代 ZGC（JDK 21+）多数场景下吞吐与回收效率更优，无需特殊配置。</li>
+</ul>
+</blockquote>
 <h2 id="Shenandoah-收集器">Shenandoah 收集器</h2>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/11/bbd3588b364c411b9d216db736b34a97/">https://pengline.cn/2025/11/bbd3588b364c411b9d216db736b34a97/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/JVM%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8/">JVM垃圾收集器</a><a class="post-meta__tags" href="/tags/Serial%E6%94%B6%E9%9B%86%E5%99%A8/">Serial收集器</a><a class="post-meta__tags" href="/tags/Parallel%E6%94%B6%E9%9B%86%E5%99%A8/">Parallel收集器</a><a class="post-meta__tags" href="/tags/CMS%E6%94%B6%E9%9B%86%E5%99%A8/">CMS收集器</a><a class="post-meta__tags" href="/tags/G1%E6%94%B6%E9%9B%86%E5%99%A8/">G1收集器</a><a class="post-meta__tags" href="/tags/ZGC%E6%94%B6%E9%9B%86%E5%99%A8/">ZGC收集器</a><a class="post-meta__tags" href="/tags/%E5%B9%B6%E5%8F%91%E6%94%B6%E9%9B%86%E5%99%A8/">并发收集器</a><a class="post-meta__tags" href="/tags/%E5%B9%B6%E8%A1%8C%E6%94%B6%E9%9B%86%E5%99%A8/">并行收集器</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small221427alvR01759155267.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/12/c48cd69e7a3b47faae3866edeb761422/" title="同步 Mysql 数据的多种方式和策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">同步 Mysql 数据的多种方式和策略</div></div><div class="info-2"><div class="info-item-1">MySQL 同步至 ES、Redis 等异构存储的五种策略——应用双写、定时轮询、消息队列解耦、Binlog 解析(Canal / Debezium / Flink CDC)与云托管服务,从实时性、一致性、业务侵入性与运维成本四个维度权衡,给出生产选型路径。</div></div></div></a><a class="pagination-related" href="/2025/11/a8416e3d58d542d3883d2be1dab051f6/" title="几种分布式事务协议与实现模式"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1658044897410165804489720.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">几种分布式事务协议与实现模式</div></div><div class="info-2"><div class="info-item-1">在多个分布式节点上协调执行一组操作，通过特定协议或机制，确保操作原子性“全成功或全失败”，保障数据的一致性。</div></div></div></a></nav><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#Serial-%E6%94%B6%E9%9B%86%E5%99%A8%EF%BC%88%E4%B8%B2%E8%A1%8C%EF%BC%89"><span class="toc-number">1.</span> <span class="toc-text">Serial 收集器（串行）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Parallel-%E6%94%B6%E9%9B%86%E5%99%A8%EF%BC%88%E5%B9%B6%E8%A1%8C%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">Parallel 收集器（并行）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#CMS-%E6%94%B6%E9%9B%86%E5%99%A8%EF%BC%88%E5%B9%B6%E5%8F%91%EF%BC%89"><span class="toc-number">3.</span> <span class="toc-text">CMS 收集器（并发）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8%E5%92%8C%E4%BC%98%E5%8C%96"><span class="toc-number">3.1.</span> <span class="toc-text">使用和优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%A0%87%E8%AE%B0%E6%B5%81%E7%A8%8B"><span class="toc-number">3.2.</span> <span class="toc-text">并发标记流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#G1-%E6%94%B6%E9%9B%86%E5%99%A8%EF%BC%88%E5%B9%B6%E5%8F%91%EF%BC%89"><span class="toc-number">4.</span> <span class="toc-text">G1 收集器（并发）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8%E5%92%8C%E4%BC%98%E5%8C%96-2"><span class="toc-number">4.1.</span> <span class="toc-text">使用和优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%A0%87%E8%AE%B0%E5%8E%9F%E7%90%86"><span class="toc-number">4.2.</span> <span class="toc-text">并发标记原理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%A0%87%E8%AE%B0%E6%B5%81%E7%A8%8B-2"><span class="toc-number">4.3.</span> <span class="toc-text">并发标记流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#vs-CMS-%E5%B9%B6%E5%8F%91%E6%A0%87%E8%AE%B0"><span class="toc-number">4.4.</span> <span class="toc-text">vs CMS 并发标记</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#ZGC-%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">5.</span> <span class="toc-text">ZGC 收集器</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Shenandoah-%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">6.</span> <span class="toc-text">Shenandoah 收集器</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+<p>同样致力于<strong>把停顿时间与堆大小解耦</strong>，目标与 ZGC 一致，但采用完全不同的实现路线。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>版本历程</strong>：JDK 12（JEP 189）以实验特性引入，JDK 15（JEP 379）转正，由 Red Hat 主导推动。</p>
+</li>
+<li class="lvl-2">
+<p><strong>发行范围</strong>：Oracle JDK 商业版未包含该收集器，需使用 OpenJDK 系发行版。</p>
+</li>
+</ul>
+<h3 id="核心设计：Brooks-指针">核心设计：Brooks 指针</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>堆模型与 G1 相似：划分为 Region，保留传统<strong>年轻代/老年代</strong>语义。</p>
+</li>
+<li class="lvl-2">
+<p>每个对象头部额外保存一个 <strong>Brooks 转发指针（forwarding pointer）</strong>，初始指向对象自身。</p>
+</li>
+<li class="lvl-2">
+<p>转移对象时先把对象复制到新地址，再通过<strong>原子操作</strong>把旧地址上的 Brooks 指针更新为新地址；此后应用线程访问旧地址，读屏障发现转发指针 ≠ 自身，就跟随指针找到新对象，并可自愈引用。</p>
+</li>
+</ul>
+<blockquote>
+<p>对比 ZGC：ZGC 把“对象去哪了”的状态<strong>编码进引用本身</strong>（染色指针），Shenandoah 则把状态<strong>放在对象头</strong>（Brooks 指针）——前者每次加载引用都要处理指针位，后者只在屏障命中时多一次间接跳转。</p>
+</blockquote>
+<h3 id="回收流程">回收流程</h3>
+<pre><code class="highlight mermaid">flowchart LR
+    A[并发标记&lt;br/&gt;SATB] --&gt; B[并发转移&lt;br/&gt;Concurrent Evacuation]
+    B --&gt; C[并发引用更新&lt;br/&gt;Update References]
+    C --&gt; D[并发整理&lt;br/&gt;Cleanup]</code></pre>
+<ol>
+<li class="lvl-3">
+<p><strong>并发标记</strong>：SATB 快照式标记，思路与 G1 并发标记一致。</p>
+</li>
+<li class="lvl-3">
+<p><strong>并发转移（Concurrent Evacuation）</strong>：并发搬移存活对象并更新 Brooks 指针——这是与 G1 最大的不同：G1 的对象转移（Evacuation）是 STW 的，Shenandoah 把对象移动本身也并发化了。</p>
+</li>
+<li class="lvl-3">
+<p><strong>并发引用更新（Update References）</strong>：修正堆中仍指向旧地址的引用。</p>
+</li>
+<li class="lvl-3">
+<p><strong>并发整理（Cleanup）</strong>：回收空闲 Region。</p>
+</li>
+</ol>
+<h3 id="与-ZGC-的对比">与 ZGC 的对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th><strong>ZGC</strong></th>
+<th><strong>Shenandoah</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>状态载体</strong></td>
+<td>染色指针（引用高位编码）</td>
+<td>Brooks 指针（对象头附加字段）</td>
+</tr>
+<tr>
+<td><strong>屏障</strong></td>
+<td>读屏障为主</td>
+<td>读写屏障，JDK 13 起优化为读屏障为主</td>
+</tr>
+<tr>
+<td><strong>堆模型</strong></td>
+<td>不分年轻/老年代（分代 ZGC 除外）</td>
+<td>传统分代 Region</td>
+</tr>
+<tr>
+<td><strong>转移方式</strong></td>
+<td>转移表 + 自愈</td>
+<td>原子更新转发指针</td>
+</tr>
+<tr>
+<td><strong>转正版本</strong></td>
+<td>JDK 15（JEP 377）</td>
+<td>JDK 15（JEP 379）</td>
+</tr>
+<tr>
+<td><strong>发行范围</strong></td>
+<td>全部 JDK 发行版</td>
+<td>仅 OpenJDK 系（Oracle JDK 商业版不含）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>优点与代价</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>并发压缩彻底解决碎片问题，停顿平稳、可预期。</p>
+</li>
+<li class="lvl-2">
+<p>代价同样是吞吐：屏障 + 转发指针让单次对象访问略慢，高分配速率场景可能劣于 G1。</p>
+</li>
+<li class="lvl-2">
+<p>适合<strong>大堆（数十 GB 以上）+ 低延迟</strong>，但更追求实现直观与调试便利的团队。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>使用建议</strong></p>
+<blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">-XX:+UseShenandoahGC   <span class="comment"># JDK 15+；JDK 12~14 需加 -XX:+UnlockExperimentalVMOptions</span></span><br></pre></td></tr></table></figure>
+</blockquote>
+<h2 id="垃圾收集器演进与选型">垃圾收集器演进与选型</h2>
+<pre><code class="highlight mermaid">flowchart LR
+    S[Serial&lt;br/&gt;串行·单线程] --&gt; P[Parallel&lt;br/&gt;并行·高吞吐]
+    P -. CMS 低延迟尝试 .-&gt; C[CMS&lt;br/&gt;JDK9 废弃·14 移除]
+    P -.-&gt; G[G1&lt;br/&gt;JDK9 起默认]
+    G --&gt; Z[ZGC&lt;br/&gt;JDK11 实验·15 转正]
+    G --&gt; H[Shenandoah&lt;br/&gt;JDK12 实验·15 转正]</code></pre>
+<blockquote>
+<p>演进主线：<strong>串行 → 并行 → 并发（低延迟）→ 分区化 → 停顿与堆大小解耦</strong>。CMS 因碎片与不可控停顿被 G1 取代；G1 在超大堆上的停顿仍随堆增长，于是有了 ZGC / Shenandoah。</p>
+</blockquote>
+<p>决策参考：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A&#123;堆大小?&#125; --&gt;|小于 4GB| B[Parallel&lt;br/&gt;默认即最优]
+    A --&gt;|4GB 以上| C&#123;延迟要求?&#125;
+    C --&gt;|吞吐优先| B
+    C --&gt;|可容忍 100~200ms| D[G1&lt;br/&gt;现代应用默认]
+    C --&gt;|追求亚毫秒级| E[ZGC 或 Shenandoah]</code></pre>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>客户端/单核小堆</td>
+<td>Serial</td>
+<td>无并发开销，占用最小</td>
+</tr>
+<tr>
+<td>批处理/后台计算</td>
+<td>Parallel</td>
+<td>吞吐量最高</td>
+</tr>
+<tr>
+<td>服务端默认（4GB~几十 GB）</td>
+<td>G1</td>
+<td>分区化 + 可预测停顿，自动平衡</td>
+</tr>
+<tr>
+<td>大堆 + 极低延迟</td>
+<td>ZGC / Shenandoah</td>
+<td>停顿与堆大小解耦</td>
+</tr>
+</tbody>
+</table>
+<h2 id="实践中的问题与解决方案">实践中的问题与解决方案</h2>
+<h3 id="问题-1：GC-换了，服务反而变慢">问题 1：GC 换了，服务反而变慢</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>现象</strong>：从 Parallel 切到 G1 或 ZGC 后，吞吐量明显下降。</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>：并发收集器用<strong>应用线程的额外屏障开销</strong>换取停顿降低；批处理型负载本就不在乎停顿，凭空多付了屏障成本。</p>
+</li>
+<li class="lvl-2">
+<p><strong>方案</strong>：先测量再切换——用 <code>-Xlog:gc*</code> 记录切换前后的<strong>总吞吐与 P99 延迟</strong>；吞吐优先的离线任务留在 Parallel，交互型服务再评估低延迟收集器。</p>
+</li>
+</ul>
+<h3 id="问题-2：用了-G1，Full-GC-依然频繁">问题 2：用了 G1，Full GC 依然频繁</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>现象</strong>：GC 日志里不断出现 Full GC，应用周期性卡顿。</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>：大对象（超过 Region 一半）进入 Humongous 区，回收不及时；或老年代占用触发并发标记失败（类似 CMS 的 Concurrent Mode Failure）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>方案</strong>：</p>
+<ul class="lvl-2">
+<li class="lvl-4">定位大对象：<code>-Xlog:gc+humongous=debug</code> 观察 Humongous 分配，优先<strong>减少大数组/大缓存</strong>，必要时 <code>-XX:G1HeapRegionSize=32m</code> 增大 Region。</li>
+<li class="lvl-4">若并发标记跟不上分配，适当调大 <code>-Xmx</code>，并排查缓存是否未设容量上限、对象是否被意外长期引用。</li>
+</ul>
+</li>
+</ul>
+<h3 id="问题-3：ZGC-停顿还是变长了">问题 3：ZGC 停顿还是变长了</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>现象</strong>：宣称亚毫秒级，高峰期却出现几十毫秒甚至更长的停顿。</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>：分配速率持续超过并发回收速率，GC 退化为同步回收；或堆已近上限，没有空间留给并发转移。</p>
+</li>
+<li class="lvl-2">
+<p><strong>方案</strong>：给 ZGC 留足<strong>头部空间</strong>（并发转移期间新旧对象并存，建议 <code>-Xmx</code> 预留 20%+ 余量）；JDK 21+ 确认分代模式已生效；若停顿仍来自根扫描，再核对 JNI 引用与线程规模。</p>
+</li>
+</ul>
+<h3 id="问题-4：GC-日志参数过时">问题 4：GC 日志参数过时</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>现象</strong>：网上抄的 <code>-XX:+PrintGCDetails</code>、<code>-XX:+PrintGCDateStamps</code> 启动直接报错。</p>
+</li>
+<li class="lvl-2">
+<p><strong>原因</strong>：JDK 9+ 统一日志框架（Unified Logging）后，旧参数被移除。</p>
+</li>
+<li class="lvl-2">
+<p><strong>方案</strong>：统一使用 <code>-Xlog</code> 语法，例如 <code>-Xlog:gc*,gc+phases=debug:file=gc.log:time,uptime</code>；线上用 <code>jstat -gcutil</code> 观察各代使用率曲线。</p>
+</li>
+</ul>
+<h2 id="总结">总结</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>延迟与吞吐不可兼得：Parallel 最重吞吐，Serial 最省资源，CMS 已被时代淘汰，G1 是现代服务端默认，<strong>ZGC / Shenandoah 面向“堆越大、越不能停”的场景</strong>。</p>
+</li>
+<li class="lvl-2">
+<p>选型顺序可简化为：<strong>默认 G1 → 压测发现停顿不可接受且堆足够大 → 评估 ZGC / Shenandoah → 用 <code>-Xlog</code> 数据验证效果</strong>，不要为了“新”而盲目切换。</p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/11/bbd3588b364c411b9d216db736b34a97/">https://pengline.cn/2025/11/bbd3588b364c411b9d216db736b34a97/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/JVM%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8/">JVM垃圾收集器</a><a class="post-meta__tags" href="/tags/Serial%E6%94%B6%E9%9B%86%E5%99%A8/">Serial收集器</a><a class="post-meta__tags" href="/tags/Parallel%E6%94%B6%E9%9B%86%E5%99%A8/">Parallel收集器</a><a class="post-meta__tags" href="/tags/CMS%E6%94%B6%E9%9B%86%E5%99%A8/">CMS收集器</a><a class="post-meta__tags" href="/tags/G1%E6%94%B6%E9%9B%86%E5%99%A8/">G1收集器</a><a class="post-meta__tags" href="/tags/ZGC%E6%94%B6%E9%9B%86%E5%99%A8/">ZGC收集器</a><a class="post-meta__tags" href="/tags/%E5%B9%B6%E5%8F%91%E6%94%B6%E9%9B%86%E5%99%A8/">并发收集器</a><a class="post-meta__tags" href="/tags/%E5%B9%B6%E8%A1%8C%E6%94%B6%E9%9B%86%E5%99%A8/">并行收集器</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small221427alvR01759155267.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/12/c48cd69e7a3b47faae3866edeb761422/" title="同步 Mysql 数据的多种方式和策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">同步 Mysql 数据的多种方式和策略</div></div><div class="info-2"><div class="info-item-1">MySQL 同步至 ES、Redis 等异构存储的五种策略——应用双写、定时轮询、消息队列解耦、Binlog 解析(Canal / Debezium / Flink CDC)与云托管服务,从实时性、一致性、业务侵入性与运维成本四个维度权衡,给出生产选型路径。</div></div></div></a><a class="pagination-related" href="/2025/11/a8416e3d58d542d3883d2be1dab051f6/" title="几种分布式事务协议与实现模式"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144740598175514474060.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">几种分布式事务协议与实现模式</div></div><div class="info-2"><div class="info-item-1">系统对比 2PC/3PC/XA/TCC/Saga/AT 六种分布式事务方案的协调流程、一致性强度与可用性取舍，并给出 Seata 等落地组件的选型建议。</div></div></div></a></nav><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#Serial-%E6%94%B6%E9%9B%86%E5%99%A8%EF%BC%88%E4%B8%B2%E8%A1%8C%EF%BC%89"><span class="toc-number">1.</span> <span class="toc-text">Serial 收集器（串行）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Parallel-%E6%94%B6%E9%9B%86%E5%99%A8%EF%BC%88%E5%B9%B6%E8%A1%8C%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">Parallel 收集器（并行）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#CMS-%E6%94%B6%E9%9B%86%E5%99%A8%EF%BC%88%E5%B9%B6%E5%8F%91%EF%BC%89"><span class="toc-number">3.</span> <span class="toc-text">CMS 收集器（并发）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8%E5%92%8C%E4%BC%98%E5%8C%96"><span class="toc-number">3.1.</span> <span class="toc-text">使用和优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%A0%87%E8%AE%B0%E6%B5%81%E7%A8%8B"><span class="toc-number">3.2.</span> <span class="toc-text">并发标记流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#G1-%E6%94%B6%E9%9B%86%E5%99%A8%EF%BC%88%E5%B9%B6%E5%8F%91%EF%BC%89"><span class="toc-number">4.</span> <span class="toc-text">G1 收集器（并发）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8%E5%92%8C%E4%BC%98%E5%8C%96-2"><span class="toc-number">4.1.</span> <span class="toc-text">使用和优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%A0%87%E8%AE%B0%E5%8E%9F%E7%90%86"><span class="toc-number">4.2.</span> <span class="toc-text">并发标记原理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E6%A0%87%E8%AE%B0%E6%B5%81%E7%A8%8B-2"><span class="toc-number">4.3.</span> <span class="toc-text">并发标记流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#vs-CMS-%E5%B9%B6%E5%8F%91%E6%A0%87%E8%AE%B0"><span class="toc-number">4.4.</span> <span class="toc-text">vs CMS 并发标记</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#ZGC-%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">5.</span> <span class="toc-text">ZGC 收集器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%AE%BE%E8%AE%A1%EF%BC%9A%E6%9F%93%E8%89%B2%E6%8C%87%E9%92%88-%E8%AF%BB%E5%B1%8F%E9%9A%9C"><span class="toc-number">5.1.</span> <span class="toc-text">核心设计：染色指针 + 读屏障</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9B%9E%E6%94%B6%E8%BF%87%E7%A8%8B%EF%BC%88%E5%B9%B6%E5%8F%91%E8%BD%AC%E7%A7%BB%E4%B8%BA%E6%A0%B8%E5%BF%83%EF%BC%89"><span class="toc-number">5.2.</span> <span class="toc-text">回收过程（并发转移为核心）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Shenandoah-%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">6.</span> <span class="toc-text">Shenandoah 收集器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%AE%BE%E8%AE%A1%EF%BC%9ABrooks-%E6%8C%87%E9%92%88"><span class="toc-number">6.1.</span> <span class="toc-text">核心设计：Brooks 指针</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9B%9E%E6%94%B6%E6%B5%81%E7%A8%8B"><span class="toc-number">6.2.</span> <span class="toc-text">回收流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%8E-ZGC-%E7%9A%84%E5%AF%B9%E6%AF%94"><span class="toc-number">6.3.</span> <span class="toc-text">与 ZGC 的对比</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8%E6%BC%94%E8%BF%9B%E4%B8%8E%E9%80%89%E5%9E%8B"><span class="toc-number">7.</span> <span class="toc-text">垃圾收集器演进与选型</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E8%B7%B5%E4%B8%AD%E7%9A%84%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">8.</span> <span class="toc-text">实践中的问题与解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%AE%E9%A2%98-1%EF%BC%9AGC-%E6%8D%A2%E4%BA%86%EF%BC%8C%E6%9C%8D%E5%8A%A1%E5%8F%8D%E8%80%8C%E5%8F%98%E6%85%A2"><span class="toc-number">8.1.</span> <span class="toc-text">问题 1：GC 换了，服务反而变慢</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%AE%E9%A2%98-2%EF%BC%9A%E7%94%A8%E4%BA%86-G1%EF%BC%8CFull-GC-%E4%BE%9D%E7%84%B6%E9%A2%91%E7%B9%81"><span class="toc-number">8.2.</span> <span class="toc-text">问题 2：用了 G1，Full GC 依然频繁</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%AE%E9%A2%98-3%EF%BC%9AZGC-%E5%81%9C%E9%A1%BF%E8%BF%98%E6%98%AF%E5%8F%98%E9%95%BF%E4%BA%86"><span class="toc-number">8.3.</span> <span class="toc-text">问题 3：ZGC 停顿还是变长了</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%AE%E9%A2%98-4%EF%BC%9AGC-%E6%97%A5%E5%BF%97%E5%8F%82%E6%95%B0%E8%BF%87%E6%97%B6"><span class="toc-number">8.4.</span> <span class="toc-text">问题 4：GC 日志参数过时</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">9.</span> <span class="toc-text">总结</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
@@ -927,4 +1217,4 @@
   } else {
     window.loadOtherComment = loadGiscus
   }
-})()</script></div><script src="/js/custom/sun_moon.js" async></script><script src="/js/custom/auto_dark.js" async></script><script src="/js/custom/mermaid-zoom.js"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
+})()</script></div><script src="/js/custom/sun_moon.js" async></script><script src="/js/custom/auto_dark.js" async></script><script src="/js/custom/mermaid_zoom.js"></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
