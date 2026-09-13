@@ -1,13 +1,13 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>分布式任务调度（NeoTask）节点监控 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="详解 NeoTask 节点监控体系的架构设计，涵盖节点状态监控、任务指标收集、系统资源监控、健康检查机制和 Prometheus 集成，实现分布式任务调度的全方位可观测性。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="源码级拆解 NeoTask 可观测性：事件总线驱动的任务指标与滑动窗口统计、按需触发且带 TTL 复用与单项超时的三态健康检查、60 秒批量的推式上报，以及节点状态与 Prometheus 集成的真实能力边界。">
 <meta property="og:type" content="article">
-<meta property="og:title" content="分布式任务调度（NeoTask）节点监控">
+<meta property="og:title" content="NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成">
 <meta property="og:url" content="https://pengline.cn/2026/09/c8baafcd7743452ca3da7849e497e25a/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="详解 NeoTask 节点监控体系的架构设计，涵盖节点状态监控、任务指标收集、系统资源监控、健康检查机制和 Prometheus 集成，实现分布式任务调度的全方位可观测性。">
+<meta property="og:description" content="源码级拆解 NeoTask 可观测性：事件总线驱动的任务指标与滑动窗口统计、按需触发且带 TTL 复用与单项超时的三态健康检查、60 秒批量的推式上报，以及节点状态与 Prometheus 集成的真实能力边界。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small231205PbwhI1753715525.webp">
 <meta property="article:published_time" content="2026-09-13T09:25:59.644Z">
-<meta property="article:modified_time" content="2026-09-13T09:25:59.644Z">
+<meta property="article:modified_time" content="2026-09-13T07:18:55.077Z">
 <meta property="article:author" content="余一叶知秋尽">
 <meta property="article:tag" content="NeoTask">
 <meta property="article:tag" content="neopen">
@@ -20,7 +20,7 @@
 <meta property="article:tag" content="节点管理">
 <meta property="article:tag" content="资源调度">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/09/c8baafcd7743452ca3da7849e497e25a/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small231205PbwhI1753715525.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/09/c8baafcd7743452ca3da7849e497e25a/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -167,7 +167,7 @@
   },
   autoDarkmode: true
 }</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
-  title: '分布式任务调度（NeoTask）节点监控',
+  title: 'NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成',
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
@@ -176,344 +176,438 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">110</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">619</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">分布式任务调度（NeoTask）节点监控</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">分布式任务调度（NeoTask）节点监控</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-09-13T09:25:59.644Z" title="发表于 2026-09-13 17:25:59">2026-09-13</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-13T09:25:59.644Z" title="更新于 2026-09-13 17:25:59">2026-09-13</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/">Python</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/Task/">Task</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>NeoTask 节点监控</h1>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">112</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">634</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small231205PbwhI1753715525.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">NeoTask 节点监控详解：事件驱动指标与滑动窗口 + 健康检查 + Prometheus 集成</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-09-13T09:25:59.644Z" title="发表于 2026-09-13 17:25:59">2026-09-13</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-13T07:18:55.077Z" title="更新于 2026-09-13 15:18:55">2026-09-13</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/">Python</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/Task/">Task</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>NeoTask 节点监控详解</h1>
 <p>📚 <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">返回首页</a> | 📖 <a href="https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8">快速上手</a> | 📘 <a href="https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c">API 参考</a> | ⚙️ <a href="https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77">配置说明</a> | 🐙  <a target="_blank" rel="noopener" href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>版本基线</strong>：本文对照 neotask 1.0.2（PyPI 发布版）。文中代码摘录统一标注：🔧 表示<strong>真实源码</strong>（附文件路径，可自行对照），📝 表示<strong>示例代码</strong>（演示用法或补丁思路，不来自源码）。</p>
+</blockquote>
 <hr>
 <h2 id="概述">概述</h2>
-<p>在分布式系统中，节点监控是保障系统稳定运行的基础设施。没有完善的监控体系，系统就处于“盲飞”状态，问题发现滞后、根因定位困难、容量规划无据可依。</p>
-<p>NeoTask 将可观测性作为一等公民进行设计。系统内置了多层次的监控能力，包括节点状态监控、任务指标收集、系统资源监控和健康检查。这些监控数据既可以用于实时告警，也可以用于离线分析和容量规划。</p>
-<p>节点监控的设计遵循三个核心原则。其一是低开销，监控本身不能成为系统的性能瓶颈，所有监控数据的采集和上报都采用异步非阻塞方式。其二是多维度，从节点、任务、队列、系统资源等多个角度全面反映系统状态。其三是可扩展，监控数据可以通过标准接口导出到 Prometheus 等外部系统，满足企业级监控需求。</p>
+<p>可观测性文章最容易写成&quot;理想架构图&quot;，所以先明确 NeoTask 的监控资产实际是哪几件：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>MetricsCollector</strong>（🔧 <code>monitor/metrics.py</code>）：进程内指标收集器，靠<strong>事件总线驱动</strong>记录任务生命周期指标，带滑动窗口分布统计与 Prometheus 文本导出方法。</p>
+</li>
+<li class="lvl-3">
+<p><strong>SystemHealthChecker</strong>（🔧 <code>monitor/health.py</code>）：注册制健康检查器，内置 storage/queue/system 三项检查，逐项串行执行并按三态聚合出结论。</p>
+</li>
+<li class="lvl-3">
+<p><strong>ReporterManager 族</strong>（🔧 <code>monitor/reporter.py</code>）：周期性把指标推到控制台/文件/<strong>Prometheus Pushgateway</strong>（推模式，不是拉模式）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>节点状态记录</strong>（🔧 <code>distributed/node.py</code>）：Redis Hash 上的节点注册与心跳时间戳，仅 Redis 模式存在。</p>
+</li>
+</ol>
+<p>指标与健康检查都已接入运行链路：TaskPool 初始化时装配全局事件订阅器（重试、优先级都在内），启动时拉起 <code>MetricsCollector.start()</code> 采样循环；健康检查则在每次读取 <code>get_health_status()</code> 时按 TTL 决定是否重新执行。</p>
+<p>能力边界同样需要说清——以下三处在 1.0.x 中确实不存在，属于&quot;基础设施只建了一半&quot;的形态：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>缺口</th>
+<th>表现</th>
+<th>详见</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>NodeManager._health_check_loop</code> 只留 TODO</td>
+<td>心跳过期只让节点从&quot;活跃列表&quot;消失，无标记、无告警</td>
+<td>第六节</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>contrib/prometheus.py</code> 是空壳 + 无 HTTP 端点</td>
+<td>&quot;标准 /metrics 拉取&quot;不存在，只有推模式与手工导出</td>
+<td>第七节</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>WebUIServer</code> 无实例化调用方</td>
+<td>只有 <code>/</code> 与 <code>/api/stats</code> 两个端点，且要自己启动</td>
+<td>第七节</td>
+</tr>
+</tbody>
+</table>
+<p>真正掌握 NeoTask 的可观测性边界，靠的是分清&quot;已接线&quot;与&quot;需自建&quot;这条线。</p>
 <hr>
-<h2 id="节点监控架构">节点监控架构</h2>
-<p>节点监控架构由数据采集层、数据聚合层、存储查询层和展示告警层四个层次组成。</p>
-<p>数据采集层部署在每个节点内部，负责收集本节点的运行数据。采集器分为三类：指标采集器周期性收集任务计数、执行时间、队列长度等任务相关指标；系统采集器通过系统调用获取CPU使用率、内存占用、线程数等资源指标；事件采集器监听事件总线，记录任务状态变更、节点状态变更等关键事件。</p>
-<p>数据聚合层负责将分散在各个节点的数据进行汇总。聚合策略包括实时聚合和周期聚合两种。实时聚合用于告警判断，要求低延迟；周期聚合用于趋势分析，可以承受一定的延迟。</p>
-<p>存储查询层管理监控数据的持久化和检索。近期数据存储在内存中用于快速查询，历史数据可以配置外部存储如 Prometheus、InfluxDB 或 Elasticsearch。</p>
-<p>展示告警层提供可视化的监控面板和告警通知。系统内置了基于控制台的实时监控输出，也支持对接 Grafana 等专业可视化工具。</p>
-<pre><code class="highlight mermaid">graph TB
-    subgraph Collection[&quot;数据采集层&quot;]
-        MC[指标采集器]
-        SC[系统采集器]
-        EC[事件采集器]
-    end
-    
-    subgraph Aggregation[&quot;数据聚合层&quot;]
-        RA[实时聚合器]
-        PA[周期聚合器]
-    end
-    
-    subgraph Storage[&quot;存储查询层&quot;]
-        Mem[(内存缓冲)]
-        TSDB[(时序数据库)]
-        Log[(日志存储)]
-    end
-    
-    subgraph Presentation[&quot;展示告警层&quot;]
-        Console[控制台输出]
-        API[REST API]
-        Alert[告警管理器]
-        Prom[Prometheus导出]
-    end
-    
-    MC --&gt; RA
-    SC --&gt; RA
-    EC --&gt; PA
-    
-    RA --&gt; Mem
-    PA --&gt; TSDB
-    PA --&gt; Log
-    
-    Mem --&gt; Console
-    TSDB --&gt; API
-    Log --&gt; Alert
-    API --&gt; Prom</code></pre>
-<hr>
-<h2 id="节点状态监控">节点状态监控</h2>
-<p>节点状态监控关注每个节点的健康程度和运行状况。每个节点在 Redis 中维护一份状态记录，包含节点标识、状态、启动时间、最后心跳时间、当前负载、活跃任务数等信息。</p>
-<p>节点状态分为活跃、可疑、死亡和恢复四种。活跃状态表示节点正常运行，定期上报心跳并处理任务。可疑状态是心跳超时后的过渡状态，此时节点可能因网络问题暂时失联但尚未确认死亡。死亡状态表示节点已确认故障，其持有的任务可以被回收。恢复状态是节点重启后重新加入集群的过程。</p>
-<p>节点状态的变更会触发相应的事件。当节点从活跃变为可疑时，系统记录警告日志。当节点被确认为死亡时，系统触发任务回收流程，同时发送告警通知。当故障节点重新上线时，系统记录恢复信息并重新开始心跳监测。</p>
-<pre><code class="highlight mermaid">stateDiagram-v2
-    [*] --&gt; 活跃: 节点启动
-    
-    活跃 --&gt; 活跃: 心跳正常
-    活跃 --&gt; 可疑: 心跳超时
-    
-    可疑 --&gt; 活跃: 收到心跳
-    可疑 --&gt; 死亡: 宽限期结束
-    
-    死亡 --&gt; 恢复中: 节点重启
-    恢复中 --&gt; 活跃: 注册成功
-    
-    活跃 --&gt; 停止: 正常关闭
-    停止 --&gt; [*]</code></pre>
-<p>节点心跳监测的实现采用了分级超时策略。短超时用于快速感知可能的问题，默认值为心跳间隔的三倍。长超时用于确认节点死亡，默认值为六十秒。宽限期介于两者之间，用于过滤网络抖动导致的临时失联。</p>
-<p>这种分级设计在故障检测的及时性和准确性之间取得了平衡。过于敏感的检测会导致不必要的任务回收和告警，过于迟钝的检测则会延长故障恢复时间。</p>
-<pre><code class="highlight mermaid">sequenceDiagram
-    participant Node as 节点
-    participant Redis as Redis
-    participant Monitor as 监控服务
-    
-    loop 每2秒
-        Node-&gt;&gt;Redis: 更新心跳时间戳
-    end
-    
-    Note over Node: 节点网络中断
-    
-    Monitor-&gt;&gt;Redis: 读取节点心跳
-    Redis--&gt;&gt;Monitor: 心跳时间戳=100
-    Monitor-&gt;&gt;Monitor: 当前时间=106，差值=6秒
-    
-    Note over Monitor: 超过短超时阈值
-    
-    Monitor-&gt;&gt;Monitor: 标记节点为可疑
-    Monitor-&gt;&gt;Monitor: 记录告警日志
-    
-    Note over Monitor: 等待30秒宽限期
-    
-    Monitor-&gt;&gt;Redis: 再次读取心跳
-    Redis--&gt;&gt;Monitor: 心跳时间戳=100
-    Monitor-&gt;&gt;Monitor: 当前时间=136，差值=36秒
-    
-    Note over Monitor: 超过长超时阈值
-    
-    Monitor-&gt;&gt;Monitor: 标记节点为死亡
-    Monitor-&gt;&gt;Monitor: 触发任务回收
-    Monitor-&gt;&gt;Alert: 发送死亡告警</code></pre>
-<hr>
-<h2 id="任务指标收集">任务指标收集</h2>
-<p>任务指标是衡量系统吞吐量和性能的关键数据。NeoTask 收集了多维度的任务指标，包括提交总量、完成总量、失败总量、取消总量和重试总量等累计指标，以及待处理数、运行中数、调度中数等瞬时指标。</p>
-<p>执行时间统计是性能分析的核心。系统记录每个任务从开始执行到完成的时间，计算平均值、中位数、九十分位数、九十五分位数和九十九分位数。这些分位数比平均值更能反映系统的真实性能表现，能够发现长尾延迟问题。</p>
-<p>排队时间统计帮助分析系统的处理能力。任务从提交到开始执行的时间定义为排队时间，排队时间过长通常意味着工作节点处理能力不足或队列积压严重。</p>
-<p>吞吐量反映了系统的处理速度，计算公式为每秒完成任务数。吞吐量受任务复杂度、节点数量和系统负载的共同影响，是容量规划的重要参考依据。</p>
-<pre><code class="highlight mermaid">graph LR
-    subgraph Counters[&quot;计数器指标&quot;]
-        C1[提交总数]
-        C2[完成总数]
-        C3[失败总数]
-        C4[取消总数]
-        C5[重试总数]
-    end
-    
-    subgraph Gauges[&quot;瞬时指标&quot;]
-        G1[待处理数]
-        G2[运行中数]
-        G3[调度中数]
-        G4[活跃节点数]
-    end
-    
-    subgraph Histograms[&quot;分布指标&quot;]
-        H1[执行时间分布]
-        H2[排队时间分布]
-        H3[重试次数分布]
-    end
-    
-    subgraph Rates[&quot;速率指标&quot;]
-        R1[提交速率]
-        R2[完成速率]
-        R3[失败速率]
-        R4[吞吐量]
-    end</code></pre>
-<hr>
-<h2 id="系统资源监控">系统资源监控</h2>
-<p>任务调度系统本身也会消耗系统资源，资源监控有助于发现性能瓶颈和异常行为。</p>
-<p>CPU使用率反映了节点的计算压力。正常情况下，CPU使用率应与任务处理量正相关。如果CPU使用率持续接近百分之百，说明节点处理能力不足，需要增加节点或优化任务执行效率。如果CPU使用率很低但任务积压严重，则可能存在其他瓶颈，如网络延迟或锁竞争。</p>
-<p>内存使用情况影响节点的稳定性。内存泄漏是最常见的问题之一，内存使用量持续增长而不回落是需要重点关注的信号。系统记录了进程内存占用和Redis内存占用，帮助判断内存问题归属。</p>
-<p>线程数量反映了节点的并发处理能力。线程数过少会导致处理能力不足，线程数过多则可能引发线程竞争和上下文切换开销。系统监控活跃线程数和任务处理线程数，为线程池调优提供依据。</p>
-<pre><code class="highlight mermaid">graph TB
-    subgraph CPU[&quot;CPU监控&quot;]
-        CPU1[用户态使用率]
-        CPU2[系统态使用率]
-        CPU3[平均负载]
-    end
-    
-    subgraph Memory[&quot;内存监控&quot;]
-        MEM1[进程RSS]
-        MEM2[进程VMS]
-        MEM3[Redis内存]
-    end
-    
-    subgraph Network[&quot;网络监控&quot;]
-        NET1[Redis连接数]
-        NET2[请求延迟]
-        NET3[网络吞吐]
-    end
-    
-    subgraph Thread[&quot;线程监控&quot;]
-        TH1[活跃线程数]
-        TH2[工作线程数]
-        TH3[线程状态分布]
-    end
-    
-    CPU --&gt; Analysis[性能分析]
-    Memory --&gt; Analysis
-    Network --&gt; Analysis
-    Thread --&gt; Analysis
-    
-    Analysis --&gt; Action[异常检测&lt;br/&gt;容量规划&lt;br/&gt;性能优化]</code></pre>
-<hr>
-<h2 id="健康检查机制">健康检查机制</h2>
-<p>健康检查是自动化运维的基础。NeoTask 提供了多层次的健康检查能力，包括存活检查、就绪检查和深度检查。</p>
-<p>存活检查用于判断节点是否还在运行。检查方式是最简单的心跳检测，只要节点能够响应心跳请求，就认为节点存活。存活检查失败会触发节点重启或任务迁移。</p>
-<p>就绪检查用于判断节点是否能够接受新任务。节点启动时需要完成组件初始化、队列连接等准备工作，在此期间就绪检查返回失败，负载均衡器不会将任务分配给该节点。节点关闭时，就绪检查也会返回失败，确保新任务不会被分配给正在停止的节点。</p>
-<p>深度检查用于判断节点的健康状况。深度检查包括存储连接测试、队列操作测试、锁操作测试等。深度检查失败意味着节点功能受损，即使心跳正常也应该被认为是不健康的。</p>
-<pre><code class="highlight mermaid">flowchart TB
-    subgraph Liveness[&quot;存活检查&quot;]
-        L1[检查心跳时间戳]
-        L2[心跳在阈值内?]
-        L3[节点存活]
-    end
-    
-    subgraph Readiness[&quot;就绪检查&quot;]
-        R1[检查初始化状态]
-        R2[检查组件状态]
-        R3[节点就绪]
-    end
-    
-    subgraph Deep[&quot;深度检查&quot;]
-        D1[存储连接测试]
-        D2[队列操作测试]
-        D3[锁操作测试]
-        D4[健康状况评估]
-    end
-    
-    L1 --&gt; L2
-    L2 --&gt;|是| L3
-    L2 --&gt;|否| Dead[节点死亡]
-    
-    R1 --&gt; R2
-    R2 --&gt;|全部正常| R3
-    R2 --&gt;|任一异常| NotReady[节点未就绪]
-    
-    D1 --&gt; D4
-    D2 --&gt; D4
-    D3 --&gt; D4
-    D4 --&gt;|通过| Healthy[节点健康]
-    D4 --&gt;|失败| Unhealthy[节点异常]</code></pre>
-<hr>
-<h2 id="监控数据流">监控数据流</h2>
-<p>监控数据从采集到展示的完整流程涉及多个处理阶段。</p>
-<p>数据采集阶段，各采集器按照固定频率收集数据。指标采集器每秒采集一次任务计数和队列长度，系统采集器每五秒采集一次资源指标，事件采集器实时捕获状态变更事件。</p>
-<p>数据聚合阶段，采集到的原始数据被汇总计算。对于计数类指标，计算周期内的增量和总量。对于时间类指标，计算平均值和分位数。对于状态类指标，计算当前值和变化率。</p>
-<p>数据存储阶段，聚合后的数据被写入相应的存储后端。近期的高频数据保留在内存中用于实时展示，历史数据压缩后写入时序数据库用于长期分析。</p>
-<p>数据展示阶段，监控数据通过多种途径呈现。控制台输出适合开发和调试场景，REST API 供外部系统集成，Prometheus 端点与主流监控生态对接。</p>
+<h2 id="一、架构概览：事件驱动-进程内统计，没有聚合层">一、架构概览：事件驱动 + 进程内统计，没有聚合层</h2>
+<p>数据流只有两跳：</p>
 <pre><code class="highlight mermaid">flowchart LR
-    subgraph Collect[&quot;采集&quot;]
-        C1[节点指标]
-        C2[任务指标]
-        C3[系统指标]
+    subgraph Producer[&quot;事件产生方&quot;]
+        A[dispatcher/worker/lifecycle&lt;br/&gt;emit TaskEvent]
     end
-    
-    subgraph Aggregate[&quot;聚合&quot;]
-        A1[滑动窗口统计]
-        A2[速率计算]
-        A3[异常检测]
+    subgraph Bus[&quot;事件总线&quot;]
+        B[subscribe_global&lt;br/&gt;全局订阅]
     end
-    
-    subgraph Store[&quot;存储&quot;]
-        S1[内存缓冲&lt;br/&gt;最近5分钟]
-        S2[时序数据库&lt;br/&gt;历史数据]
+    subgraph Local[&quot;进程内（无跨节点聚合）&quot;]
+        C[MetricsCollector&lt;br/&gt;计数器+滑动窗口]
+        D[SystemHealthChecker&lt;br/&gt;三态健康检查]
     end
-    
-    subgraph Export[&quot;导出&quot;]
-        E1[控制台输出]
-        E2[REST API]
-        E3[Prometheus]
-        E4[日志文件]
+    subgraph Export[&quot;导出（按需/周期）&quot;]
+        E[get_stats API&lt;br/&gt;同步阻塞拉取]
+        F[ReporterManager 60s&lt;br/&gt;Console/File/Pushgateway]
     end
-    
-    C1 --&gt; A1
-    C2 --&gt; A1
-    C3 --&gt; A2
-    
-    A1 --&gt; S1
-    A2 --&gt; S1
-    A3 --&gt; S2
-    
-    S1 --&gt; E1
-    S1 --&gt; E2
-    S2 --&gt; E3
-    S2 --&gt; E4</code></pre>
+    A --&gt; B
+    B --&gt; C
+    C --&gt; E
+    C --&gt; F
+    D --&gt; E</code></pre>
+<p>事件挂钩装配在 TaskPool 初始化时（🔧 <code>api/task_pool.py</code> 的 <code>_setup_event_handlers</code>）：一个 <code>subscribe_global</code> 的处理器监听 6 种事件，翻译成指标记录调用：</p>
+<table>
+<thead>
+<tr>
+<th>事件</th>
+<th>指标调用</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task.created</code></td>
+<td>record_task_submit</td>
+<td>total_submitted+1、pending+1、priority_counts+1（优先取自 payload）</td>
+</tr>
+<tr>
+<td><code>task.started</code></td>
+<td>record_task_start</td>
+<td>记排队时间、pending-1、running+1</td>
+</tr>
+<tr>
+<td><code>task.completed</code></td>
+<td>record_task_complete</td>
+<td>记执行时间/重试次数、total_completed+1、running-1</td>
+</tr>
+<tr>
+<td><code>task.failed</code></td>
+<td>record_task_failed</td>
+<td>记执行时间/重试次数、total_failed+1、running-1</td>
+</tr>
+<tr>
+<td><code>task.cancelled</code></td>
+<td>record_task_cancelled</td>
+<td>total_cancelled+1、running-1</td>
+</tr>
+<tr>
+<td><code>task.retry</code></td>
+<td>record_task_retry</td>
+<td>total_retried+1、累计该任务重试次数</td>
+</tr>
+<tr>
+<td><code>task.reclaimed</code></td>
+<td>仅 debug 日志</td>
+<td>无指标</td>
+</tr>
+</tbody>
+</table>
+<p>要点：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>指标是事件推导值</strong>，不是存储扫描值。事件丢（总线异常、处理器抛错被吞）则计数漂移。</p>
+</li>
+<li class="lvl-2">
+<p><strong>无跨节点聚合</strong>：每个进程的 MetricsCollector 只统计本进程执行的事件，集群总览需要外部系统自己做（比如 Pushgateway 按 job 聚合，见第七节）。</p>
+</li>
+<li class="lvl-2">
+<p>事件处理器是<strong>异步协程</strong>，挂在事件总线上串行执行：高吞吐下指标记录本身参与任务关键路径的调度（每次记录还带 <code>asyncio.Lock</code>），这是使用指标时需要权衡的开销。</p>
+</li>
+</ul>
 <hr>
-<h2 id="告警规则设计">告警规则设计</h2>
-<p>告警是监控体系的价值输出。NeoTask 设计了多级告警规则，覆盖系统可能出现的各种异常情况。</p>
-<p>节点级告警关注节点本身的健康状态。节点心跳停止超过六十秒触发死亡告警，节点CPU使用率持续超过百分之九十触发高负载告警，节点内存使用率持续超过百分之八十五触发内存告警。</p>
-<p>任务级告警关注任务处理的异常情况。任务积压超过一千条且持续增长触发队列积压告警，任务失败率超过百分之十触发高失败率告警，队列等待时间超过五分钟触发延迟告警。</p>
-<p>系统级告警关注整体运行状况。死信队列积压超过一百条触发死信告警，Redis连接池耗尽触发连接告警，整体吞吐量低于预期百分之五十触发性能下降告警。</p>
-<pre><code class="highlight mermaid">flowchart TB
-    subgraph NodeAlerts[&quot;节点告警&quot;]
-        N1[节点死亡]
-        N2[CPU过高]
-        N3[内存过高]
-        N4[心跳异常]
-    end
-    
-    subgraph TaskAlerts[&quot;任务告警&quot;]
-        T1[队列积压]
-        T2[失败率过高]
-        T3[延迟过长]
-        T4[重试过多]
-    end
-    
-    subgraph SystemAlerts[&quot;系统告警&quot;]
-        S1[死信积压]
-        S2[连接池耗尽]
-        S3[吞吐下降]
-        S4[锁冲突]
-    end
-    
-    N1 --&gt; Level0[P0告警&lt;br/&gt;立即处理]
-    N2 --&gt; Level1[P1告警&lt;br/&gt;5分钟内]
-    T1 --&gt; Level1
-    S1 --&gt; Level1
-    
-    N3 --&gt; Level2[P2告警&lt;br/&gt;30分钟内]
-    T2 --&gt; Level2
-    S2 --&gt; Level2
-    
-    N4 --&gt; Level3[P3告警&lt;br/&gt;日志记录]
-    T3 --&gt; Level3
-    T4 --&gt; Level3
-    S3 --&gt; Level3
-    S4 --&gt; Level3</code></pre>
+<h2 id="二、任务指标：真实的字段族与两个口径注意点">二、任务指标：真实的字段族与两个口径注意点</h2>
+<h3 id="2-1-TaskMetrics-字段全景">2.1 TaskMetrics 字段全景</h3>
+<p>指标容器 <code>TaskMetrics</code>（🔧 <code>metrics.py:24</code>）分三族，<code>get_summary()</code>/<code>to_dict()</code> 输出 21 个键：</p>
+<p><strong>累计计数器</strong>：<code>total_submitted</code> / <code>total_completed</code> / <code>total_failed</code> / <code>total_cancelled</code> / <code>total_retried</code></p>
+<p><strong>瞬时量</strong>：<code>pending</code>（事件推导的排队中）/ <code>running</code> / <code>scheduled</code>（保留字段，恒 0，见 2.3）</p>
+<p><strong>滑动窗口分布</strong>（deque maxlen=1000，窗口内样本自动淘汰）：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>含义</th>
+<th>输出键</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>avg_execution_time</code></td>
+<td>执行时间均值</td>
+<td>avg_execution_time</td>
+</tr>
+<tr>
+<td><code>p50/p90/p95/p99_execution_time</code></td>
+<td>执行时间分位数（线性插值法）</td>
+<td>同名</td>
+</tr>
+<tr>
+<td><code>avg_queue_time</code> / <code>p95_queue_time</code></td>
+<td>排队时间（提交→开始）</td>
+<td>同名</td>
+</tr>
+<tr>
+<td><code>avg_retry_count</code></td>
+<td>重试次数均值</td>
+<td>avg_retry_count</td>
+</tr>
+<tr>
+<td><code>throughput</code></td>
+<td><strong>1/平均执行时间</strong>（见 2.2）</td>
+<td>throughput</td>
+</tr>
+<tr>
+<td><code>success_rate</code> / <code>failure_rate</code></td>
+<td>完成/（完成+失败），<strong>未完成任务不参与分母</strong></td>
+<td>同名</td>
+</tr>
+<tr>
+<td><code>priority_counts</code></td>
+<td>按优先级分布（取自 <code>task.created</code> 的 payload）</td>
+<td>同名</td>
+</tr>
+</tbody>
+</table>
+<p>执行时间的均值与中位/90/95/99 分位都在，实现是标准线性插值（🔧 <code>metrics.py</code>）；&quot;排队时间&quot;的定义是 <code>record_task_start</code> 时用提交时间戳作差，窗口上限 1000 条。</p>
+<h3 id="2-2-吞吐量的定义">2.2 吞吐量的定义</h3>
+<p><code>throughput = 1.0 / avg_execution_time</code>（🔧 <code>metrics.py</code>）。它不是&quot;每秒实际完成任务数&quot;（这里没有时间窗计数），而是**“若每个任务都耗时等于均值、且单 worker 无并发损耗时的理论单流速率”**——假设 avg 100ms 得 10 任务/秒。真实吞吐 = 完成数 ÷ 观察时长，需要外部系统用 <code>total_completed</code> 增量自己算：<strong>该公式与节点数、并发度、观察窗口无关</strong>，只随执行时间均值变化。</p>
+<blockquote>
+<p>用于横向对比&quot;哪个版本更快&quot;尚可；用于容量规划（“集群每秒能吞多少”）会系统性偏离——多 worker 并发时实际吞吐高于 1/均值，瓶颈通常不在单任务耗时。</p>
+</blockquote>
+<h3 id="2-3-两个口径注意点：两套-pending-与恒-0-的-scheduled">2.3 两个口径注意点：两套 pending 与恒 0 的 scheduled</h3>
+<p><strong>注意点一：两个 pending 并存且口径不同。</strong></p>
+<table>
+<thead>
+<tr>
+<th>来源</th>
+<th>定义</th>
+<th>特征</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_stats()[&quot;pending&quot;]</code></td>
+<td>生命周期管理器全库扫描 PENDING 状态任务（每状态 limit 10000，🔧 <code>lifecycle.py:340</code>）</td>
+<td>反映<strong>存储真实状态</strong>，成本高（全表/全键扫描）</td>
+</tr>
+<tr>
+<td><code>get_stats()[&quot;metrics&quot;][&quot;pending&quot;]</code></td>
+<td>事件推导：submit+1 / start-1</td>
+<td>反映<strong>本进程事件流</strong>，漂移可能（进程重启清零、事件丢失）</td>
+</tr>
+</tbody>
+</table>
+<p>SQLite/Redis 模式下两者数值可能不一致（例如节点 A 提交、节点 B 执行时，B 的 metrics.pending 会是负数——因为 B 没收到 submit 事件就收到了 start！<code>record_task_start</code> 里 <code>pending = max(0, pending-1)</code> 的防御只保证不为负，不保证准确）。集群模式下<strong>metrics.pending 天然不可信</strong>，应以 <code>stats.pending</code> 为准。</p>
+<p><strong>注意点二：<code>scheduled</code> 恒为 0。</strong> <code>TaskMetrics.scheduled</code> 只在 <code>record_task_scheduled()</code> 时递增，但这个记录方法在全库检索中没有任何调用方（延迟任务走的是队列重投，不经这条指标），字段因此长期停在 0。它目前是个保留字段，不要当&quot;待执行的延时任务数&quot;使用——那个数字在 <code>DelayedQueue</code> 与时间轮各自的 <code>size()</code> 里。</p>
+<h3 id="2-4-系统指标：60-秒一次的-psutil-采样">2.4 系统指标：60 秒一次的 psutil 采样</h3>
+<p><code>MetricsCollector</code> 顺带收集系统指标（<code>SystemMetrics</code>：cpu_percent / memory_percent / memory_used_mb / thread_count / task_count / uptime_seconds）。采样循环 <code>_collect_system_metrics_loop</code> 由 <code>MetricsCollector.start()</code> 拉起，TaskPool 的 <code>start_components()</code> 会调用它，<code>shutdown_components()</code> 对称调用 <code>stop()</code>——所以启用指标后系统指标是自动采集的，无需手动启动。三点使用须知：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>默认间隔 60 秒</strong>（<code>system_metrics_interval=60.0</code>），不是&quot;每五秒采集一次&quot;。</p>
+</li>
+<li class="lvl-3">
+<p><strong>系统指标只在 <code>get_full_summary()</code> 出现</strong>，<code>get_summary()</code> 不含 <code>system</code> 键。TaskPool 的 <code>get_stats()</code> 走的是前者（🔧 <code>api/task_pool.py</code>），因此 <code>stats[&quot;metrics&quot;][&quot;system&quot;]</code> 可直接取到。</p>
+</li>
+<li class="lvl-3">
+<p><strong>依赖 psutil</strong>：缺失时 <code>import psutil</code> 失败 → 返回空 <code>SystemMetrics()</code> 且无日志告警，<code>system</code> 字段会是 None。它属于 <code>[monitor]</code> 可选依赖，需要该指标时记得安装。另外 <code>cpu_percent(interval=0.1)</code> 是<strong>同步阻塞调用</strong>，每次采样会卡事件循环约 0.1 秒——60 秒一次，可忽略。</p>
+</li>
+</ol>
+<p><code>task_count</code> 字段实为 <code>len(self._task_start_times)</code>——“正在本进程执行的并发任务数”，命名与直觉不符，别当任务总量用。</p>
 <hr>
-<h2 id="Prometheus-集成">Prometheus 集成</h2>
-<p>Prometheus 是云原生监控的事实标准。NeoTask 内置了 Prometheus 指标导出能力，可以无缝接入 Prometheus 生态。</p>
-<p>导出的指标包括任务计数类指标、时间分布类指标、队列指标、节点指标和系统资源指标。所有指标遵循 Prometheus 的命名规范和类型定义，计数指标使用 Counter 类型，瞬时指标使用 Gauge 类型，分布指标使用 Summary 或 Histogram 类型。</p>
-<p>指标通过 HTTP 端点暴露，默认路径为 /metrics。Prometheus 服务器可以配置抓取任务定期拉取指标数据。配合 Grafana，可以构建可视化的监控仪表板，展示系统的实时运行状态和历史趋势。</p>
-<pre><code class="highlight mermaid">graph LR
-    subgraph NeoTask[&quot;NeoTask节点&quot;]
-        N1[节点A&lt;br/&gt;/metrics]
-        N2[节点B&lt;br/&gt;/metrics]
-        N3[节点C&lt;br/&gt;/metrics]
-    end
-    
-    subgraph Prometheus[&quot;Prometheus服务器&quot;]
-        P[抓取器]
-        TSDB[(时序数据库)]
-    end
-    
-    subgraph Grafana[&quot;Grafana&quot;]
-        G1[仪表板]
-        G2[告警规则]
-    end
-    
-    N1 --&gt;|定期抓取| P
-    N2 --&gt;|定期抓取| P
-    N3 --&gt;|定期抓取| P
-    
-    P --&gt; TSDB
-    TSDB --&gt; G1
-    TSDB --&gt; G2</code></pre>
+<h2 id="三、健康检查：注册制三态模型">三、健康检查：注册制三态模型</h2>
+<p>健康检查的设计是<strong>一个注册表 + 三态聚合</strong>（🔧 <code>monitor/health.py</code>）。</p>
+<p><code>HealthChecker</code> 提供注册/注销/执行/聚合：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>register(name, check_func)</code> 注册任意异步检查函数；<code>check_all()</code> <strong>串行执行</strong>所有检查（逐项、无并发），每项用 <code>asyncio.wait_for</code> 包了单项超时（<code>check_timeout</code>，默认 <code>DEFAULT_CHECK_TIMEOUT = 5.0</code> 秒），超时或异常 → 该项记 UNHEALTHY；</p>
+</li>
+<li class="lvl-2">
+<p>聚合规则（🔧 <code>health.py</code>）：任一 UNHEALTHY → UNHEALTHY；否则任一 DEGRADED → DEGRADED；全 HEALTHY → HEALTHY；<strong>从未执行过 → UNHEALTHY</strong>。</p>
+</li>
+</ul>
+<p><code>SystemHealthChecker</code> 内置三项（🔧 <code>health.py</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>检查</th>
+<th>实现</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>storage</td>
+<td><code>task_repo.exists(&quot;health_check&quot;)</code> ping 一次真实查询</td>
+<td>异常 → UNHEALTHY</td>
+</tr>
+<tr>
+<td>queue</td>
+<td><code>queue.size()</code></td>
+<td>&gt;10000 → DEGRADED；异常 → UNHEALTHY</td>
+</tr>
+<tr>
+<td>system</td>
+<td>psutil：CPU / 内存 / 磁盘使用率</td>
+<td>任一 &gt;90% → DEGRADED</td>
+</tr>
+</tbody>
+</table>
+<p>超时段与阈值是硬编码的&quot;一刀切&quot;（5 秒 / 90% / 10000），阈值无参数化配置，<code>check_timeout</code> 只能经 <code>SystemHealthChecker(check_timeout=...)</code> 调整。检查项通过 <code>register</code> 开放扩展——业务可以追加&quot;Redis 延迟 &gt; 阈值 → DEGRADED&quot;之类的自定义项。</p>
+<p><strong>psutil 缺失时 system 记 HEALTHY 而非 DEGRADED</strong>（message 里带 <code>available: false</code>）：psutil 现在是 <code>[monitor]</code> 可选依赖，若缺它就把整体拉成 degraded，默认安装在没装 extra 时会永远上报 degraded，这个信号也就没用了。</p>
+<h4 id="为什么这么设计：注册制而非硬编码分层">为什么这么设计：注册制而非硬编码分层</h4>
+<p>liveness/readiness/deep 分层隐含&quot;部署平台按层消费&quot;的假设（K8s 探针语义），而 NeoTask 的健康检查消费方只有一个——<code>get_health_status()</code> 调用者。注册制让检查项按需堆叠、聚合规则统一，比预定义分层更省事；代价是&quot;分层消费&quot;能力不存在：没有独立暴露 liveness 与 readiness 的入口，想接 K8s 探针只能自己包装。</p>
 <hr>
-<h2 id="监控配置">监控配置</h2>
-<p>监控相关的配置参数需要根据实际环境进行调整。采集频率影响监控数据的粒度和系统开销，较高的频率提供更精细的数据但消耗更多资源。告警阈值需要根据业务特点和历史数据进行校准，避免过于敏感导致告警风暴或过于迟钝导致问题发现滞后。</p>
-<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 推荐监控配置</span></span><br><span class="line"><span class="attr">monitoring:</span></span><br><span class="line">  <span class="comment"># 采集配置</span></span><br><span class="line">  <span class="attr">collection:</span></span><br><span class="line">    <span class="attr">metrics_interval:</span> <span class="number">1</span>       <span class="comment"># 指标采集间隔(秒)</span></span><br><span class="line">    <span class="attr">system_interval:</span> <span class="number">5</span>        <span class="comment"># 系统采集间隔(秒)</span></span><br><span class="line">    <span class="attr">event_buffer:</span> <span class="number">10000</span>       <span class="comment"># 事件缓冲区大小</span></span><br><span class="line">  </span><br><span class="line">  <span class="comment"># 告警阈值</span></span><br><span class="line">  <span class="attr">alerts:</span></span><br><span class="line">    <span class="attr">node_death_timeout:</span> <span class="number">60</span>    <span class="comment"># 节点死亡超时(秒)</span></span><br><span class="line">    <span class="attr">queue_backlog:</span> <span class="number">1000</span>       <span class="comment"># 队列积压告警阈值</span></span><br><span class="line">    <span class="attr">failure_rate:</span> <span class="number">0.1</span>         <span class="comment"># 失败率告警阈值(10%)</span></span><br><span class="line">    <span class="attr">cpu_threshold:</span> <span class="number">90</span>         <span class="comment"># CPU告警阈值(%)</span></span><br><span class="line">    <span class="attr">memory_threshold:</span> <span class="number">85</span>      <span class="comment"># 内存告警阈值(%)</span></span><br><span class="line">  </span><br><span class="line">  <span class="comment"># 导出配置</span></span><br><span class="line">  <span class="attr">export:</span></span><br><span class="line">    <span class="attr">prometheus_enabled:</span> <span class="literal">true</span></span><br><span class="line">    <span class="attr">prometheus_port:</span> <span class="number">9090</span></span><br><span class="line">    <span class="attr">prometheus_path:</span> <span class="string">/metrics</span></span><br></pre></td></tr></table></figure>
+<h2 id="四、健康检查的触发：按需执行-TTL-复用">四、健康检查的触发：按需执行 + TTL 复用</h2>
+<p>健康检查不是后台周期任务，而是**“读时检查、窗口内复用”**：TaskPool 读取健康状态时先判断上次结果是否过期，过期（或从未执行）才真正跑一遍检查。</p>
+<p>装配与触发链路：</p>
+<ol>
+<li class="lvl-3">
+<p><code>SystemHealthChecker</code> 在 TaskPool 装配（<code>enable_health_check=True</code> 默认，🔧 <code>task_pool.py</code>）；</p>
+</li>
+<li class="lvl-3">
+<p><code>get_health_status()</code> / <code>get_health_status_async()</code> 先调用 <code>_refresh_health_if_stale()</code>：若 <code>last_check</code> 距今小于 <code>HEALTH_CHECK_TTL</code>（5 秒）直接返回，否则 <code>await check()</code> 执行全部内置检查；</p>
+</li>
+<li class="lvl-3">
+<p>随后 <code>_collect_health()</code> 汇总结果，并拼上分布式组件的字段（<code>active_nodes</code> / <code>heartbeat</code> / <code>reclaimer</code>），这些字段来源独立、与检查无关。</p>
+</li>
+</ol>
+<p>设计动机：健康接口通常被探针<strong>高频轮询</strong>，每次调用都跑 storage ping + psutil 采样（后者还会同步阻塞事件循环约 0.1s）代价过高；用一个 TTL 窗口把&quot;探针频率&quot;与&quot;检查频率&quot;解耦，5 秒内的连续轮询只打一次真实检查。</p>
+<p>因此默认配置下 <code>get_health_status()</code> 会返回真实结论：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;healthy&quot;</span><span class="punctuation">,</span>            <span class="comment">// ← 由 storage/queue/system 三项聚合而来</span></span><br><span class="line">  <span class="attr">&quot;last_check&quot;</span><span class="punctuation">:</span> <span class="string">&quot;2026-09-12T...&quot;</span><span class="punctuation">,</span> <span class="comment">// ← 最近一次检查时间，非 null</span></span><br><span class="line">  <span class="attr">&quot;checks&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> <span class="attr">&quot;storage&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span>...<span class="punctuation">&#125;</span><span class="punctuation">,</span> <span class="attr">&quot;queue&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span>...<span class="punctuation">&#125;</span><span class="punctuation">,</span> <span class="attr">&quot;system&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span>...<span class="punctuation">&#125;</span> <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;active_nodes&quot;</span><span class="punctuation">:</span> <span class="number">2</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;heartbeat&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> ... <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;reclaimer&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span> ... <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p><code>enable_health_check=False</code> 时 <code>_health_checker</code> 为 None，<code>_collect_health()</code> 只返回 <code>{status, node_id}</code> 加分布式字段，不会出现 <code>checks</code>。</p>
+<blockquote>
+<p>两个已知成本：<code>_check_system</code> 里 <code>psutil.cpu_percent(interval=0.1)</code> 的同步阻塞会在每次真实检查时卡事件循环约 0.1s；storage 检查在 Redis 故障时可能挂到 TCP 超时。后者已由单项超时兜住（默认 5 秒 → 该检查记 UNHEALTHY），前者是 5 秒最多一次、每次 0.1s 的抖动，可接受。</p>
+</blockquote>
+<hr>
+<h2 id="五、Reporter：60-秒批量的推式上报">五、Reporter：60 秒批量的推式上报</h2>
+<p><code>enable_reporter=False</code>（默认关）。开启后 TaskPool 启动流程会装配（🔧 <code>task_pool.py</code>）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="variable language_">self</span>._reporter_manager = ReporterManager(interval=<span class="number">60</span>)</span><br><span class="line"><span class="variable language_">self</span>._reporter_manager.add_reporter(ConsoleReporter())   <span class="comment"># 只挂控制台</span></span><br><span class="line"><span class="variable language_">self</span>._reporter_manager.set_metrics_callback(<span class="variable language_">self</span>.get_stats)</span><br></pre></td></tr></table></figure>
+<p>真实的上报链路（🔧 <code>monitor/reporter.py</code>）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>ReporterManager._report_loop</code>：每 1 秒 tick，指标<strong>攒批</strong>（满 10 条或距上次 flush 超 60 秒）后整体推送——批量上报设计，非每秒一条；</p>
+</li>
+<li class="lvl-2">
+<p><code>ConsoleReporter</code>：<code>print(json.dumps(metrics, indent=2))</code>，默认唯一挂载；</p>
+</li>
+<li class="lvl-2">
+<p>另有现成上报器可自行 <code>add_reporter</code>：<code>FileReporter</code>（JSON Lines 追加写文件）、<code>PrometheusReporter</code>（推 <strong>Pushgateway</strong>：POST <code>{url}/metrics/job/{job}</code>，🔧 <code>reporter.py:73</code>）。</p>
+</li>
+</ul>
+<p>注意三点：回调是同步方法 <code>get_stats</code>（内部 <code>run_coroutine</code> 跨线程阻塞等待），上报循环每 tick 都会完整执行一次全库状态扫描 + 指标快照——开启 reporter 后每 60 秒至少一次 O(状态数) 的存储扫描，大库时上报本身成为间歇性负载源；Reporter 的批量语义对 Pushgateway 不友好（Gateway 只保留最后一次推送，batch 中间态无意义，但代码对每个 reporter 逐个 report，行为等价于最后一条覆盖）。</p>
+<hr>
+<h2 id="六、节点状态监控：三态、心跳时间戳、无故障发现">六、节点状态监控：三态、心跳时间戳、无故障发现</h2>
+<p>节点状态记录存在于 Redis 模式（🔧 <code>distributed/node.py</code>）：</p>
+<p><strong>状态只有三态</strong>：<code>ACTIVE</code> / <code>STOPPED</code> / <code>FAILED</code>（🔧 <code>node.py</code>）。没有&quot;可疑（SUSPECT）“过渡态，没有&quot;恢复中”，也没有分级超时策略——心跳过期只是让节点从活跃视图里消失。</p>
+<p>节点记录是 <strong>Hash</strong>：<code>neotask:node:{node_id}</code> 存 7 个字段（node_id/hostname/pid/status/started_at/last_heartbeat/metadata），节点 ID 生成式 <code>{hostname}_{pid}_{uuid4前8位}</code>。<code>register</code> 写入后立即 <code>expire(40s)</code>（心跳超时 20s × 2），加入 <code>neotask:nodes</code> SET；心跳每 5 秒 <code>hset last_heartbeat</code> + 续期；<code>unregister</code> 只置 stopped + 60s 过期，<strong>不删除 SET 成员</strong>。</p>
+<p><strong>&quot;活跃节点&quot;是过滤出来的，不是标记出来的</strong>：<code>get_active_nodes()</code> 对 SET 全量成员逐个 <code>HGETALL</code>，过滤条件 <code>status == ACTIVE 且 now - last_heartbeat &lt; 20s</code>（🔧 <code>node.py</code>）。心跳过期只意味着&quot;该节点从活跃列表消失&quot;，<strong>没有任何代码把它标记为 FAILED 或触发告警</strong>——<code>_health_check_loop</code> 每 20 秒醒来一次，调用 <code>get_active_nodes()</code> 后只留下一行 <code># TODO: 处理故障节点</code>：循环存在，逻辑缺席。真正&quot;发现故障并善后&quot;的职责在 HeartbeatManager 与 TaskReclaimer（互链 <a href="https://pengline.cn/2026/05/4f970d9d3f124cc9ac6a2c78301b6e6b">故障恢复</a>），但那是任务回收语义，不是监控告警语义：<strong>节点死亡不会产生任何事件或告警输出</strong>。</p>
+<p>另外 NodeInfo 只有身份与心跳字段，没有&quot;当前负载、活跃任务数&quot;之类的落点；<code>get_active_nodes()</code> 对外只暴露 <code>node_id/hostname/pid</code>（🔧 <code>api/task_pool.py</code>）。节点维度的负载视图需要指标层自己拼。</p>
+<hr>
+<h2 id="七、Prometheus-集成：推模式已就绪，拉模式需自建">七、Prometheus 集成：推模式已就绪，拉模式需自建</h2>
+<p>NeoTask 不内置 HTTP 拉取端点（&quot;HTTP 端点 /metrics 供 Prometheus 抓取&quot;需要自己搭）。现成素材是三条：</p>
+<table>
+<thead>
+<tr>
+<th>素材</th>
+<th>位置</th>
+<th>形态</th>
+<th>打通方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>to_prometheus_format()</code></td>
+<td>🔧 <code>monitor/metrics.py</code></td>
+<td>输出完整文本（HELP/TYPE/字段齐全，含 counter/gauge 分类、毫秒换算、priority label）</td>
+<td>手工暴露：自建 HTTP 端点返回该文本，或配合 exporter</td>
+</tr>
+<tr>
+<td><code>PrometheusReporter</code></td>
+<td>🔧 <code>monitor/reporter.py</code></td>
+<td><strong>推 Pushgateway</strong>：<code>POST {url}/metrics/job/{job}</code>（aiohttp）</td>
+<td><code>reporter_manager.add_reporter(PrometheusReporter(&quot;http://pushgateway:9091&quot;))</code></td>
+</tr>
+<tr>
+<td><code>contrib/prometheus.py</code></td>
+<td>🔧 文件只有 docstring</td>
+<td><strong>空壳占位</strong>，无实现</td>
+<td>自行填充或忽略</td>
+</tr>
+</tbody>
+</table>
+<p>集成判断（📝）：单机/少节点用 <strong>Pushgateway 推模式</strong>最省事（ReporterManager 已内置批量循环）；多节点集群且已有 Prometheus 拉取基建时，自起一个极薄 HTTP 端点包 <code>to_prometheus_format()</code> 即可（📝）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 自建 /metrics 拉取端点（NeoTask 内置无此端点）</span></span><br><span class="line"><span class="keyword">from</span> aiohttp <span class="keyword">import</span> web</span><br><span class="line"></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">metrics_handler</span>(<span class="params">request</span>):</span><br><span class="line">    pool = request.app[<span class="string">&quot;pool&quot;</span>]</span><br><span class="line">    <span class="keyword">return</span> web.Response(text=pool._metrics.to_prometheus_format(),</span><br><span class="line">                        content_type=<span class="string">&quot;text/plain&quot;</span>)</span><br><span class="line"></span><br><span class="line">app = web.Application()</span><br><span class="line">app[<span class="string">&quot;pool&quot;</span>] = pool            <span class="comment"># 内部组件直连,版本间可能变动</span></span><br><span class="line">app.router.add_get(<span class="string">&quot;/metrics&quot;</span>, metrics_handler)</span><br></pre></td></tr></table></figure>
+<p><code>WebUIServer</code>（🔧 <code>web/server.py</code>，FastAPI + uvicorn 后台线程，提供 <code>/</code> 与 <code>/api/stats</code> 两个端点，默认 127.0.0.1:8080）同样未接入：<code>SchedulerConfig.webui</code> 默认 disable，没有任何组件实例化它。若要一个现成的 REST 入口，目前只有手动启动它拿到的 <code>/api/stats</code>，没有 <code>/health</code>、没有 <code>/metrics</code>。</p>
+<hr>
+<h2 id="八、公开监控-API-速查">八、公开监控 API 速查</h2>
+<p>TaskPool 暴露的监控查询入口（全部同步阻塞跨线程调用，见 <a href="https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c">API 参考</a>）：</p>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>返回要点</th>
+<th>口径注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_stats()</code></td>
+<td>queue_size、total/pending/running/completed/failed/cancelled（<strong>存储扫描</strong>）、success_rate、node_id、metrics 子对象（<strong>事件推导</strong>，含 system）、prefetcher（启用预取时）、reclaimer</td>
+<td>两套 pending 并存（见 2.3）</td>
+</tr>
+<tr>
+<td><code>get_worker_stats()</code></td>
+<td>每个 worker 的 WorkerStats（worker_id/active_tasks/completed_tasks/failed_tasks/is_busy）；预取统计走 <code>get_stats()[&quot;prefetcher&quot;]</code>，见 <a href="https://pengline.cn/2026/05/03fa0ff8120344519e3d063985a118cc">预取机制</a></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>get_health_status()</code></td>
+<td>status/last_check/checks + active_nodes/heartbeat/reclaimer</td>
+<td>读取时按 5 秒 TTL 决定是否重跑检查（见第四节）</td>
+</tr>
+<tr>
+<td><code>get_active_nodes()</code></td>
+<td><code>[{node_id, hostname, pid}]</code>（仅 Redis 模式，其余返回 []）</td>
+<td>心跳过滤视图，非全量注册</td>
+</tr>
+</tbody>
+</table>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">stats = pool.get_stats()</span><br><span class="line"><span class="comment"># stats[&quot;metrics&quot;][&quot;execution_times&quot;] 窗口数据不在输出里,只有聚合值</span></span><br><span class="line"><span class="built_in">print</span>(stats[<span class="string">&quot;metrics&quot;</span>][<span class="string">&quot;p95_execution_time&quot;</span>], stats[<span class="string">&quot;metrics&quot;</span>][<span class="string">&quot;success_rate&quot;</span>])</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="九、实战：取数、探针与集成">九、实战：取数、探针与集成</h2>
+<h3 id="场景一：正确取重试率与优先级分布">场景一：正确取重试率与优先级分布</h3>
+<p><strong>目标</strong>：在监控面板展示&quot;重试总量&quot;与&quot;各优先级提交占比&quot;。</p>
+<p><strong>取数</strong>：这两个指标已由 TaskPool 的内联事件处理器写入，直接读即可：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">m = pool.get_stats()[<span class="string">&quot;metrics&quot;</span>]</span><br><span class="line"><span class="built_in">print</span>(m[<span class="string">&quot;total_retried&quot;</span>], m[<span class="string">&quot;avg_retry_count&quot;</span>])   <span class="comment"># 重试总量 / 平均重试次数</span></span><br><span class="line"><span class="built_in">print</span>(m[<span class="string">&quot;priority_counts&quot;</span>])                        <span class="comment"># 例如 &#123;1: 20, 2: 100, 3: 5&#125;</span></span><br><span class="line"><span class="built_in">print</span>(m[<span class="string">&quot;system&quot;</span>][<span class="string">&quot;cpu_percent&quot;</span>])                  <span class="comment"># 系统指标（需装 psutil）</span></span><br></pre></td></tr></table></figure>
+<p><strong>口径提醒</strong>：<code>avg_retry_count</code> 的样本同时来自成功与最终失败的任务——只统计成功侧会让这个值系统性偏低（重试最多的恰恰是失败任务）。</p>
+<h3 id="场景二：把健康接口接到探针">场景二：把健康接口接到探针</h3>
+<p><strong>目标</strong>：用 <code>get_health_status()[&quot;status&quot;]</code> 做存活/就绪判定，且不让探针变成负载源。</p>
+<p><strong>正确接法</strong>：直接把 <code>get_health_status()</code> 暴露给探针即可，它自带 5 秒 TTL：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">h = pool.get_health_status()</span><br><span class="line"><span class="comment"># &#123;&quot;status&quot;: &quot;healthy&quot;, &quot;last_check&quot;: &quot;...&quot;, &quot;checks&quot;: &#123;&quot;storage&quot;: ..., &quot;queue&quot;: ..., &quot;system&quot;: ...&#125;, ...&#125;</span></span><br></pre></td></tr></table></figure>
+<p>探针频率高于 5 秒时，只有窗口外的第一次会真正执行检查，其余直接复用——所以可以放心用 1 秒级的探针间隔。<strong>不要</strong>改成每次调用都 <code>await check()</code>：那会让 storage ping + psutil 采样跟着探针频率跑，<code>cpu_percent(interval=0.1)</code> 的同步阻塞还会按次累积。</p>
+<p><strong>排查</strong>：若 <code>checks</code> 为空对象，说明 <code>enable_health_check=False</code>（此时 <code>_collect_health</code> 不会附加检查摘要）；若某项为 <code>unhealthy</code> 且 message 含 <code>timed out</code>，说明该依赖在 <code>check_timeout</code>（默认 5 秒）内没返回。</p>
+<h3 id="场景三：集成-Prometheus-时发现没有-metrics-可抓">场景三：集成 Prometheus 时发现没有 /metrics 可抓</h3>
+<p><strong>现象</strong>：找 “prometheus_enabled / prometheus_port / /metrics” 配置项，四处没有；给容器加 Prometheus 注解抓 9090 端口，连接被拒。</p>
+<p><strong>根因</strong>：NeoTask 不内置拉取端点；真实只有 (1) <code>MetricsCollector.to_prometheus_format()</code> 文本方法（无 HTTP 载体）、(2) <code>PrometheusReporter</code> 推 Pushgateway（需自己 add_reporter 且依赖 aiohttp）、(3) <code>contrib/prometheus.py</code> 空壳。<code>enable_reporter=True</code> 默认也只挂 ConsoleReporter，不会产生任何网络流量。</p>
+<p><strong>排查</strong>：grep 源码确认无 http server 启动代码；确认 aiohttp / psutil 等可选依赖是否安装。</p>
+<p><strong>解决</strong>：按第七节选路——临时验证用 Pushgateway 推模式（最贴合内置代码）；生产拉模式自建 /metrics 薄端点包 <code>to_prometheus_format()</code>。</p>
+<p><strong>本质教训</strong>：选推还是拉，先确认框架里有没有现成的 HTTP 端点。NeoTask 没有，所以推模式（<code>PrometheusReporter</code>）最省事，拉模式必须自建薄端点。</p>
 <hr>
 <h2 id="总结">总结</h2>
-<p>NeoTask 的节点监控体系从架构设计之初就将可观测性作为核心能力进行构建。多维度的指标采集、分层级的告警规则、标准化的数据导出，共同构成了完整的监控解决方案。</p>
-<p>节点状态监控通过心跳机制和状态机管理，实现了节点生命周期的全程可观测。任务指标收集提供了任务吞吐量、执行效率、失败率等关键业务指标。系统资源监控帮助运维人员了解资源使用情况，为容量规划提供数据支撑。健康检查机制为自动化运维提供了决策依据。</p>
-<p>与 Prometheus 等主流监控生态的集成，使 NeoTask 能够融入企业现有的监控体系，无需重复建设。完善的告警规则覆盖了系统可能出现的各种异常情况，确保问题能够被及时发现和处理。</p>
-<p>通过这套监控体系，运维人员可以全面了解系统的运行状态，快速定位问题根因，科学规划系统容量。</p>
+<p>NeoTask 的可观测性是<strong>采集与调度已通、导出按需焊接</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>事件驱动的指标模型</strong>：生命周期事件 → 计数器/瞬时量/滑动窗口分位，重试与优先级都取自真实 payload，字段全、口径清楚（两个使用注意点见 2.3）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>健康检查</strong>：注册制三态 + 逐项超时，读取时按 5 秒 TTL 触发执行，默认配置下返回真实结论；</p>
+</li>
+<li class="lvl-2">
+<p><strong>导出链路</strong>：内置推模式（Pushgateway）与 Prometheus 文本导出，拉取端点需自建薄壳；</p>
+</li>
+<li class="lvl-2">
+<p><strong>节点状态</strong>：三态 + 心跳时间戳，无状态机、无故障发现——死亡判定交给回收链路，监控语义的告警需要自建。</p>
+</li>
+</ul>
+<p>一句话收束：<strong>采集（真实）与调度（执行）都已接线，导出（打通）按你的监控栈选一条路</strong>。具体接法见第九节，配合 <a href="https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77">配置说明</a> 与 <a href="https://pengline.cn/2026/05/a56a8344c61d4ef69ab8d629baac2c5f">最佳实践</a> 食用更佳。</p>
 <hr>
 <h2 id="相关链接">相关链接</h2>
 <p><a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">返回首页</a></p>
@@ -583,7 +677,7 @@
 <p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
 </li>
 </ul>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/09/c8baafcd7743452ca3da7849e497e25a/">https://pengline.cn/2026/09/c8baafcd7743452ca3da7849e497e25a/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">任务调度</a><a class="post-meta__tags" href="/tags/NeoTask/">NeoTask</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E6%B1%A0%E8%B0%83%E5%BA%A6/">任务池调度</a><a class="post-meta__tags" href="/tags/%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1/">定时任务</a><a class="post-meta__tags" href="/tags/neopen/">neopen</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E6%B1%A0/">任务池</a><a class="post-meta__tags" href="/tags/%E8%B5%84%E6%BA%90%E8%B0%83%E5%BA%A6/">资源调度</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">分布式任务调度</a><a class="post-meta__tags" href="/tags/%E8%8A%82%E7%82%B9%E7%9B%91%E6%8E%A7/">节点监控</a><a class="post-meta__tags" href="/tags/%E8%8A%82%E7%82%B9%E7%AE%A1%E7%90%86/">节点管理</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/09/fa51edd849b24f48b4d7fa8e27efef77/" title="分布式任务调度（NeoTask）配置说明"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">分布式任务调度（NeoTask）配置说明</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/09/0ec8d887591a40c98be76645d33a2f23/" title="分布式任务调度（NeoTask）版本演进"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634265801642163426580161.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">分布式任务调度（NeoTask）版本演进</div></div><div class="info-2"><div class="info-item-1">从零构建通用分布式任务池的完整架构演进历程，涵盖单机版本、监控能力、分布式核心、高可用保障到企业级五个阶段。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/09/650ac5bb41c74e26bc4effcec88bf26c/" title="分布式任务调度（NeoTask） API 参考"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">分布式任务调度（NeoTask） API 参考</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/09/a9ce9bf3877546b898042064e6081d37/" title="分布式任务调度（NeoTask）持久化"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">分布式任务调度（NeoTask）持久化</div></div><div class="info-2"><div class="info-item-1">详解 NeoTask 的多层次持久化架构，涵盖存储抽象接口、内存/SQLite/Redis 三种存储实现、工厂模式设计以及数据清理策略，实现从单机开发到分布式部署的平滑演进。</div></div></div></a><a class="pagination-related" href="/2026/09/35b92d7b0e3e4434a4d58a233061f534/" title="分布式任务调度（NeoTask）优先级任务"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small220310sh3iJ1756130590.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">分布式任务调度（NeoTask）优先级任务</div></div><div class="info-2"><div class="info-item-1">阐述 NeoTask 的优先级任务机制，包括四级优先级定义、二叉堆排序算法、Redis 有序集合实现以及预取队列的优先级保持，确保关键任务在分布式环境中优先执行。</div></div></div></a><a class="pagination-related" href="/2026/09/3aafd2e52ad348ce823486c6389b3c26/" title="分布式任务调度（NeoTask）去中心化"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small221437yj1D11756131277.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">分布式任务调度（NeoTask）去中心化</div></div><div class="info-2"><div class="info-item-1">阐述 NeoTask 去中心化架构的设计原理，包括对等节点模型、抢占式任务消费机制、本地队列预取、节点生命周期管理和水平扩展能力，通过无主架构实现高可用与线性扩展。</div></div></div></a><a class="pagination-related" href="/2026/09/118be805273f47408bc580c4bd1203d8/" title="分布式任务调度（NeoTask）快速上手"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small074056Vjvny1754869256.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">分布式任务调度（NeoTask）快速上手</div></div><div class="info-2"><div class="info-item-1">NeoTask - 轻量级 Python 异步任务队列管理器，零依赖部署，支持即时任务、定时任务、周期任务和 Cron 表达式。</div></div></div></a><a class="pagination-related" href="/2026/05/a8528b0b558045b8b31bf631a5c4cc28/" title="分布式任务调度（NeoTask）延时任务"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-10</div><div class="info-item-2">分布式任务调度（NeoTask）延时任务</div></div><div class="info-2"><div class="info-item-1">深入解析 NeoTask 延时任务的架构设计与实现原理，涵盖时间轮算法、Redis Sorted Set 持久化、分布式协调机制，以及高性能定时调度的最佳实践。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">NeoTask 节点监控</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A6%82%E8%BF%B0"><span class="toc-number">1.1.</span> <span class="toc-text">概述</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%8A%82%E7%82%B9%E7%9B%91%E6%8E%A7%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.</span> <span class="toc-text">节点监控架构</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%8A%82%E7%82%B9%E7%8A%B6%E6%80%81%E7%9B%91%E6%8E%A7"><span class="toc-number">1.3.</span> <span class="toc-text">节点状态监控</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BB%BB%E5%8A%A1%E6%8C%87%E6%A0%87%E6%94%B6%E9%9B%86"><span class="toc-number">1.4.</span> <span class="toc-text">任务指标收集</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B3%BB%E7%BB%9F%E8%B5%84%E6%BA%90%E7%9B%91%E6%8E%A7"><span class="toc-number">1.5.</span> <span class="toc-text">系统资源监控</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5%E6%9C%BA%E5%88%B6"><span class="toc-number">1.6.</span> <span class="toc-text">健康检查机制</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%91%E6%8E%A7%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.7.</span> <span class="toc-text">监控数据流</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%91%8A%E8%AD%A6%E8%A7%84%E5%88%99%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.8.</span> <span class="toc-text">告警规则设计</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Prometheus-%E9%9B%86%E6%88%90"><span class="toc-number">1.9.</span> <span class="toc-text">Prometheus 集成</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%91%E6%8E%A7%E9%85%8D%E7%BD%AE"><span class="toc-number">1.10.</span> <span class="toc-text">监控配置</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">1.11.</span> <span class="toc-text">总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.12.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/09/c8baafcd7743452ca3da7849e497e25a/">https://pengline.cn/2026/09/c8baafcd7743452ca3da7849e497e25a/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">任务调度</a><a class="post-meta__tags" href="/tags/NeoTask/">NeoTask</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E6%B1%A0%E8%B0%83%E5%BA%A6/">任务池调度</a><a class="post-meta__tags" href="/tags/%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1/">定时任务</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E6%B1%A0/">任务池</a><a class="post-meta__tags" href="/tags/%E8%B5%84%E6%BA%90%E8%B0%83%E5%BA%A6/">资源调度</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">分布式任务调度</a><a class="post-meta__tags" href="/tags/neopen/">neopen</a><a class="post-meta__tags" href="/tags/%E8%8A%82%E7%82%B9%E7%9B%91%E6%8E%A7/">节点监控</a><a class="post-meta__tags" href="/tags/%E8%8A%82%E7%82%B9%E7%AE%A1%E7%90%86/">节点管理</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small231205PbwhI1753715525.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/09/fa51edd849b24f48b4d7fa8e27efef77/" title="NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1751961512420175196151245.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">NeoTask 配置说明：真实字段总表 + 死参数清单与调度器开关</div></div><div class="info-2"><div class="info-item-1">源码级对照的 NeoTask 配置手册：config.py 全部配置类与字段默认值、TaskPoolConfig 从未被读取的死参数清单、存储/锁/监控/调度器开关的真实生效情况，以及部署档位与调优建议。</div></div></div></a><a class="pagination-related" href="/2026/09/0ec8d887591a40c98be76645d33a2f23/" title="分布式任务调度（NeoTask）版本演进过程"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">分布式任务调度（NeoTask）版本演进过程</div></div><div class="info-2"><div class="info-item-1">阐述 NeoTask 演进史：0.1.0 空壳包、0.1.1 首个完整版、0.2.0 高可用组件落地、0.3.0 调度子系统重构、0.4.x 分布式包与选举器七日夭折、1.0.0 死信队列落地、1.0.1 行为修复版、1.0.2 分布式链路修复与依赖收敛；v1.5 任务编排与 v2.0 企业级仍是路线图规划，尚未实现。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/09/52f9ae8b047e47f89c20744cbf626e0e/" title="NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small160843rjlZC1759046923.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</div></div><div class="info-2"><div class="info-item-1">深度推演 NeoTask v1.5 任务编排（DAG 工作流引擎）的设计：为什么任务调度最终需要编排层、依赖图如何建模、就绪队列如何驱动拓扑推进、条件分支与聚合等待的状态语义，以及基于 v0.4-v1.0 已有原语（优先级队列、延时、分布式锁、回收器）落地 DAG 的可行性分析；全文 API 与代码均为设计示例，v1.0.2 源码中尚无 workflow 模块。</div></div></div></a><a class="pagination-related" href="/2026/09/650ac5bb41c74e26bc4effcec88bf26c/" title="NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small202824LQTsk1760099304.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</div></div><div class="info-2"><div class="info-item-1">源码级对照的 NeoTask API 手册：TaskPool 九组 54 个公开方法与真实签名、TaskScheduler 四族 39 个方法与委托链矩阵、Task 模型与事件/异常类型全集。</div></div></div></a><a class="pagination-related" href="/2026/09/a9ce9bf3877546b898042064e6081d37/" title="NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</div></div><div class="info-2"><div class="info-item-1">源码级拆解 NeoTask 的持久化层：任务实体与队列索引分离的双写模型、内存/SQLite/Redis 三套存储的数据格式（deepcopy 防御、非原子出队、String JSON + SET 索引）、双层 JSON 序列化取舍，以及 cleanup_expired 无调度者的清理边界。</div></div></div></a><a class="pagination-related" href="/2026/09/3aafd2e52ad348ce823486c6389b3c26/" title="NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</div></div><div class="info-2"><div class="info-item-1">以 v1.0.2 源码为基线拆解 NeoTask 去中心化架构：对等节点模型与零节点间通信的设计取舍、出队原子与执行加锁分离（pop Lua 只有 ZRANGE+ZREM）、节点注册/心跳/判活的 key 结构与三态模型、NodeManager 与 HeartbeatManager 两套实现共用同一注册表的现状、已预留但未接入主链路的 Coordinator，以及水平扩展与分区容错的实战推演。</div></div></div></a><a class="pagination-related" href="/2026/09/118be805273f47408bc580c4bd1203d8/" title="NeoTask 快速上手：安装全流程 + 提交&#x2F;等待&#x2F;定时三分钟通关"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194106Azz0h1758541266.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">NeoTask 快速上手：安装全流程 + 提交&#x2F;等待&#x2F;定时三分钟通关</div></div><div class="info-2"><div class="info-item-1">NeoTask 实测版入门指南：真实依赖与安装方式、任务执行器定义、同步/异步/上下文管理器三种使用范式、优先级与延迟/周期/Cron 定时提交、事件回调与常见问题，所有代码均对照 v1.0.2 源码验证。</div></div></div></a><a class="pagination-related" href="/2026/09/651e3a39a6e543668923eb10dc3bff23/" title="NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-13</div><div class="info-item-2">NeoTask 性能基准详解：官方实测数据解读 + 基准脚本分析 + 调优与误用陷阱</div></div><div class="info-2"><div class="info-item-1">以 NeoTask 官方基准脚本（tests/benchmark）与实测报告（docs/性能基准测试.md）为基线，深度解读各组数据的真实含义：队列 30 万 ops/s 与端到端 1697 ops/s 为何相差两个数量级、Worker 扩展性 1.00x 说明什么、持续负载 64.6 ops/s 背后的 Windows 定时器粒度陷阱，并给出基准复现方法、从数据到配置的调优决策路径与 4 个基准误用故障场景。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">NeoTask 节点监控详解</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A6%82%E8%BF%B0"><span class="toc-number">1.1.</span> <span class="toc-text">概述</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E6%9E%B6%E6%9E%84%E6%A6%82%E8%A7%88%EF%BC%9A%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8-%E8%BF%9B%E7%A8%8B%E5%86%85%E7%BB%9F%E8%AE%A1%EF%BC%8C%E6%B2%A1%E6%9C%89%E8%81%9A%E5%90%88%E5%B1%82"><span class="toc-number">1.2.</span> <span class="toc-text">一、架构概览：事件驱动 + 进程内统计，没有聚合层</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E4%BB%BB%E5%8A%A1%E6%8C%87%E6%A0%87%EF%BC%9A%E7%9C%9F%E5%AE%9E%E7%9A%84%E5%AD%97%E6%AE%B5%E6%97%8F%E4%B8%8E%E4%B8%A4%E4%B8%AA%E5%8F%A3%E5%BE%84%E6%B3%A8%E6%84%8F%E7%82%B9"><span class="toc-number">1.3.</span> <span class="toc-text">二、任务指标：真实的字段族与两个口径注意点</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-TaskMetrics-%E5%AD%97%E6%AE%B5%E5%85%A8%E6%99%AF"><span class="toc-number">1.3.1.</span> <span class="toc-text">2.1 TaskMetrics 字段全景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E5%90%9E%E5%90%90%E9%87%8F%E7%9A%84%E5%AE%9A%E4%B9%89"><span class="toc-number">1.3.2.</span> <span class="toc-text">2.2 吞吐量的定义</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-%E4%B8%A4%E4%B8%AA%E5%8F%A3%E5%BE%84%E6%B3%A8%E6%84%8F%E7%82%B9%EF%BC%9A%E4%B8%A4%E5%A5%97-pending-%E4%B8%8E%E6%81%92-0-%E7%9A%84-scheduled"><span class="toc-number">1.3.3.</span> <span class="toc-text">2.3 两个口径注意点：两套 pending 与恒 0 的 scheduled</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-4-%E7%B3%BB%E7%BB%9F%E6%8C%87%E6%A0%87%EF%BC%9A60-%E7%A7%92%E4%B8%80%E6%AC%A1%E7%9A%84-psutil-%E9%87%87%E6%A0%B7"><span class="toc-number">1.3.4.</span> <span class="toc-text">2.4 系统指标：60 秒一次的 psutil 采样</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5%EF%BC%9A%E6%B3%A8%E5%86%8C%E5%88%B6%E4%B8%89%E6%80%81%E6%A8%A1%E5%9E%8B"><span class="toc-number">1.4.</span> <span class="toc-text">三、健康检查：注册制三态模型</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%B9%88%E8%AE%BE%E8%AE%A1%EF%BC%9A%E6%B3%A8%E5%86%8C%E5%88%B6%E8%80%8C%E9%9D%9E%E7%A1%AC%E7%BC%96%E7%A0%81%E5%88%86%E5%B1%82"><span class="toc-number">1.4.1.</span> <span class="toc-text">为什么这么设计：注册制而非硬编码分层</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5%E7%9A%84%E8%A7%A6%E5%8F%91%EF%BC%9A%E6%8C%89%E9%9C%80%E6%89%A7%E8%A1%8C-TTL-%E5%A4%8D%E7%94%A8"><span class="toc-number">1.5.</span> <span class="toc-text">四、健康检查的触发：按需执行 + TTL 复用</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81Reporter%EF%BC%9A60-%E7%A7%92%E6%89%B9%E9%87%8F%E7%9A%84%E6%8E%A8%E5%BC%8F%E4%B8%8A%E6%8A%A5"><span class="toc-number">1.6.</span> <span class="toc-text">五、Reporter：60 秒批量的推式上报</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E8%8A%82%E7%82%B9%E7%8A%B6%E6%80%81%E7%9B%91%E6%8E%A7%EF%BC%9A%E4%B8%89%E6%80%81%E3%80%81%E5%BF%83%E8%B7%B3%E6%97%B6%E9%97%B4%E6%88%B3%E3%80%81%E6%97%A0%E6%95%85%E9%9A%9C%E5%8F%91%E7%8E%B0"><span class="toc-number">1.7.</span> <span class="toc-text">六、节点状态监控：三态、心跳时间戳、无故障发现</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81Prometheus-%E9%9B%86%E6%88%90%EF%BC%9A%E6%8E%A8%E6%A8%A1%E5%BC%8F%E5%B7%B2%E5%B0%B1%E7%BB%AA%EF%BC%8C%E6%8B%89%E6%A8%A1%E5%BC%8F%E9%9C%80%E8%87%AA%E5%BB%BA"><span class="toc-number">1.8.</span> <span class="toc-text">七、Prometheus 集成：推模式已就绪，拉模式需自建</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81%E5%85%AC%E5%BC%80%E7%9B%91%E6%8E%A7-API-%E9%80%9F%E6%9F%A5"><span class="toc-number">1.9.</span> <span class="toc-text">八、公开监控 API 速查</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B9%9D%E3%80%81%E5%AE%9E%E6%88%98%EF%BC%9A%E5%8F%96%E6%95%B0%E3%80%81%E6%8E%A2%E9%92%88%E4%B8%8E%E9%9B%86%E6%88%90"><span class="toc-number">1.10.</span> <span class="toc-text">九、实战：取数、探针与集成</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF%E4%B8%80%EF%BC%9A%E6%AD%A3%E7%A1%AE%E5%8F%96%E9%87%8D%E8%AF%95%E7%8E%87%E4%B8%8E%E4%BC%98%E5%85%88%E7%BA%A7%E5%88%86%E5%B8%83"><span class="toc-number">1.10.1.</span> <span class="toc-text">场景一：正确取重试率与优先级分布</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF%E4%BA%8C%EF%BC%9A%E6%8A%8A%E5%81%A5%E5%BA%B7%E6%8E%A5%E5%8F%A3%E6%8E%A5%E5%88%B0%E6%8E%A2%E9%92%88"><span class="toc-number">1.10.2.</span> <span class="toc-text">场景二：把健康接口接到探针</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF%E4%B8%89%EF%BC%9A%E9%9B%86%E6%88%90-Prometheus-%E6%97%B6%E5%8F%91%E7%8E%B0%E6%B2%A1%E6%9C%89-metrics-%E5%8F%AF%E6%8A%93"><span class="toc-number">1.10.3.</span> <span class="toc-text">场景三：集成 Prometheus 时发现没有 &#x2F;metrics 可抓</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">1.11.</span> <span class="toc-text">总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.12.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
