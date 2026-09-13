@@ -1,0 +1,1146 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="阐述 NeoTask 架构：一种代码三种形态的能力阶梯、TaskPool 装配拓扑与两阶段生命周期、组件接线状态清单、高可用与可观测性的真实形态。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策">
+<meta property="og:url" content="https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="阐述 NeoTask 架构：一种代码三种形态的能力阶梯、TaskPool 装配拓扑与两阶段生命周期、组件接线状态清单、高可用与可观测性的真实形态。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1755142438681175514243833.webp">
+<meta property="article:published_time" content="2026-04-21T15:36:03.000Z">
+<meta property="article:modified_time" content="2026-09-13T10:46:37.703Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="NeoTask">
+<meta property="article:tag" content="neopen">
+<meta property="article:tag" content="任务池">
+<meta property="article:tag" content="任务调度">
+<meta property="article:tag" content="分布式任务">
+<meta property="article:tag" content="分布式任务调度">
+<meta property="article:tag" content="定时任务">
+<meta property="article:tag" content="架构设计">
+<meta property="article:tag" content="系统架构">
+<meta property="article:tag" content="资源调度">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1755142438681175514243833.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">112</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">634</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1755142438681175514243833.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-21T15:36:03.000Z" title="发表于 2026-04-21 23:36:03">2026-04-21</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-13T10:46:37.703Z" title="更新于 2026-09-13 18:46:37">2026-09-13</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/">Python</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/Task/">Task</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>NeoTask 架构设计</h1>
+<p>📚 <a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">返回首页</a> | 📖 <a href="https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8">快速上手</a> | 📘 <a href="https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c">API 参考</a> | ⚙️ <a href="https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77">配置说明</a> | 🐙  <a target="_blank" rel="noopener" href="https://github.com/neopen/neotask">GitHub</a> | 🐱 <a target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com">NeoTask 官网</a></p>
+<blockquote>
+<p><strong>版本基线</strong>：本文对照 NeoTask <strong>v1.0.2</strong>（PyPI 发布版）。<br>
+<strong>代码标注约定</strong>：🔧 表示<strong>真实源码</strong>（仓库原样摘录，附文件路径，可自行对照）；📝 表示<strong>示例代码</strong>（用法演示、改进建议或教学代码，不代表仓库实现）。本文是系列&quot;整体架构&quot;篇。三个核心认知：<strong>形态由存储后端决定（能力阶梯）→ TaskPool 是装配枢纽（两阶段生命周期）→ 组件存在≠组件可用（接线状态清单）</strong>。</p>
+</blockquote>
+<p><strong>太长不看</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>NeoTask 是一套代码、三种形态</strong>：<code>storage_type</code> 一个配置决定你得到的是&quot;进程内队列&quot;（memory）、“单机持久队列”（sqlite）还是&quot;真正分布式调度&quot;（redis）。分布式组件（节点注册、心跳、回收器、协调器、死信）<strong>只在 Redis 形态下装配</strong>（<a target="_blank" rel="noopener" href="https://github.com/neopen/neotask/blob/main/src/neotask/api/task_pool.py">task_pool.py:134</a>），其余形态连代码路径都不存在——能力不是&quot;全有全无&quot;，而是阶梯式供给。</p>
+</li>
+<li class="lvl-3">
+<p><strong>架构的灵魂是 TaskPool 的装配拓扑，而不是分层</strong>。真实结构是一个<strong>门面对象在构造期组合 10 类组件、启动期在后台线程的事件循环里按依赖序拉起 9 个异步部件</strong>（含指标收集器；详见表 2-1/2-2）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>组件存在 ≠ 组件可用</strong>：完整接线（如生命周期→存储→事件）、条件接线（Redis 才有分布式组件）、以及仍需注意的<strong>未接线</strong>项——<code>task.progress</code> 事件无发布方、Coordinator 的选节点/再平衡为占位实现、<code>NodeManager._health_check_loop</code> 的故障处理是 TODO。另一方面，<strong>死信队列与时间轮都已接线</strong>（前者由 Worker/回收器自动投递，后者承接 <code>submit_delayed</code> 的延时任务）。评估 NeoTask 能力时，应以&quot;谁调用谁&quot;为准，而不是以&quot;存在哪个类&quot;为准。</p>
+</li>
+</ol>
+<hr>
+<h2 id="一、三种部署形态：由存储后端决定的能力阶梯">一、三种部署形态：由存储后端决定的能力阶梯</h2>
+<h3 id="1-1-形态总览">1.1 形态总览</h3>
+<p>NeoTask 用 <code>TaskPoolConfig.memory() / sqlite(path) / redis(url)</code> 三个工厂方法（<a target="_blank" rel="noopener" href="https://github.com/neopen/neotask/blob/main/src/neotask/models/config.py">models/config.py:161-244</a>）切换形态。同一条 <code>submit → dispatch → queue → worker</code> 主链路在不同形态下组件不同、语义不同：</p>
+<pre><code class="highlight mermaid">graph TB
+    subgraph F1[&quot;形态一：嵌入式内存（开发/单进程测试）&quot;]
+        A1[TaskPool] --&gt; A2[内存 TaskRepository dict]
+        A1 --&gt; A3[内存双堆队列&lt;br/&gt;PriorityQueue + DelayedQueue]
+        A1 --&gt; A4[MemoryLock 直通]
+        A5[无分布式组件&lt;br/&gt;无持久化]
+    end
+
+    subgraph F2[&quot;形态二：SQLite 单机持久&quot;]
+        B1[TaskPool] --&gt; B2[SQLite 14 列任务表]
+        B1 --&gt; B3[内存队列（同形态一）]
+        B1 --&gt; B4[MemoryLock 直通]
+        B5[无分布式组件&lt;br/&gt;任务可跨重启]
+    end
+
+    subgraph F3[&quot;形态三：Redis 分布式&quot;]
+        C1[TaskPool] --&gt; C2[Redis SET JSON 任务 + 状态索引]
+        C1 --&gt; C3[Redis ZSET 共享队列&lt;br/&gt;Lua 原子弹出]
+        C1 --&gt; C4[RedisLock + WatchDog]
+        C1 --&gt; C6[NodeManager + HeartbeatManager]
+        C1 --&gt; C7[TaskReclaimer + Coordinator + DeadLetter]
+        C8[多节点抢占消费]
+    end
+
+    A1 -.提升存储能力.-&gt; B1
+    B1 -.切换共享后端.-&gt; C1</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">memory 形态</th>
+<th style="text-align:left">sqlite 形态</th>
+<th style="text-align:left">redis 形态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">任务持久化</td>
+<td style="text-align:left">无（deepcopy 于内存）</td>
+<td style="text-align:left">有（本地文件）</td>
+<td style="text-align:left">有（Redis）</td>
+</tr>
+<tr>
+<td style="text-align:left">队列实现</td>
+<td style="text-align:left">进程内双堆</td>
+<td style="text-align:left">进程内双堆（任务表持久）</td>
+<td style="text-align:left">Redis 双 ZSET + Lua 弹出</td>
+</tr>
+<tr>
+<td style="text-align:left">多进程/多节点</td>
+<td style="text-align:left">❌ 完全不可见</td>
+<td style="text-align:left">⚠️ 任务表可共享但队列不共享，且单写约束</td>
+<td style="text-align:left">✅ 全链路共享</td>
+</tr>
+<tr>
+<td style="text-align:left">分布式锁</td>
+<td style="text-align:left">MemoryLock（直通）</td>
+<td style="text-align:left">MemoryLock（直通）</td>
+<td style="text-align:left">RedisLock（SET NX + TTL30s + 看门狗）</td>
+</tr>
+<tr>
+<td style="text-align:left">节点注册/心跳</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">装配（interval=5s / timeout=20s）</td>
+</tr>
+<tr>
+<td style="text-align:left">任务回收器</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">装配（interval=30s，超时 + 孤儿回收 + 僵尸锁扫描）</td>
+</tr>
+<tr>
+<td style="text-align:left">死信队列</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">不装配</td>
+<td style="text-align:left">装配并由 Worker/回收器自动投递（见 5.2 节）</td>
+</tr>
+<tr>
+<td style="text-align:left">典型场景</td>
+<td style="text-align:left">单元测试、原型</td>
+<td style="text-align:left">单机生产、嵌入业务</td>
+<td style="text-align:left">多实例水平扩展</td>
+</tr>
+</tbody>
+</table>
+<p>⚠️ 三个易错点（架构级）：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>sqlite 形态下队列仍在内存</strong>：重启后 PENDING 任务在任务表里&quot;复活&quot;，但队列水位归零——任务不会自动重新入队；此外多个进程共用一个 sqlite 文件时，各自维护独立的内存队列，会出现&quot;任务记录可见、队列无人消费&quot;的脑裂（详见故障场景 2）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>&quot;分布式&quot;三个字只属于 Redis 形态</strong>：&quot;高可用、去中心化&quot;能力全部由 Redis 形态提供；SQLite 形态连回收器都不会启动，节点宕机后的任务没有自动接管机制。</p>
+</li>
+<li class="lvl-3">
+<p><strong>切换形态只需改 config</strong>，这正是架构最大的卖点——同一套业务代码可以在开发（memory）、单机（sqlite）、集群（redis）之间无痛迁移。</p>
+</li>
+</ol>
+<h3 id="1-2-为什么按存储后端而非功能开关来分形态">1.2 为什么按存储后端而非功能开关来分形态</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么不做&quot;always on&quot;的全量组件？</td>
+<td style="text-align:left">分布式组件的每条心跳、每次回收都是对共享存储的写操作；memory/sqlite 形态没有&quot;其他节点&quot;概念，装配它们只会空转耗资源。孤儿回收本身也要求有节点管理器才能判定活跃节点——未装配时回收器会直接跳过该路径（见 5.2 节），不会误判单机任务</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么锁不跟着存储走？</td>
+<td style="text-align:left">锁语义取决于&quot;谁会竞争&quot;：内存形态单进程内无竞争（状态守门已够）；Redis 形态才需要跨进程互斥。TaskPool 因此把锁类型做成独立配置项 <code>lock_type</code>，但<strong>执行路径写死 TTL=30</strong>（worker/pool.py:268），<code>lock_timeout</code> 配置仅影响 LockFactory 构造默认值</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么队列实现要跟存储绑定？</td>
+<td style="text-align:left">队列是&quot;消费竞争&quot;发生的场所：单进程内用 heapq 足够，多进程必须把队列放到共享存储并原子弹出。TaskRepository 与 QueueRepository 由 <code>StorageFactory</code> <strong>成对返回</strong>（<a target="_blank" rel="external nofollow noopener noreferrer" href="http://factory.py">factory.py</a>），天然保证形态内聚</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="二、装配拓扑：TaskPool-作为枢纽的两阶段生命周期">二、装配拓扑：TaskPool 作为枢纽的两阶段生命周期</h2>
+<h3 id="2-1-架构视图">2.1 架构视图</h3>
+<p>真实结构是 <strong>TaskPool 门面 + 星型组合</strong>：几乎每个组件都通过构造函数注入 TaskPool 持有的共享实例（事件总线、生命周期、队列、存储），组件之间<strong>不直接互相查找</strong>：</p>
+<pre><code class="highlight mermaid">graph TB
+    subgraph API[&quot;api 层（门面）&quot;]
+        TP[TaskPool]
+        TS[TaskScheduler]
+        TE[TaskEngine&lt;br/&gt;core/engine.py 未导出]
+    end
+
+    subgraph CORE[&quot;core 内核（状态与流转）&quot;]
+        LIFE[TaskLifecycleManager&lt;br/&gt;状态/缓存/事件]
+        DISP[TaskDispatcher&lt;br/&gt;提交归一化]
+        FUT[FutureManager&lt;br/&gt;等待通知]
+        HB[HeartbeatManager&lt;br/&gt;仅 Redis 形态]
+    end
+
+    subgraph Q[&quot;queue（队列调度）&quot;]
+        QS[QueueScheduler]
+        PQ[PriorityQueue]
+        DQ[DelayedQueue&lt;br/&gt;0.1s 自循环]
+    end
+
+    subgraph W[&quot;worker（执行体系）&quot;]
+        WP[WorkerPool&lt;br/&gt;Semaphore]
+        PF[TaskPrefetcher&lt;br/&gt;预取器]
+        SV[WorkerSupervisor&lt;br/&gt;30s 检查/整池重启]
+        RC[TaskReclaimer&lt;br/&gt;仅 Redis 形态]
+    end
+
+    subgraph SVC[&quot;支撑与横切&quot;]
+        EB[EventBus]
+        LF[LockFactory → Memory/RedisLock]
+        WD[WatchDog&lt;br/&gt;interval=max(0.5, ttl×0.3)]
+        MON[MetricsCollector&lt;br/&gt;HealthChecker&lt;br/&gt;ReporterManager]
+        DLQ[DeadLetterQueue&lt;br/&gt;仅 Redis 形态·已注入 Worker/回收器]
+    end
+
+    subgraph ST[&quot;storage 成对产出&quot;]
+        TR[(TaskRepository)]
+        QR[(QueueRepository)]
+    end
+
+    TS --&gt;|委托| TP
+    TE --&gt;|内部编排| TP
+    TP --&gt; DISP
+    DISP --&gt; LIFE &amp; QS
+    LIFE --&gt; TR &amp; EB &amp; FUT
+    QS --&gt; PQ &amp; DQ
+    WP --&gt; PF &amp; LIFE &amp; EB &amp; LF &amp; WD
+    SV --&gt; WP
+    RC --&gt; LIFE &amp; QS &amp; LF
+    HB --&gt; TR
+    EB --&gt; MON
+    LF --&gt; WD
+    ST --&gt; TR &amp; QR</code></pre>
+<p>要点（与旧图的关键差异）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>TaskScheduler 是 TaskPool 的客户而非兄弟</strong>：它内部持有一个 TaskPool 并全量委托（<code>submit_delayed</code> 直接调 <code>pool.submit</code>），还复用了 TaskPool 的事件循环（task_scheduler.py:103-126）。TaskEngine（core/engine.py）同理但<strong>未导出</strong>，用户不可直接使用。</p>
+</li>
+<li class="lvl-2">
+<p><strong>Supervisor、Reclaimer 在真实代码里不是 WorkerPool 的兄弟节点</strong>：Supervisor 由 TaskPool 持有并观察 WorkerPool（supervisor.py:32-42）；Reclaimer 直接依赖 lifecycle/queue/lock 三个组件（reclaimer.py:90-104），与 WorkerPool 平行。</p>
+</li>
+<li class="lvl-2">
+<p><strong>DelayedQueue 自带 0.1s 调度循环</strong>，从队列系统内部到期转正（queue_scheduler.py:59-70）；<strong>TimeWheel 在 TaskScheduler 侧</strong>，<code>enable_time_wheel=True</code> 时承接 <code>submit_delayed</code> / <code>submit_at</code> 的延时任务（见 3.4 节）。</p>
+</li>
+</ul>
+<h3 id="2-2-两阶段生命周期的完整清单">2.2 两阶段生命周期的完整清单</h3>
+<p><strong>阶段一：<code>__init__</code>（构造期，调用方进程内纯组装，10 类组件）</strong> 🔧</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">步</th>
+<th style="text-align:left">组件</th>
+<th style="text-align:left">关键事实</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">1</td>
+<td style="text-align:left">Executor</td>
+<td style="text-align:left">默认执行器 <code>{&quot;result&quot;:&quot;executed&quot;,&quot;data&quot;:data}</code>；同步函数被包装（task_pool.py:212-232）</td>
+</tr>
+<tr>
+<td style="text-align:center">2</td>
+<td style="text-align:left">存储</td>
+<td style="text-align:left"><code>StorageFactory.create</code> 一次返回 Task/Queue 双仓库</td>
+</tr>
+<tr>
+<td style="text-align:center">3</td>
+<td style="text-align:left">Lock</td>
+<td style="text-align:left">memory/redis 由 <code>lock_type</code> 决定（task_pool.py:247-256）</td>
+</tr>
+<tr>
+<td style="text-align:center">4</td>
+<td style="text-align:left">EventBus</td>
+<td style="text-align:left">全局唯一实例，后续组件共享</td>
+</tr>
+<tr>
+<td style="text-align:center">5</td>
+<td style="text-align:left">FutureManager</td>
+<td style="text-align:left">等待通道</td>
+</tr>
+<tr>
+<td style="text-align:center">6</td>
+<td style="text-align:left">QueueScheduler</td>
+<td style="text-align:left">接收 queue_repo 与 <code>queue_max_size</code></td>
+</tr>
+<tr>
+<td style="text-align:center">7</td>
+<td style="text-align:left">TaskLifecycleManager</td>
+<td style="text-align:left">含缓存字典（cache_enabled=True）</td>
+</tr>
+<tr>
+<td style="text-align:center">8</td>
+<td style="text-align:left">TaskDispatcher</td>
+<td style="text-align:left">node_id 来自 config</td>
+</tr>
+<tr>
+<td style="text-align:center">9</td>
+<td style="text-align:left">WorkerPool + Supervisor</td>
+<td style="text-align:left"><code>set_retry_config</code> 注入 max_retries/retry_delay</td>
+</tr>
+<tr>
+<td style="text-align:center">10</td>
+<td style="text-align:left">分布式五件套</td>
+<td style="text-align:left"><strong>仅 Redis 形态</strong>：NodeManager/HeartbeatManager/Reclaimer/Coordinator/DeadLetter（task_pool.py:148-210）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>阶段二：<code>start()</code>（启动期，后台线程事件循环中按序拉起 9 个异步部件）</strong> 🔧</p>
+<p>事件总线 → 队列调度器 → Worker 池 → 监督者 → （Redis 形态）节点管理 → 心跳 → 回收器 → 指标收集器 → （可选）Reporter。启动失败（如心跳连不上 Redis）只会打 error 日志，<strong>不中断整体启动</strong>——这是&quot;看起来起了，实际组件瘫了&quot;类故障的温床。</p>
+<p><strong>阶段三：<code>shutdown()</code>（逆向优雅关闭）</strong> 🔧</p>
+<p><code>disable()</code> 停收新任务 → <code>graceful</code> 时 <code>wait_until_empty(timeout)</code> → 停 回收器/心跳/节点 → Supervisor → WorkerPool（带超时强杀）→ 队列 → Reporter → 事件总线 → 存储连接（捕获 “different loop” 冲突异常）。</p>
+<h3 id="2-3-为什么门面-独立事件循环是正确取舍">2.3 为什么门面 + 独立事件循环是正确取舍</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么不是&quot;在用户协程里跑&quot;？</td>
+<td style="text-align:left">嵌入式调度器的目标用户是任意 Python 进程（含同步 Web 框架、脚本、线程池代码）。让每个调用方管理 loop 会毁掉易用性；自带守护线程 + <code>run_coroutine_threadsafe</code> 桥接让同步 API 处处可用</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么 start 前允许构造？</td>
+<td style="text-align:left">门面先组装后启动，使 <code>submit()</code> 内的 <code>_ensure_running()</code> 自动起步成为可能，也便于测试时只构造不启动</td>
+</tr>
+<tr>
+<td style="text-align:left">代价是什么？</td>
+<td style="text-align:left">组件状态横跨两个线程（构造在调用线程、运行在后台循环），<strong>直接读内部字段可能读到过期值</strong>；所有状态查询 API 都经线程桥回到事件循环执行，慢但一致。web 监控线程同理另起 uvicorn（web/server.py:16-27），形成第三条线程</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="三、关键架构决策解码">三、关键架构决策解码</h2>
+<h3 id="3-1-D1：状态守门-执行前锁-两道防重，缺一不可">3.1 D1：状态守门 + 执行前锁 = 两道防重，缺一不可</h3>
+<p>提交→执行的正确性依赖三层机制，职责完全不同：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">层</th>
+<th style="text-align:left">机制</th>
+<th style="text-align:left">位置</th>
+<th style="text-align:left">防什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">1</td>
+<td style="text-align:left">原子弹出（Redis Lua <code>ZRANGE+ZREM</code>）</td>
+<td style="text-align:left">storage/redis.py:238-252</td>
+<td style="text-align:left">多节点不会取到同一任务</td>
+</tr>
+<tr>
+<td style="text-align:center">2</td>
+<td style="text-align:left">执行前分布式锁（<code>task:{id}</code> TTL=30 + 看门狗续期）</td>
+<td style="text-align:left">worker/pool.py:260-281</td>
+<td style="text-align:left">同一任务被两个 Worker 同时执行（含重试/回收路径的重复入队）</td>
+</tr>
+<tr>
+<td style="text-align:center">3</td>
+<td style="text-align:left">PENDING 状态守门</td>
+<td style="text-align:left">worker/pool.py:255-258 + lifecycle.py:136-141</td>
+<td style="text-align:left">跳过已被取消/已完成的任务</td>
+</tr>
+</tbody>
+</table>
+<p>为什么锁在<strong>弹出之后、执行之前</strong>拿而不是在弹出脚本里拿？因为<strong>队列只保证分发不重复，执行前再拿锁是为了覆盖&quot;任务在队列里被重复放入&quot;的场景</strong>（重试、回收、redispatch 都可能再次入队，见<a href="https://pengline.cn/2026/05/3aafd2e52ad348ce823486c6389b3c26">去中心化</a>篇）。内存形态没有锁管理器，防重完全依赖第 3 层守门。</p>
+<h3 id="3-2-D2：双通知通道——Future-快通道-事件慢通道">3.2 D2：双通知通道——Future 快通道 + 事件慢通道</h3>
+<p><code>wait_for_result</code> 与外部订阅走完全不同的通道：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>FutureManager</strong>（core/future.py）：内存 asyncio.Event，<code>complete()</code> 由 lifecycle 直接调用（<a target="_blank" rel="external nofollow noopener noreferrer" href="http://lifecycle.py:181/220/245%EF%BC%89%EF%BC%8CO(1)">lifecycle.py:181/220/245），O(1)</a> 唤醒等待方；<code>wait_for_task</code> 异常后二次查状态兜底（lifecycle.py:291-306）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>EventBus</strong>（event/bus.py）：发布/订阅，供 MetricsCollector、用户扩展等<strong>多接收方</strong>使用，TaskPool 内部也靠它把 completed/failed/cancelled 转给 FutureManager（task_pool.py:276-288）——注意这里<strong>事件又转回了 Future 通道</strong>，说明事件总线是扩展面而非等待链路的必要环节。</p>
+</li>
+</ul>
+<p>代价：双通道可能失同步。当前仍存在的唯一断链是 <code>task.progress</code>（有订阅接口、无发布方，<code>_update_task_progress</code> 无调用点）；<code>task.retry</code> 已由指标采集器订阅，<code>task.reclaimed</code> 仅用于 debug 日志。详见<a href="https://pengline.cn/2026/03/468d3a0ded1740dd802b912acf8bd757">核心功能</a>篇 7.1 节。</p>
+<h3 id="3-3-D3：抢占消费-内存缓冲（预取器）解耦-竞争-与-吞吐">3.3 D3：抢占消费 + 内存缓冲（预取器）解耦&quot;竞争&quot;与&quot;吞吐&quot;</h3>
+<p>Redis 形态下如果每个 Worker 每次都直接 pop 共享 ZSET，Redis 会成为瓶颈。架构给出的答案是 WorkerPool 内嵌 TaskPrefetcher（pool.py:80-91）：预取器按水位（min/max 阈值由 <code>prefetch_size</code> 派生）批量搬运任务到进程内缓冲，Worker 只消费本地队列，缺货才触发下次搬运。<strong>单机形态没有预取器</strong>（enable_prefetch 虽默认 True，但内存队列 pop 几乎零成本，预取不改变语义）。吞吐调优的唯一入口是 <code>TaskPoolConfig.prefetch_size</code>（详见<a href="https://pengline.cn/2026/05/03fa0ff8120344519e3d063985a118cc">预取机制</a>篇）。</p>
+<h3 id="3-4-D4：能力要-存在-，也要-接线">3.4 D4：能力要&quot;存在&quot;，也要&quot;接线&quot;</h3>
+<p>架构评估最重要的清单：各组件的接线状态。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">组件</th>
+<th style="text-align:left">接线状态</th>
+<th style="text-align:left">证据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Lifecycle → Repository → EventBus</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">create_task 落库+事件（lifecycle.py:76-82）</td>
+</tr>
+<tr>
+<td style="text-align:left">FutureManager（等待）</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">lifecycle 三处 complete 直接调用</td>
+</tr>
+<tr>
+<td style="text-align:left">NodeManager/HeartbeatManager/Reclaimer</td>
+<td style="text-align:left">✅ 条件接线</td>
+<td style="text-align:left">仅 Redis 形态（task_pool.py:134）</td>
+</tr>
+<tr>
+<td style="text-align:left">Prefetcher/Dispatcher/Supervisor</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">pool/start 中创建并运行</td>
+</tr>
+<tr>
+<td style="text-align:left">DeadLetterQueue</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">装配后注入 WorkerPool（<code>set_dead_letter_queue</code>）与 Reclaimer，重试超限/回收失败时自动 <code>send</code>（task_pool.py:180-207）</td>
+</tr>
+<tr>
+<td style="text-align:left">TimeWheel</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">TaskScheduler 启动它（task_scheduler.py:147-153）；<code>enable_time_wheel=True</code> 时 <code>submit_delayed</code>/<code>submit_at</code> 经 <code>add_task</code> 入轮，<code>shutdown</code> 时 <code>drain</code> 回延时队列</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.progress</code> 事件 / <code>_update_task_progress</code></td>
+<td style="text-align:left">⛔ 未接线</td>
+<td style="text-align:left">方法存在（pool.py:381-403）但无调用方</td>
+</tr>
+<tr>
+<td style="text-align:left"><code>task.retry</code> 事件</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">发布方 <a target="_blank" rel="external nofollow noopener noreferrer" href="http://pool.py">pool.py</a>（失败重试路径），订阅方为指标采集器（task_pool.py:292）</td>
+</tr>
+<tr>
+<td style="text-align:left">ConsistentHashSharder</td>
+<td style="text-align:left">⛔ 未接线</td>
+<td style="text-align:left">完整实现（150 虚拟节点/三种哈希）但 TaskPool/Coordinator 未使用</td>
+</tr>
+<tr>
+<td style="text-align:left">Coordinator（<code>_select_node</code>/<code>rebalance</code>/<code>handle_node_failure</code>）</td>
+<td style="text-align:left">⛔ 未接线</td>
+<td style="text-align:left">实例被创建，但真实提交走 TaskDispatcher，上述方法为占位实现</td>
+</tr>
+<tr>
+<td style="text-align:left">PeriodicTaskManager</td>
+<td style="text-align:left">✅ 完整接线</td>
+<td style="text-align:left">TaskScheduler 默认启用（enable_periodic_manager=True，storage=None 内存态）</td>
+</tr>
+</tbody>
+</table>
+<p>教训：<strong>文档能力清单 ≠ 可用能力清单</strong>。判断某个功能能不能用，应 grep 它的调用方，而不是看类是否存在。</p>
+<hr>
+<h2 id="四、存储抽象：仓库模式与成对返回">四、存储抽象：仓库模式与成对返回</h2>
+<h3 id="4-1-接口类图-🔧">4.1 接口类图 🔧</h3>
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/neotask/blob/main/src/neotask/storage/base.py">storage/base.py</a> 定义两组抽象（Repository Pattern）：</p>
+<pre><code class="highlight mermaid">classDiagram
+    class TaskRepository &#123;
+        &lt;&lt;abstract&gt;&gt;
+        +save(task) None
+        +get(task_id) Optional[Task]
+        +delete(task_id) None
+        +list_by_status(status, limit=100, offset=0) List[Task]
+        +update_status(task_id, status) None
+        +update_status_batch(updates) int
+        +delete_batch(task_ids) int
+        +exists(task_id) bool
+    &#125;
+    class QueueRepository &#123;
+        &lt;&lt;abstract&gt;&gt;
+        +push(task_id, priority) None
+        +pop(count=1) List[str]
+        +remove(task_id) bool
+        +size() int
+        +peek(count=1) List[str]
+        +clear() None
+    &#125;
+    class MemoryTaskRepository &#123;
+        -_tasks: Dict
+        +save(task)  # deepcopy
+    &#125;
+    class SQLiteTaskRepository &#123;
+        -_conn  # 14 列 tasks 表
+    &#125;
+    class RedisTaskRepository &#123;
+        -_client  # SET task:id JSON
+    &#125;
+    class MemoryQueueRepository
+    class SQLiteQueueRepository
+    class RedisQueueRepository &#123;
+        -ZSET queue:priority / queue:delayed
+        +Lua 原子 pop
+    &#125;
+    TaskRepository &lt;|-- MemoryTaskRepository
+    TaskRepository &lt;|-- SQLiteTaskRepository
+    TaskRepository &lt;|-- RedisTaskRepository
+    QueueRepository &lt;|-- MemoryQueueRepository
+    QueueRepository &lt;|-- SQLiteQueueRepository
+    QueueRepository &lt;|-- RedisQueueRepository</code></pre>
+<p>三处值得注意的细节：① <code>TaskRepository</code> 除基本 CRUD 外还有 <code>update_status_batch</code> / <code>delete_batch</code> / <code>exists</code>（reclaimer 与心跳回收依赖批量能力）；② <code>QueueRepository</code> 只有 6 个方法，<code>contains</code> 等是各实现自行扩展（Redis 实现额外提供 pause/disable）；③ 抽象方法声明 <code>delete → None</code>，但各实现实际返回 bool——接口与实现存在小的签名漂移。</p>
+<h3 id="4-2-工厂：一次调用、成对返回-🔧">4.2 工厂：一次调用、成对返回 🔧</h3>
+<p><code>StorageFactory.create(config)</code>（storage/factory.py）按 StorageConfig 返回 <code>(TaskRepository, QueueRepository)</code> 元组，TaskPool 一行完成存储装配（task_pool.py:64）。三个后端的实现差异（键格式、索引、写策略）详见<a href="https://pengline.cn/2026/04/a9ce9bf3877546b898042064e6081d37">持久化</a>篇与<a href="https://pengline.cn/2026/03/468d3a0ded1740dd802b912acf8bd757">核心功能</a>篇 8.1 节；此处只强调架构级结论：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>Memory/SQLite 的任务仓库与队列仓库都活在进程内</strong>——SQLite 的持久化只覆盖任务记录，不覆盖队列与周期任务注册表；</p>
+</li>
+<li class="lvl-2">
+<p><strong>Redis 是全异步实现</strong>（redis.asyncio + ConnectionPool，decode_responses=True），存储调用全部经事件循环执行——同步 API 的每次 submit/get 都包含一次线程桥 + Redis 往返，批量场景应使用 <code>submit_batch</code> 或异步 API 减少桥接次数。</p>
+</li>
+</ul>
+<hr>
+<h2 id="五、高可用架构的真实形态">五、高可用架构的真实形态</h2>
+<h3 id="5-1-节点生命周期：不是-注册→可疑→死亡-，是三个字面状态">5.1 节点生命周期：不是&quot;注册→可疑→死亡&quot;，是三个字面状态</h3>
+<p>真实的节点管理很简单——<strong>只有三个字面状态，没有&quot;可疑&quot;中间态，也没有分级超时</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>节点注册</strong>：<code>NodeManager</code> 与 <code>HeartbeatManager</code> 共用同一份注册表，写 <code>HSET neotask:node:{node_id}</code>（node_id/status/started_at/last_heartbeat），键 TTL = <code>timeout × 2</code>；同时 <code>SADD neotask:nodes</code>（<a target="_blank" rel="noopener" href="https://github.com/neopen/neotask/blob/main/src/neotask/distributed/node.py">node.py:64-65</a>、<a target="_blank" rel="noopener" href="https://github.com/neopen/neotask/blob/main/src/neotask/core/heartbeat.py">heartbeat.py:46-52</a>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>节点状态只有三种值</strong>：<code>active</code>（心跳中）、<code>stopped</code>（优雅关闭时写入，TTL 60s）、<code>reclaimed</code>（被其他节点判死后标记）——<strong>没有&quot;可疑&quot;中间态</strong>。</p>
+</li>
+<li class="lvl-2">
+<p><strong>判死逻辑一刀切</strong>：每个节点在自己的 <code>_monitor_loop</code> 里（每 <code>cleanup_interval=30s</code>）扫描其他节点，<code>status != &quot;stopped&quot;</code> 且 <code>now - last_heartbeat &gt; timeout(20s)</code> 即判死（heartbeat.py:162-165）。心跳周期 5s、超时 20s（4 个周期），<strong>没有宽限期、没有分级</strong>。</p>
+</li>
+</ul>
+<pre><code class="highlight mermaid">stateDiagram-v2
+    [*] --&gt; active: 注册（HSET neotask:node:&#123;id&#125; + SADD neotask:nodes）
+    active --&gt; active: 每 5s 刷新 last_heartbeat
+    active --&gt; stopped: 优雅关闭（TTL 60s 后消失）
+    active --&gt; reclaimed: 他节点判死（20s 无心跳）
+    reclaimed --&gt; [*]: 任务回收后节点键过期</code></pre>
+<h3 id="5-2-任务回收：两条已闭环的路径">5.2 任务回收：两条已闭环的路径</h3>
+<p>Redis 形态装配了两套回收机制，任务状态一律经 <code>TaskRepository</code> 读写：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">机制</th>
+<th style="text-align:left">周期</th>
+<th style="text-align:left">触发条件</th>
+<th style="text-align:left">真实状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">HeartbeatManager 死节点回收</td>
+<td style="text-align:left">30s 检查</td>
+<td style="text-align:left">他节点 20s 无心跳</td>
+<td style="text-align:left">✅ 经 <code>list_by_status(RUNNING)</code> 取任务，<strong>只回收 <code>task.node_id == 死亡节点</code> 的任务</strong>；置 PENDING、清 node_id/started_at、写 error、<code>repo.save</code>、重新入队；入队失败则置 FAILED</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskReclaimer 超时回收</td>
+<td style="text-align:left">30s</td>
+<td style="text-align:left">RUNNING 且执行时长 &gt; task.ttl（默认 3600s）</td>
+<td style="text-align:left">✅ 生效（&quot;超时&quot;口径是任务 ttl 而非执行超时）；重试入队被拒或超限时置 FAILED + 投递死信</td>
+</tr>
+<tr>
+<td style="text-align:left">TaskReclaimer 孤儿回收</td>
+<td style="text-align:left">30s</td>
+<td style="text-align:left">RUNNING 且非本节点、node_id 不在活跃节点</td>
+<td style="text-align:left">✅ 活跃节点来自 <code>NodeManager.get_active_nodes()</code>；<strong>未装配节点管理器时返回 <code>None</code> 并跳过整轮</strong>，本节点任务显式跳过——不会误伤正常执行的任务</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>架构结论：Redis 形态的&quot;高可用自动恢复&quot;链条（判死 → 回收 → 重入队 → 重执行）<strong>已闭环</strong>，失败任务有明确归宿（FAILED + 死信队列）。唯一仍需注意的未实现项是 <code>NodeManager._health_check_loop</code> 内部的 <code># TODO: 处理故障节点</code>（节点管理器自身的健康巡检）。详见<a href="https://pengline.cn/2026/05/4f970d9d3f124cc9ac6a2c78301b6e6b">故障恢复</a>篇与<a href="https://pengline.cn/2026/03/468d3a0ded1740dd802b912acf8bd757">核心功能</a>篇 6.2 节。</p>
+</blockquote>
+<h3 id="5-3-Supervisor：执行侧的-健康守护-，粒度是整池">5.3 Supervisor：执行侧的&quot;健康守护&quot;，粒度是整池</h3>
+<p>TaskPool 启动顺序里第 4 位是 WorkerSupervisor（默认 30s 检查一次）：对每个 Worker 做<strong>挂起检查</strong>（busy 且 300s 无活动）与<strong>失败率检查</strong>（样本 &gt;10 且失败率 &gt;50%）。但&quot;重启 Worker&quot;的实现是<strong>停掉并重启整个 WorkerPool</strong>（supervisor.py:113-115）——挂起判定与并发任务时长强相关（长任务超过 300s 会被误判），且整池重启会中断所有在途任务。这是执行侧 HA 的已知粗糙点。</p>
+<hr>
+<h2 id="六、可观测性：事件采集-注册式检查-上报器">六、可观测性：事件采集 + 注册式检查 + 上报器</h2>
+<p>可观测性由四个相互独立的组件构成（都在 <code>monitor/</code> 包）：</p>
+<h3 id="6-1-MetricsCollector：事件驱动计数-周期系统采样-🔧">6.1 MetricsCollector：事件驱动计数 + 周期系统采样 🔧</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>任务指标</strong>：TaskPool 内部以一个全局事件订阅把 <code>task.created/started/completed/failed/cancelled/retry</code> 转发给采集器（task_pool.py:274-295），<code>task.created</code> 带 <code>priority</code>、<code>task.retry</code> 带 <code>retry_count</code>；内部维护 per-task 的时间账本，产出 TaskMetrics：成功率/失败率、平均与 p50/p90/p95/p99 执行耗时、平均排队时间、吞吐量（<a target="_blank" rel="external nofollow noopener noreferrer" href="http://metrics.py">metrics.py</a> 计算属性）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>系统指标</strong>：<code>metrics.start()</code> 在启动期拉起后台循环周期采集 CPU/内存等（<code>_collect_system_metrics_loop</code>），<code>metrics.stop()</code> 在关闭期停止；<code>get_stats()</code> 返回完整摘要，因此经 <code>pool.get_stats()[&quot;metrics&quot;]</code> 能看到 <code>system</code> 段（psutil 为可选依赖，缺失时为 <code>None</code>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>Prometheus 出口</strong>：<code>to_prometheus_format()</code> 直接输出文本格式（另有 contrib/prometheus.py 生态桥接）。注意：<strong>没有 HTTP <code>/metrics</code> 拉取端点</strong>，该出口需要调用方自行暴露。</p>
+</li>
+</ul>
+<h3 id="6-2-SystemHealthChecker：注册式，三项内置检查-🔧">6.2 SystemHealthChecker：注册式，三项内置检查 🔧</h3>
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/neotask/blob/main/src/neotask/monitor/health.py">monitor/health.py</a> 的 SystemHealthChecker 基于通用 HealthChecker（register/check_all/get_status，healthy/degraded/unhealthy 三态聚合）注册了<strong>恰好三个</strong>检查：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">检查项</th>
+<th style="text-align:left">做法</th>
+<th style="text-align:left">降级条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">storage</td>
+<td style="text-align:left"><code>repo.exists(&quot;health_check&quot;)</code> 探活</td>
+<td style="text-align:left">抛异常 → UNHEALTHY</td>
+</tr>
+<tr>
+<td style="text-align:left">queue</td>
+<td style="text-align:left"><code>queue.size()</code></td>
+<td style="text-align:left">&gt;10000 → DEGRADED</td>
+</tr>
+<tr>
+<td style="text-align:left">system</td>
+<td style="text-align:left">psutil CPU/内存/磁盘</td>
+<td style="text-align:left">任一 &gt;90% → DEGRADED</td>
+</tr>
+</tbody>
+</table>
+<p>健壮性要点：<code>get_health_status()</code>/<code>_async</code> 会先调 <code>_refresh_health_if_stale()</code>——结果在 <code>HEALTH_CHECK_TTL = 5.0s</code> 内直接复用，过期才重新检查；<strong>每个检查都包在 <code>asyncio.wait_for(..., timeout=DEFAULT_CHECK_TIMEOUT=5.0)</code> 里</strong>，超时则该项判为 UNHEALTHY 并给出 <code>timed out after Xs</code> 消息，因此某个依赖不可达不会再无限期挂住调用方。psutil 缺失时 system 检查返回 HEALTHY 且 details 为 <code>{&quot;available&quot;: False}</code>（可选依赖，不代表系统不健康）。<code>get_health_status()</code> 会把 WorkerPool 统计 + 上述结果拼成一个 dict。启用条件为 <code>enable_health_check=True</code>（默认开）。</p>
+<h3 id="6-3-ReporterManager：周期推送（默认关闭）-🔧">6.3 ReporterManager：周期推送（默认关闭） 🔧</h3>
+<p><code>enable_reporter=True</code> 时才装配（默认 False）：ReporterManager 每 60s 取一次 <code>get_stats()</code> 回调结果，推给已注册的 reporter。内置三种 reporter：<strong>ConsoleReporter</strong>（默认注册）、<strong>FileReporter</strong>、<strong>PrometheusReporter</strong>（pushgateway 模式）。</p>
+<h3 id="6-4-Web-UI-与-CLI：不参与装配的独立面">6.4 Web UI 与 CLI：不参与装配的独立面</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>WebUIServer</strong>（web/server.py）：FastAPI + uvicorn 后台线程，默认 <code>127.0.0.1:8080</code>。<strong>TaskPool 不持有、也不会实例化它</strong>——全库没有 <code>WebUIServer(...)</code> 的调用方，只能由调用方<strong>自行传入 scheduler 手动启动</strong>；当前仅暴露 <code>/</code> 与 <code>/api/stats</code> 两个路由（不是完整的任务/节点 REST + WebSocket 面板）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>CLI</strong>（cli/）：<code>start</code> / <code>webui</code> 两个命令，薄封装。</p>
+</li>
+<li class="lvl-2">
+<p>结论：监控面板是&quot;可选外挂&quot;，不是架构内件；进程内可观测性的正式出口是 metrics + health 两个组件。</p>
+</li>
+</ul>
+<hr>
+<h2 id="七、架构事实速查表">七、架构事实速查表</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">#</th>
+<th style="text-align:left">易混淆点</th>
+<th style="text-align:left">当前真实情况</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">1</td>
+<td style="text-align:left">是否有 WorkflowEngine 入口</td>
+<td style="text-align:left">不存在；入口只有 TaskPool/TaskScheduler（+未导出 TaskEngine）</td>
+</tr>
+<tr>
+<td style="text-align:center">2</td>
+<td style="text-align:left">是否有 Elector 选举器</td>
+<td style="text-align:left">无此模块；去中心化架构无主节点，无需选举</td>
+</tr>
+<tr>
+<td style="text-align:center">3</td>
+<td style="text-align:left">架构分层</td>
+<td style="text-align:left">不是线性分层；TaskPool 星型装配 + 两阶段生命周期</td>
+</tr>
+<tr>
+<td style="text-align:center">4</td>
+<td style="text-align:left">TimeWheel 归属与状态</td>
+<td style="text-align:left">属 scheduler/，由 TaskScheduler 装配；<code>enable_time_wheel=True</code> 时 <code>submit_delayed</code>/<code>submit_at</code> 经 <code>add_task</code> 入轮（已接线）</td>
+</tr>
+<tr>
+<td style="text-align:center">5</td>
+<td style="text-align:left">心跳与判死</td>
+<td style="text-align:left">心跳 5s、判死 timeout=20s 一刀切，状态仅 active/stopped/reclaimed</td>
+</tr>
+<tr>
+<td style="text-align:center">6</td>
+<td style="text-align:left">抢占与加锁</td>
+<td style="text-align:left">Lua 只做 ZRANGE+ZREM 原子弹出；锁在 Worker 执行前单独 acquire（TTL=30）</td>
+</tr>
+<tr>
+<td style="text-align:center">7</td>
+<td style="text-align:left">超过重试次数的去向</td>
+<td style="text-align:left">FAILED + 自动投递死信队列（Worker/回收器均已接线），<code>dlq.replay()</code> 支持运维重放</td>
+</tr>
+<tr>
+<td style="text-align:center">8</td>
+<td style="text-align:left">失败重试退避</td>
+<td style="text-align:left">线性：<code>delay = retry_delay × 新次数</code></td>
+</tr>
+<tr>
+<td style="text-align:center">9</td>
+<td style="text-align:left">监控结构</td>
+<td style="text-align:left">MetricsCollector 事件驱动 + SystemHealthChecker 三项注册式检查（5s TTL / 5s 单项超时）+ ReporterManager；web 为独立组件</td>
+</tr>
+<tr>
+<td style="text-align:center">10</td>
+<td style="text-align:left">状态机</td>
+<td style="text-align:left">创建即 PENDING；FAILED 为终态；重试是 RUNNING→PENDING 的复位入队（worker 内部）</td>
+</tr>
+<tr>
+<td style="text-align:center">11</td>
+<td style="text-align:left">分片/一致性哈希</td>
+<td style="text-align:left">ConsistentHashSharder 完整实现但无装配（Coordinator 未使用）</td>
+</tr>
+<tr>
+<td style="text-align:center">12</td>
+<td style="text-align:left">分布式&quot;高可用/回收&quot;</td>
+<td style="text-align:left">回收链路已闭环（HeartbeatManager 按 node_id 回收、Reclaimer 超时/孤儿回收），见 5.2 节；<code>NodeManager._health_check_loop</code> 的 <code># TODO: 处理故障节点</code> 仍未实现</td>
+</tr>
+<tr>
+<td style="text-align:center">13</td>
+<td style="text-align:left">Coordinator</td>
+<td style="text-align:left">已实例化但未接线，<code>_select_node</code>/<code>rebalance</code>/<code>handle_node_failure</code> 为占位实现；真实提交走 TaskDispatcher</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="八、为什么这么设计（架构层汇总）">八、为什么这么设计（架构层汇总）</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">问题</th>
+<th style="text-align:left">答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">为什么 TaskScheduler 复用 TaskPool 的事件循环，而不是自建？</td>
+<td style="text-align:left">单进程只跑一个事件循环，避免两套 loop 间任务互投的死锁；TaskScheduler 本质是 TaskPool 的&quot;定时投递器&quot;</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么状态推进集中在 lifecycle，而不是让 Worker 直接改状态？</td>
+<td style="text-align:left">状态变更伴随缓存更新、Future 通知、事件发布三件套；集中式门面保证任一执行路径都不会漏掉通知（除 <code>task.progress</code> 外均已收敛到单点）</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么 Redis 队列延迟到期用 ZSET score=5 转正而非原优先级？</td>
+<td style="text-align:left">源码未注释动机；行为上&quot;延迟任务不插队即时任务&quot;。多延迟场景下需实测，勿按直觉假设</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么周期任务默认由 PeriodicTaskManager 管理却持久化缺位？</td>
+<td style="text-align:left"><code>enable_periodic_manager=True</code> 但 <code>storage=None</code>：架构预留了存储参数（<a target="_blank" rel="external nofollow noopener noreferrer" href="http://periodic.py">periodic.py</a> 有 _load/_save_tasks），尚未接通——属于&quot;接口先行、接线后补&quot;</td>
+</tr>
+<tr>
+<td style="text-align:left">为什么仍有组件&quot;存在但没接线&quot;？</td>
+<td style="text-align:left">仓库代码呈现&quot;能力先行&quot;的演进痕迹：分片器、Coordinator 的选节点/再平衡、<code>periodic.py</code> 的加载保存均为先落地接口、再等调用方接入的形态。阅读时应以本文&quot;接线状态&quot;清单为准；死信队列与时间轮则已有明确调用方（Worker/回收器投递死信、<code>enable_time_wheel=True</code> 时延时任务走时间轮）</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="九、故障场景实战（架构级）">九、故障场景实战（架构级）</h2>
+<h3 id="场景-1：以为在用-分布式-，实际是三个独立的内存队列-📝">场景 1：以为在用&quot;分布式&quot;，实际是三个独立的内存队列 📝</h3>
+<p><strong>现象</strong>：<code>python main.py --worker</code> 起了 3 个进程，都用默认配置（<code>TaskPoolConfig()</code> → memory）。提交 100 个任务，3 个进程各自执行了一部分，<code>get_stats()</code> 各自只看到自己的任务。</p>
+<p><strong>根因</strong>：memory 形态的任务仓库与队列都是进程内对象——进程间既看不到任务也抢不到队列。这不是&quot;分布式失败&quot;，而是<strong>形态选择错误</strong>：多进程消费必须 <code>TaskPoolConfig.redis(url=...)</code>。</p>
+<p><strong>对策</strong>：按 1.1 节能力阶梯表核对部署拓扑：单进程内多线程/多协程可 memory；单机多进程或跨机必须 redis 形态（或每进程独立 memory 池做隔离用途）。</p>
+<h3 id="场景-2：SQLite-双进程：任务表共享、队列脑裂-📝">场景 2：SQLite 双进程：任务表共享、队列脑裂 📝</h3>
+<p><strong>现象</strong>：两个进程以 sqlite 形态共用一个 db 文件。A 进程提交任务后崩溃，B 进程 <code>get_task</code> 能看到 PENDING 记录，但永远等不到执行；重启 A 后任务才被消费。</p>
+<p><strong>根因</strong>：SQLite 只持久化任务记录；<strong>队列与 Worker 状态都在各自进程内</strong>。A 崩溃时任务在 A 的内存队列里消失，落库状态停留在 PENDING，B 无从知晓（B 的队列里没有该 task_id）。sqlite 形态无心跳/回收组件，无人接管。</p>
+<p><strong>对策</strong>：SQLite 形态严格限定<strong>单进程</strong>（官方默认单写约束）；需要多进程接管能力的场景直接上 Redis 形态；实在要双进程，用 Redis 队列 + SQLite 存储的混合方案（NeoTask 不支持，需自行扩展 QueueRepository）。</p>
+<h3 id="场景-3：把-存在的类-当成-可用的能力-📝">场景 3：把&quot;存在的类&quot;当成&quot;可用的能力&quot; 📝</h3>
+<p><strong>现象</strong>：项目引入 NeoTask 后，以为分片/协调等能力开箱即用，结果任务分发并没有按一致性哈希路由，Coordinator 也没有做负载再平衡。</p>
+<p><strong>根因</strong>：这些组件属于&quot;已实现但未接线&quot;（3.4 节）：<code>ConsistentHashSharder</code> 无装配点，<code>Coordinator</code> 被实例化但真实提交走 <code>TaskDispatcher</code>，其 <code>_select_node</code>/<code>rebalance</code>/<code>handle_node_failure</code> 是占位实现。对照之下，<strong>死信队列与时间轮已经接线</strong>——失败任务会自动进死信（<code>enable_dead_letter</code> 默认开）、<code>enable_time_wheel=True</code> 时延时任务会走时间轮。</p>
+<p><strong>对策</strong>：① 以本文 3.4 节&quot;接线状态&quot;清单作为能力底账，逐项对照要用的功能；② 需要分片/再平衡时，需自行扩展（框架未提供装配点）；③ 评估新能力前先 <code>grep</code> 它的调用方，避免被&quot;开关存在&quot;误导。</p>
+<h3 id="场景-4：Supervisor-把整个池重启了-📝">场景 4：Supervisor 把整个池重启了 📝</h3>
+<p><strong>现象</strong>：一个任务运行超过 300 秒（如视频处理），随后日志显示 WorkerPool 被 stop/start，所有在途任务被中断。</p>
+<p><strong>根因</strong>：WorkerSupervisor 默认 <code>worker_timeout=300s</code>，busy 且 300s 无活动即判挂起（supervisor.py:80-83）——<strong>长任务天然满足触发条件</strong>；<code>_restart_worker</code> 以整池 stop(graceful=False) + start() 收尾（113-115 行）。</p>
+<p><strong>对策</strong>：长任务场景调大 <code>SupervisorConfig.worker_timeout</code>（TaskPool 未暴露该配置，需在构造后替换 <code>pool._supervisor._config</code> 或自行实例化 WorkerSupervisor）；或把长任务拆分为进度上报型短任务，保证 last_active 持续刷新（但注意 <code>task.progress</code> 更新链路未接线，进度需由业务自行回写）。</p>
+<hr>
+<h2 id="相关链接">相关链接</h2>
+<p><a href="https://pengline.cn/2026/04/243d5a536d064df59c2ec8668362b8b5">返回首页</a></p>
+<p><strong>入门与参考</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/118be805273f47408bc580c4bd1203d8">快速上手</a> - 5 分钟入门</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/650ac5bb41c74e26bc4effcec88bf26c">API 参考</a> - 完整 API 文档</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/fa51edd849b24f48b4d7fa8e27efef77">配置说明</a> - 配置参数详解</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/a56a8344c61d4ef69ab8d629baac2c5f">最佳实践</a> - 生产环境建议</p>
+</li>
+</ul>
+<p><strong>架构与设计</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/">架构设计</a> - 整体架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/03/468d3a0ded1740dd802b912acf8bd757">核心实现</a> - 功能设计</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/03/0ec8d887591a40c98be76645d33a2f23/">版本演进</a> - 演进历程</p>
+</li>
+</ul>
+<p><strong>分布式核心</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/3aafd2e52ad348ce823486c6389b3c26">去中心化</a> - 对等架构</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/4f970d9d3f124cc9ac6a2c78301b6e6b">故障恢复</a> - 高可用保障</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/03fa0ff8120344519e3d063985a118cc">预取机制</a> - 高吞吐性能</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/6d6cb3f1903249b0b41332a87a565e03">分布式锁</a> - 并发控制</p>
+</li>
+</ul>
+<p><strong>存储与监控</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/a9ce9bf3877546b898042064e6081d37">持久化</a> - 多存储后端</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/04/35b92d7b0e3e4434a4d58a233061f534">优先级</a> - 优先级队列</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/a8528b0b558045b8b31bf631a5c4cc28">延时任务</a> - 时间轮 + Redis 持久化</p>
+</li>
+<li class="lvl-2">
+<p><a href="https://pengline.cn/2026/05/c8baafcd7743452ca3da7849e497e25a">节点监控</a> - 可观测性</p>
+</li>
+</ul>
+<p><strong>资源</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/neotask">GitHub</a> - 源代码仓库</p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com">NeoTask 官网</a> - 官方网站</p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/">https://pengline.cn/2026/04/9e54e62ce6e048df829f436213bd6bca/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a class="post-meta__tags" href="/tags/neopen/">neopen</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E6%B1%A0/">任务池</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">任务调度</a><a class="post-meta__tags" href="/tags/NeoTask/">NeoTask</a><a class="post-meta__tags" href="/tags/%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1/">定时任务</a><a class="post-meta__tags" href="/tags/%E8%B5%84%E6%BA%90%E8%B0%83%E5%BA%A6/">资源调度</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">分布式任务调度</a><a class="post-meta__tags" href="/tags/%E7%B3%BB%E7%BB%9F%E6%9E%B6%E6%9E%84/">系统架构</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E4%BB%BB%E5%8A%A1/">分布式任务</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1755142438681175514243833.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/" title="剧本分镜智能体（PenShot）开发指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）开发指南</div></div><div class="info-2"><div class="info-item-1">基于多智能体协作的剧本分镜系统，将自然语言剧本自动转换为AI视频生成提示词。支持剧本解析、镜头分割、智能裁剪、双语提示词生成及质量审查，提供REST API、Python SDK、LangGraph节点、A2A/MCP协议等集成方式。</div></div></div></a><a class="pagination-related" href="/2026/04/a9ce9bf3877546b898042064e6081d37/" title="NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small225901PTNdq1760194741.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</div></div><div class="info-2"><div class="info-item-1">源码级拆解 NeoTask 的持久化层：任务实体与队列索引分离的双写模型、内存/SQLite/Redis 三套存储的数据格式（deepcopy 防御、非原子出队、String JSON + SET 索引）、双层 JSON 序列化取舍，以及 cleanup_expired 无调度者的清理边界。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/05/52f9ae8b047e47f89c20744cbf626e0e/" title="NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1642747626515164274762647.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-06</div><div class="info-item-2">NeoTask 任务编排详解：DAG 工作流引擎的设计推演（v1.5）+ 条件分支与并行执行</div></div><div class="info-2"><div class="info-item-1">深度推演 NeoTask v1.5 任务编排（DAG 工作流引擎）的设计：为什么任务调度最终需要编排层、依赖图如何建模、就绪队列如何驱动拓扑推进、条件分支与聚合等待的状态语义，以及基于 v0.4-v1.0 已有原语（优先级队列、延时、分布式锁、回收器）落地 DAG 的可行性分析；全文 API 与代码均为设计示例，v1.0.2 源码中尚无 workflow 模块。</div></div></div></a><a class="pagination-related" href="/2026/04/650ac5bb41c74e26bc4effcec88bf26c/" title="NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144740598175514474060.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">NeoTask API 参考：54 个公开方法签名总表 + TaskScheduler 委托链与周期分支</div></div><div class="info-2"><div class="info-item-1">源码级对照的 NeoTask API 手册：TaskPool 九组 54 个公开方法与真实签名、TaskScheduler 四族 39 个方法与委托链矩阵、Task 模型与事件/异常类型全集。</div></div></div></a><a class="pagination-related" href="/2026/05/a8528b0b558045b8b31bf631a5c4cc28/" title="NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期&#x2F;Cron 调度全链路"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1715140728331171514072863.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-10</div><div class="info-item-2">NeoTask 延时任务详解：最小堆主链路 + 可选时间轮 + 周期&#x2F;Cron 调度全链路</div></div><div class="info-2"><div class="info-item-1">对照 NeoTask v1.0.2 真实源码拆解延时任务：主链路的最小堆 DelayedQueue 与 0.1 秒精度机制、opt-in 的 TimeWheel 时间轮接线（量程回退/等待期取消/停机回投）、周期任务与 Cron 的 1 秒扫描调度、触发计划易失的持久化边界，以及 4 个延时调度故障场景。</div></div></div></a><a class="pagination-related" href="/2026/05/3aafd2e52ad348ce823486c6389b3c26/" title="NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1743560732214174356073226.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-02</div><div class="info-item-2">NeoTask 去中心化详解：对等节点 + 抢占式消费 + 无主架构</div></div><div class="info-2"><div class="info-item-1">以 v1.0.2 源码为基线拆解 NeoTask 去中心化架构：对等节点模型与零节点间通信的设计取舍、出队原子与执行加锁分离（pop Lua 只有 ZRANGE+ZREM）、节点注册/心跳/判活的 key 结构与三态模型、NodeManager 与 HeartbeatManager 两套实现共用同一注册表的现状、已预留但未接入主链路的 Coordinator，以及水平扩展与分区容错的实战推演。</div></div></div></a><a class="pagination-related" href="/2026/04/a9ce9bf3877546b898042064e6081d37/" title="NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small225901PTNdq1760194741.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-21</div><div class="info-item-2">NeoTask 任务持久化详解：三存储实现与数据格式 + 清理策略</div></div><div class="info-2"><div class="info-item-1">源码级拆解 NeoTask 的持久化层：任务实体与队列索引分离的双写模型、内存/SQLite/Redis 三套存储的数据格式（deepcopy 防御、非原子出队、String JSON + SET 索引）、双层 JSON 序列化取舍，以及 cleanup_expired 无调度者的清理边界。</div></div></div></a><a class="pagination-related" href="/2026/04/118be805273f47408bc580c4bd1203d8/" title="NeoTask 快速上手：安装全流程 + 提交&#x2F;等待&#x2F;定时三分钟通关"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204644701163420464439.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-09</div><div class="info-item-2">NeoTask 快速上手：安装全流程 + 提交&#x2F;等待&#x2F;定时三分钟通关</div></div><div class="info-2"><div class="info-item-1">NeoTask 实测版入门指南：真实依赖与安装方式、任务执行器定义、同步/异步/上下文管理器三种使用范式、优先级与延迟/周期/Cron 定时提交、事件回调与常见问题，所有代码均对照 v1.0.2 源码验证。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">NeoTask 架构设计</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E4%B8%89%E7%A7%8D%E9%83%A8%E7%BD%B2%E5%BD%A2%E6%80%81%EF%BC%9A%E7%94%B1%E5%AD%98%E5%82%A8%E5%90%8E%E7%AB%AF%E5%86%B3%E5%AE%9A%E7%9A%84%E8%83%BD%E5%8A%9B%E9%98%B6%E6%A2%AF"><span class="toc-number">1.1.</span> <span class="toc-text">一、三种部署形态：由存储后端决定的能力阶梯</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-1-%E5%BD%A2%E6%80%81%E6%80%BB%E8%A7%88"><span class="toc-number">1.1.1.</span> <span class="toc-text">1.1 形态总览</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-2-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%8C%89%E5%AD%98%E5%82%A8%E5%90%8E%E7%AB%AF%E8%80%8C%E9%9D%9E%E5%8A%9F%E8%83%BD%E5%BC%80%E5%85%B3%E6%9D%A5%E5%88%86%E5%BD%A2%E6%80%81"><span class="toc-number">1.1.2.</span> <span class="toc-text">1.2 为什么按存储后端而非功能开关来分形态</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E8%A3%85%E9%85%8D%E6%8B%93%E6%89%91%EF%BC%9ATaskPool-%E4%BD%9C%E4%B8%BA%E6%9E%A2%E7%BA%BD%E7%9A%84%E4%B8%A4%E9%98%B6%E6%AE%B5%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F"><span class="toc-number">1.2.</span> <span class="toc-text">二、装配拓扑：TaskPool 作为枢纽的两阶段生命周期</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-%E6%9E%B6%E6%9E%84%E8%A7%86%E5%9B%BE"><span class="toc-number">1.2.1.</span> <span class="toc-text">2.1 架构视图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E4%B8%A4%E9%98%B6%E6%AE%B5%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E7%9A%84%E5%AE%8C%E6%95%B4%E6%B8%85%E5%8D%95"><span class="toc-number">1.2.2.</span> <span class="toc-text">2.2 两阶段生命周期的完整清单</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%97%A8%E9%9D%A2-%E7%8B%AC%E7%AB%8B%E4%BA%8B%E4%BB%B6%E5%BE%AA%E7%8E%AF%E6%98%AF%E6%AD%A3%E7%A1%AE%E5%8F%96%E8%88%8D"><span class="toc-number">1.2.3.</span> <span class="toc-text">2.3 为什么门面 + 独立事件循环是正确取舍</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E5%85%B3%E9%94%AE%E6%9E%B6%E6%9E%84%E5%86%B3%E7%AD%96%E8%A7%A3%E7%A0%81"><span class="toc-number">1.3.</span> <span class="toc-text">三、关键架构决策解码</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-D1%EF%BC%9A%E7%8A%B6%E6%80%81%E5%AE%88%E9%97%A8-%E6%89%A7%E8%A1%8C%E5%89%8D%E9%94%81-%E4%B8%A4%E9%81%93%E9%98%B2%E9%87%8D%EF%BC%8C%E7%BC%BA%E4%B8%80%E4%B8%8D%E5%8F%AF"><span class="toc-number">1.3.1.</span> <span class="toc-text">3.1 D1：状态守门 + 执行前锁 &#x3D; 两道防重，缺一不可</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-D2%EF%BC%9A%E5%8F%8C%E9%80%9A%E7%9F%A5%E9%80%9A%E9%81%93%E2%80%94%E2%80%94Future-%E5%BF%AB%E9%80%9A%E9%81%93-%E4%BA%8B%E4%BB%B6%E6%85%A2%E9%80%9A%E9%81%93"><span class="toc-number">1.3.2.</span> <span class="toc-text">3.2 D2：双通知通道——Future 快通道 + 事件慢通道</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-D3%EF%BC%9A%E6%8A%A2%E5%8D%A0%E6%B6%88%E8%B4%B9-%E5%86%85%E5%AD%98%E7%BC%93%E5%86%B2%EF%BC%88%E9%A2%84%E5%8F%96%E5%99%A8%EF%BC%89%E8%A7%A3%E8%80%A6-%E7%AB%9E%E4%BA%89-%E4%B8%8E-%E5%90%9E%E5%90%90"><span class="toc-number">1.3.3.</span> <span class="toc-text">3.3 D3：抢占消费 + 内存缓冲（预取器）解耦&quot;竞争&quot;与&quot;吞吐&quot;</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-4-D4%EF%BC%9A%E8%83%BD%E5%8A%9B%E8%A6%81-%E5%AD%98%E5%9C%A8-%EF%BC%8C%E4%B9%9F%E8%A6%81-%E6%8E%A5%E7%BA%BF"><span class="toc-number">1.3.4.</span> <span class="toc-text">3.4 D4：能力要&quot;存在&quot;，也要&quot;接线&quot;</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E5%AD%98%E5%82%A8%E6%8A%BD%E8%B1%A1%EF%BC%9A%E4%BB%93%E5%BA%93%E6%A8%A1%E5%BC%8F%E4%B8%8E%E6%88%90%E5%AF%B9%E8%BF%94%E5%9B%9E"><span class="toc-number">1.4.</span> <span class="toc-text">四、存储抽象：仓库模式与成对返回</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E6%8E%A5%E5%8F%A3%E7%B1%BB%E5%9B%BE-%F0%9F%94%A7"><span class="toc-number">1.4.1.</span> <span class="toc-text">4.1 接口类图 🔧</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-%E5%B7%A5%E5%8E%82%EF%BC%9A%E4%B8%80%E6%AC%A1%E8%B0%83%E7%94%A8%E3%80%81%E6%88%90%E5%AF%B9%E8%BF%94%E5%9B%9E-%F0%9F%94%A7"><span class="toc-number">1.4.2.</span> <span class="toc-text">4.2 工厂：一次调用、成对返回 🔧</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E9%AB%98%E5%8F%AF%E7%94%A8%E6%9E%B6%E6%9E%84%E7%9A%84%E7%9C%9F%E5%AE%9E%E5%BD%A2%E6%80%81"><span class="toc-number">1.5.</span> <span class="toc-text">五、高可用架构的真实形态</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#5-1-%E8%8A%82%E7%82%B9%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%EF%BC%9A%E4%B8%8D%E6%98%AF-%E6%B3%A8%E5%86%8C%E2%86%92%E5%8F%AF%E7%96%91%E2%86%92%E6%AD%BB%E4%BA%A1-%EF%BC%8C%E6%98%AF%E4%B8%89%E4%B8%AA%E5%AD%97%E9%9D%A2%E7%8A%B6%E6%80%81"><span class="toc-number">1.5.1.</span> <span class="toc-text">5.1 节点生命周期：不是&quot;注册→可疑→死亡&quot;，是三个字面状态</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-2-%E4%BB%BB%E5%8A%A1%E5%9B%9E%E6%94%B6%EF%BC%9A%E4%B8%A4%E6%9D%A1%E5%B7%B2%E9%97%AD%E7%8E%AF%E7%9A%84%E8%B7%AF%E5%BE%84"><span class="toc-number">1.5.2.</span> <span class="toc-text">5.2 任务回收：两条已闭环的路径</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-3-Supervisor%EF%BC%9A%E6%89%A7%E8%A1%8C%E4%BE%A7%E7%9A%84-%E5%81%A5%E5%BA%B7%E5%AE%88%E6%8A%A4-%EF%BC%8C%E7%B2%92%E5%BA%A6%E6%98%AF%E6%95%B4%E6%B1%A0"><span class="toc-number">1.5.3.</span> <span class="toc-text">5.3 Supervisor：执行侧的&quot;健康守护&quot;，粒度是整池</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7%EF%BC%9A%E4%BA%8B%E4%BB%B6%E9%87%87%E9%9B%86-%E6%B3%A8%E5%86%8C%E5%BC%8F%E6%A3%80%E6%9F%A5-%E4%B8%8A%E6%8A%A5%E5%99%A8"><span class="toc-number">1.6.</span> <span class="toc-text">六、可观测性：事件采集 + 注册式检查 + 上报器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#6-1-MetricsCollector%EF%BC%9A%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8%E8%AE%A1%E6%95%B0-%E5%91%A8%E6%9C%9F%E7%B3%BB%E7%BB%9F%E9%87%87%E6%A0%B7-%F0%9F%94%A7"><span class="toc-number">1.6.1.</span> <span class="toc-text">6.1 MetricsCollector：事件驱动计数 + 周期系统采样 🔧</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-2-SystemHealthChecker%EF%BC%9A%E6%B3%A8%E5%86%8C%E5%BC%8F%EF%BC%8C%E4%B8%89%E9%A1%B9%E5%86%85%E7%BD%AE%E6%A3%80%E6%9F%A5-%F0%9F%94%A7"><span class="toc-number">1.6.2.</span> <span class="toc-text">6.2 SystemHealthChecker：注册式，三项内置检查 🔧</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-3-ReporterManager%EF%BC%9A%E5%91%A8%E6%9C%9F%E6%8E%A8%E9%80%81%EF%BC%88%E9%BB%98%E8%AE%A4%E5%85%B3%E9%97%AD%EF%BC%89-%F0%9F%94%A7"><span class="toc-number">1.6.3.</span> <span class="toc-text">6.3 ReporterManager：周期推送（默认关闭） 🔧</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-4-Web-UI-%E4%B8%8E-CLI%EF%BC%9A%E4%B8%8D%E5%8F%82%E4%B8%8E%E8%A3%85%E9%85%8D%E7%9A%84%E7%8B%AC%E7%AB%8B%E9%9D%A2"><span class="toc-number">1.6.4.</span> <span class="toc-text">6.4 Web UI 与 CLI：不参与装配的独立面</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81%E6%9E%B6%E6%9E%84%E4%BA%8B%E5%AE%9E%E9%80%9F%E6%9F%A5%E8%A1%A8"><span class="toc-number">1.7.</span> <span class="toc-text">七、架构事实速查表</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%B9%88%E8%AE%BE%E8%AE%A1%EF%BC%88%E6%9E%B6%E6%9E%84%E5%B1%82%E6%B1%87%E6%80%BB%EF%BC%89"><span class="toc-number">1.8.</span> <span class="toc-text">八、为什么这么设计（架构层汇总）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B9%9D%E3%80%81%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%AE%9E%E6%88%98%EF%BC%88%E6%9E%B6%E6%9E%84%E7%BA%A7%EF%BC%89"><span class="toc-number">1.9.</span> <span class="toc-text">九、故障场景实战（架构级）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF-1%EF%BC%9A%E4%BB%A5%E4%B8%BA%E5%9C%A8%E7%94%A8-%E5%88%86%E5%B8%83%E5%BC%8F-%EF%BC%8C%E5%AE%9E%E9%99%85%E6%98%AF%E4%B8%89%E4%B8%AA%E7%8B%AC%E7%AB%8B%E7%9A%84%E5%86%85%E5%AD%98%E9%98%9F%E5%88%97-%F0%9F%93%9D"><span class="toc-number">1.9.1.</span> <span class="toc-text">场景 1：以为在用&quot;分布式&quot;，实际是三个独立的内存队列 📝</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF-2%EF%BC%9ASQLite-%E5%8F%8C%E8%BF%9B%E7%A8%8B%EF%BC%9A%E4%BB%BB%E5%8A%A1%E8%A1%A8%E5%85%B1%E4%BA%AB%E3%80%81%E9%98%9F%E5%88%97%E8%84%91%E8%A3%82-%F0%9F%93%9D"><span class="toc-number">1.9.2.</span> <span class="toc-text">场景 2：SQLite 双进程：任务表共享、队列脑裂 📝</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF-3%EF%BC%9A%E6%8A%8A-%E5%AD%98%E5%9C%A8%E7%9A%84%E7%B1%BB-%E5%BD%93%E6%88%90-%E5%8F%AF%E7%94%A8%E7%9A%84%E8%83%BD%E5%8A%9B-%F0%9F%93%9D"><span class="toc-number">1.9.3.</span> <span class="toc-text">场景 3：把&quot;存在的类&quot;当成&quot;可用的能力&quot; 📝</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF-4%EF%BC%9ASupervisor-%E6%8A%8A%E6%95%B4%E4%B8%AA%E6%B1%A0%E9%87%8D%E5%90%AF%E4%BA%86-%F0%9F%93%9D"><span class="toc-number">1.9.4.</span> <span class="toc-text">场景 4：Supervisor 把整个池重启了 📝</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.10.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = '/scripts/libs/mathjax/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" defer></script><script src="/js/custom/auto_dark.js" defer></script><script src="/js/custom/mermaid_zoom.js" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
