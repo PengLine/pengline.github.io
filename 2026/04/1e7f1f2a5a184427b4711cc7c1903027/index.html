@@ -1,31 +1,31 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>剧本分镜智能体（PenShot）RAG 知识库设计与实现 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="深入解析 PenShot 剧本分镜智能体中 RAG 知识库的完整设计：基于 LlamaIndex 的向量检索架构、短期&#x2F;中期&#x2F;长期三层记忆管理、统一知识路由器的多路召回策略，以及成功提示词模板的自动积累与复用闭环。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>PenShot RAG 知识库考证：模板增强已接线，路由与重排序为何停在图纸上？ | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="以源码为准绳考证 PenShot 的 RAG 知识库：剧本向量库实为手动余弦全量扫描，提示词模板增强与成功模板留存已真实接线，知识路由器与重排序仍停在图纸上；短期滑动窗口、中期 LLM 摘要、长期 Chroma 三层记忆逐一亮明实现，并附嵌入模型失配等故障排坑清单。">
 <meta property="og:type" content="article">
-<meta property="og:title" content="剧本分镜智能体（PenShot）RAG 知识库设计与实现">
+<meta property="og:title" content="PenShot RAG 知识库考证：模板增强已接线，路由与重排序为何停在图纸上？">
 <meta property="og:url" content="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="深入解析 PenShot 剧本分镜智能体中 RAG 知识库的完整设计：基于 LlamaIndex 的向量检索架构、短期&#x2F;中期&#x2F;长期三层记忆管理、统一知识路由器的多路召回策略，以及成功提示词模板的自动积累与复用闭环。">
+<meta property="og:description" content="以源码为准绳考证 PenShot 的 RAG 知识库：剧本向量库实为手动余弦全量扫描，提示词模板增强与成功模板留存已真实接线，知识路由器与重排序仍停在图纸上；短期滑动窗口、中期 LLM 摘要、长期 Chroma 三层记忆逐一亮明实现，并附嵌入模型失配等故障排坑清单。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp">
 <meta property="article:published_time" content="2026-04-22T16:00:00.000Z">
-<meta property="article:modified_time" content="2026-09-14T09:17:26.345Z">
+<meta property="article:modified_time" content="2026-09-14T12:41:35.095Z">
 <meta property="article:author" content="余一叶知秋尽">
 <meta property="article:tag" content="LlamaIndex">
 <meta property="article:tag" content="PenShot">
 <meta property="article:tag" content="RAG检索">
 <meta property="article:tag" content="neopen">
-<meta property="article:tag" content="story-shot-agent">
 <meta property="article:tag" content="剧本分镜">
 <meta property="article:tag" content="向量检索">
 <meta property="article:tag" content="多层级记忆">
 <meta property="article:tag" content="提示词模板">
 <meta property="article:tag" content="智能分镜">
 <meta property="article:tag" content="混合召回">
+<meta property="article:tag" content="源码考证">
 <meta property="article:tag" content="知识库增强">
 <meta property="article:tag" content="知识路由">
 <meta property="article:tag" content="短剧分镜">
 <meta property="article:tag" content="语义搜索">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -172,7 +172,7 @@
   },
   autoDarkmode: true
 }</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
-  title: '剧本分镜智能体（PenShot）RAG 知识库设计与实现',
+  title: 'PenShot RAG 知识库考证：模板增强已接线，路由与重排序为何停在图纸上？',
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
@@ -181,7 +181,7 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">114</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">645</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">剧本分镜智能体（PenShot）RAG 知识库设计与实现</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">剧本分镜智能体（PenShot）RAG 知识库设计与实现</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-22T16:00:00.000Z" title="发表于 2026-04-23 00:00:00">2026-04-23</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-14T09:17:26.345Z" title="更新于 2026-09-14 17:17:26">2026-09-14</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/PenShot/">PenShot</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot 剧本分镜智能体：RAG 知识库设计与实现</h1>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">116</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">657</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">51</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">PenShot RAG 知识库考证：模板增强已接线，路由与重排序为何停在图纸上？</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">PenShot RAG 知识库考证：模板增强已接线，路由与重排序为何停在图纸上？</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-04-22T16:00:00.000Z" title="发表于 2026-04-23 00:00:00">2026-04-23</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-14T12:41:35.095Z" title="更新于 2026-09-14 20:41:35">2026-09-14</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/PenShot/">PenShot</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot RAG 知识库考证：模板增强已接线，路由与重排序为何停在图纸上？</h1>
 <p>相关链接：<a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">GitHub</a> | <a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/">官网</a> | <a href="https://pengline.cn/2026/02/7e6cd67dd5ee45248f2276ac145555f5">文档</a> （<a href="https://pengline.cn/2026/02/1d2c855e77484ca19045fb8a5c3040db">架构设计</a> · <a href="https://pengline.cn/2026/05/5a6c623f4c334b7c86ad92c7ad179b90">召回策略</a> · <a href="https://pengline.cn/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e">一致性策略</a> · <a href="https://pengline.cn/2026/04/6ddcf1cbfa17488e83c16d032d9814c7">开发指南</a>）</p>
 <hr>
 <h2 id="核心价值与整体架构">核心价值与整体架构</h2>
@@ -189,87 +189,95 @@
 <p>剧本分镜智能体是一个基于多智能体协作的视频分镜生成系统。它将原始剧本作为输入，通过一系列智能体协作，输出可供 AI 视频生成模型使用的提示词序列。在这个过程中，LLM 单独推理往往无法&quot;记住&quot;历史成功经验、相似场景与既有设定，导致输出不稳定、前后不一致。</p>
 <p>RAG（检索增强生成，Retrieval-Augmented Generation）知识库正是为此而生——它在模型生成前先从外部存储中检索相关上下文，再注入提示词参与生成。它扮演着系统的<strong>核心记忆与检索角色</strong>，为各个智能体提供历史经验、相似场景和成功模板的参考，从而把&quot;一次性生成&quot;升级为&quot;经验驱动的生成&quot;。</p>
 <p>需要说明的是，RAG 与单纯的关键词检索有本质区别：关键词检索依赖字面命中，无法处理同义词、改写与语义相近但文字不同的表达；而 RAG 通过将文本映射为高维向量，在&quot;语义空间&quot;中计算相似度，因此能够理解&quot;林然裹着旧羊毛毯&quot;与&quot;年轻女性裹着羊毛毯&quot;这类语义等价的关系。这也是后续所有检索环节得以成立的基础。</p>
-<p>下文将从三个核心层次解析 PenShot 中 RAG 知识库的设计与实现：<strong>基于 LlamaIndex 的向量知识库、多层级记忆管理、统一的知识路由器</strong>。</p>
+<p>下文将以&quot;三口径&quot;逐层考证 PenShot 中 RAG 知识库的真实形态：<strong>已接线的提示词模板增强与三层记忆、以简化实现落地的剧本向量库、以及已实现但未接线的知识路由器</strong>。</p>
+<blockquote>
+<p><strong>核订说明</strong>：本文所称&quot;已接线&quot;，指组件确实被工作流节点或其他生产代码调用；&quot;已实现未接线&quot;指代码完整存在、但全仓库找不到调用方；&quot;规划中&quot;指只存在于设计文档或概念描述中。所有类名、方法签名与参数取值均取自仓库当前源码，读者可对照复验。</p>
+</blockquote>
 <h3 id="整体架构：四层分层设计">整体架构：四层分层设计</h3>
-<p>整个知识系统采用分层架构设计，从上到下分为四个层次：</p>
+<p>整个知识系统的真实架构分层如下，图中已标注每个组件的接线状态：</p>
 <pre><code class="highlight mermaid">flowchart TB
-    subgraph Workflow_Layer [工作流节点层]
+    subgraph Workflow_Layer [工作流节点层 - 真实调用方]
         W1[剧本解析节点]
-        W2[分镜生成节点]
-        W3[视频分割节点]
         W4[提示词转换节点]
         W5[质量审计节点]
         W6[连续性守护节点]
     end
 
-    subgraph Router_Layer [知识路由层]
-        R1[KnowledgeRouter&lt;br/&gt;知识路由器]
-        R2[查询路由策略]
-        R3[结果融合引擎]
+    subgraph Manager_Layer [知识中枢 - 已接线]
+        R1[PromptTemplateManager&lt;br/&gt;模板库 + 剧本知识库双索引]
     end
 
     subgraph Storage_Layer [知识存储层]
-        subgraph Vector [向量知识库]
-            V1[LlamaIndex&lt;br/&gt;VectorStoreIndex]
-            V2[场景向量索引]
-            V3[角色向量索引]
-            V4[提示词模板索引]
+        subgraph Vector [向量索引 - LlamaIndex]
+            V1[模板向量索引&lt;br/&gt;按剧本隔离]
+            V2[剧本内容索引&lt;br/&gt;ScriptKnowledgeBase]
         end
         
-        subgraph Memory [多层级记忆]
-            M1[短期记忆&lt;br/&gt;ShortTerm]
-            M2[中期记忆&lt;br/&gt;MediumTerm]
-            M3[长期记忆&lt;br/&gt;LongTerm]
-        end
-        
-        subgraph Structured [结构化存储]
-            S1[剧本解析结果]
-            S2[场景/角色/道具]
-            S3[镜头/片段序列]
+        subgraph Memory [三层记忆 - 已接线]
+            M1[短期记忆&lt;br/&gt;deque 滑动窗口]
+            M2[中期记忆&lt;br/&gt;LLM 摘要]
+            M3[长期记忆&lt;br/&gt;Chroma 向量库]
         end
     end
 
     subgraph Persistence_Layer [持久化层]
-        P1[(向量索引文件&lt;br/&gt;vector_store.json)]
-        P2[(剧本解析缓存&lt;br/&gt;parsed_results/)]
-        P3[(Chroma&lt;br/&gt;向量数据库)]
+        P1[(templates_cache.json&lt;br/&gt;+ index_store/)]
+        P2[(default__vector_store.json&lt;br/&gt;docstore.json)]
+        P3[(parsed_results/&lt;br/&gt;剧本解析 JSON)]
+        P4[(Chroma&lt;br/&gt;script_xxx_memory)]
     end
 
-    W1 --&gt; R1
-    W2 --&gt; R1
-    W3 --&gt; R1
-    W4 --&gt; R1
-    W5 --&gt; R1
-    W6 --&gt; R1
+    subgraph Idle_Layer [已实现未接线]
+        K1[KnowledgeRouter&lt;br/&gt;四源路由 + 混合检索]
+    end
+
+    W1 --&gt;|add_parsed_script| R1
+    W4 --&gt;|enhance_prompt| R1
+    W5 --&gt;|save_successful_prompt| R1
+    W6 --&gt;|search_similar_scene| R1
     
-    R1 --&gt; R2
-    R2 --&gt; V1
-    R2 --&gt; M1
-    R2 --&gt; S1
-    R3 --&gt; W1
+    R1 --&gt; V1
+    R1 --&gt; V2
+    R1 --&gt; M1
+    R1 --&gt; M2
+    R1 --&gt; M3
     
     V1 --&gt; P1
-    S1 --&gt; P2
-    M3 --&gt; P3</code></pre>
-<p><strong>工作流节点层</strong>是知识的使用者。剧本解析节点负责将原始剧本转换为结构化数据，分镜生成节点将剧本拆分为视觉镜头，视频分割节点将长镜头切分为 AI 可处理的短片段，提示词转换节点生成文生视频提示词，质量审计节点检查生成质量，连续性守护节点检查角色、场景、道具的一致性。这些节点在执行过程中会向知识系统发起查询请求。</p>
-<p><strong>知识路由层</strong>是知识访问的统一入口。知识路由器接收来自工作流节点的查询请求，根据查询类型自动选择最优的检索策略，然后将多源结果融合后返回。</p>
-<p><strong>知识存储层</strong>包含三个核心组件：LlamaIndex 向量知识库负责语义检索，多层级记忆管理器负责短期、中期、长期记忆管理，结构化存储负责剧本元数据的精确查询。</p>
-<p><strong>持久化层</strong>负责数据的持久存储，包括向量索引文件、JSON 格式的剧本解析结果和 Chroma 向量数据库。</p>
+    V2 --&gt; P2
+    V2 --&gt; P3
+    M3 --&gt; P4
+    
+    K1 -.-&gt;|悬空引用| V2
+    K1 -.-&gt;|悬空引用| M3</code></pre>
+<p><strong>工作流节点层</strong>是知识的使用者，也是判断&quot;接线状态&quot;的关键——只有被这一层真实调用的组件才算&quot;已接线&quot;。剧本解析节点把解析结果写入知识库（<code>add_parsed_script</code>），提示词转换节点检索成功模板增强提示词（<code>enhance_prompt</code>），质量审计节点在审查通过后沉淀成功模板（<code>save_successful_prompt</code>），连续性守护节点用问题描述检索相似场景（<code>search_similar_scene</code>）。这四个调用点都能在 <code>workflow_nodes.py</code> 中找到对应代码。</p>
+<p><strong>知识中枢层</strong>的真实入口是 <code>PromptTemplateManager</code>（位于 <code>prompts/prompt_template_manager.py</code>），它同时持有两套向量索引——按剧本隔离的<strong>模板索引</strong>，以及内嵌的 <code>ScriptKnowledgeBase</code> 剧本内容索引——并挂接统一的三层记忆管理器。工作流节点并不直接接触向量库，所有知识读写都经由这个中枢转发。</p>
+<p><strong>知识存储层</strong>包含两套 LlamaIndex 向量索引与三层记忆：模板索引与剧本索引都由 <code>SimpleVectorStore</code> 承载；记忆则分别由滑动窗口（短期）、LLM 摘要链（中期）、Chroma 向量库（长期）实现。需要注意的是，设计图上常见的&quot;结构化存储&quot;并不是独立组件，它的实体是 <code>ScriptKnowledgeBase</code> 内部的 <code>parsed_results</code> 缓存与磁盘 JSON 文件。</p>
+<p><strong>持久化层</strong>的真实文件包括：模板缓存与索引目录（<code>templates_cache.json</code> + <code>index_store/</code>）、剧本向量存储（<code>default__vector_store.json</code> 与 <code>docstore.json</code>）、剧本解析结果（<code>parsed_results/</code> 下的 JSON），以及长期记忆的 Chroma 集合。</p>
+<p>图底部还有一个<strong>已实现未接线</strong>的组件：<code>KnowledgeRouter</code>（知识路由器）。它支持四种检索源与混合检索融合，代码完整、可独立实例化，但全仓库找不到任何调用方——它与存储层之间是&quot;悬空引用&quot;。这个组件的真实形态会在拆解三中单独考证。</p>
 <hr>
 <h2 id="关键要点拆解（一）：LlamaIndex-向量知识库">关键要点拆解（一）：LlamaIndex 向量知识库</h2>
 <h3 id="LlamaIndex-是什么">LlamaIndex 是什么</h3>
 <p>LlamaIndex 是一个专为 LLM 应用设计的索引框架，它提供了文档加载、索引构建、检索查询等一系列工具。在 PenShot 中，LlamaIndex 主要用于构建剧本的向量索引，实现语义级别的相似度检索。</p>
-<p>ScriptKnowledgeBase 类是向量知识库的核心实现。它在初始化时需要配置嵌入模型、存储目录、分块大小和重叠大小等参数。当添加剧本文本时，系统会调用解析工具将原始剧本转换为结构化文档，然后通过 SentenceSplitter 或 SentenceWindowNodeParser 将文档切分成合适的文本块。每个文本块会被嵌入模型转换为向量，存储到 SimpleVectorStore 中。</p>
+<p><code>ScriptKnowledgeBase</code> 类是剧本向量知识库的核心实现（<code>knowledge/llamaIndex/llama_index_knowledge.py</code>，约 960 行）。它的构造参数为 <code>(embeddings, script_id, storage_dir=None, chunk_size=512, chunk_overlap=20)</code>——第二个参数 <code>script_id</code> 是必需的，类内部用四组字典（<code>_indices</code> / <code>_vector_stores</code> / <code>_storage_contexts</code> / <code>_retrievers</code>）按剧本 ID 隔离全部数据。调用 <code>add_parsed_script</code> / <code>add_script_text</code> 入库时，系统先把剧本转成场景、角色文档，再按分块参数切分、向量化，写入 <code>SimpleVectorStore</code>，并立即持久化到磁盘。</p>
+<p>分块解析器的选择有一个真实的条件分支：<code>chunk_size &gt; 1000</code> 时使用 <code>SentenceWindowNodeParser</code>（窗口大小 3），否则使用 <code>SentenceSplitter</code>。默认 <code>chunk_size=512</code>，因此默认路径走的是 <code>SentenceSplitter</code>；窗口解析器只在显式调大分块时才启用，而不是两个解析器二选一由调用方随意指定。</p>
 <p>这里有两个值得注意的工程细节：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>文本分块（chunking）</strong>：<code>chunk_size</code> 与 <code>chunk_overlap</code> 直接影响检索质量。分块过小会丢失上下文语义，分块过大又会引入噪声、稀释相似度。重叠区（overlap）用于缓解切分把一句话从中间截断的问题，是 RAG 中常见的调参重点。</p>
+<p><strong>文本分块（chunking）</strong>：<code>chunk_size</code> 与 <code>chunk_overlap</code> 直接影响检索质量。分块过小会丢失上下文语义，分块过大又会引入噪声、稀释相似度。重叠区（overlap）用于缓解切分把一句话从中间截断的问题，是 RAG 中常见的调参重点。本项目的默认取值（512/20）属&quot;块偏小、重叠保守&quot;的配置。</p>
 </li>
 <li class="lvl-2">
-<p><strong>嵌入维度与模型</strong>：嵌入模型将文本映射为固定维度的向量（常见的 768/1024/1536 维），维度越高编码信息越丰富，但索引体积与检索耗时也随之上升，需要按精度与成本权衡。</p>
+<p><strong>嵌入维度与模型</strong>：嵌入模型将文本映射为固定维度的向量（业界常见取值有 768/1024/1536 维等），维度越高编码信息越丰富，但索引体积与检索耗时也随之上升，需要按精度与成本权衡。本项目具体加载哪种嵌入模型由外部配置注入，代码本身不绑定某一维度。</p>
 </li>
 </ul>
-<p>检索功能支持两种模式：相似度检索和 MMR（最大边际相关性）检索。相似度检索返回与查询最相似的 top_k 个结果，而 MMR 检索在相似度的基础上增加了多样性优化，避免返回重复的内容。系统还支持使用 BAAI/bge-reranker-large 模型对检索结果进行重排序，提高相关性。</p>
+<p>这里必须区分两条检索路径，它们的成熟度完全不同：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong><code>query()</code> 方法</strong>（真实主线）：方法体注释直言&quot;使用手动余弦相似度计算&quot;——它直接遍历向量存储中的全部向量，逐个计算余弦相似度后排序取前 <code>top_k</code>（默认 5）。签名中的 <code>search_type</code>、<code>use_rerank</code>、<code>rerank_model</code> 三个参数接收后从不使用，是典型的&quot;占位参数&quot;。</p>
+</li>
+<li class="lvl-2">
+<p><strong><code>create_retriever_for_script()</code> 方法</strong>（候选路径）：这里才有完整装配——支持 <code>similarity</code>/<code>mmr</code> 两种模式（MMR 的 <code>mmr_threshold=0.6</code>）、可选 <code>SentenceTransformerRerank</code> 重排序（模型选择链为本地路径 → 配置名 → 默认 <code>BAAI/bge-reranker-large</code>，<code>top_n=min(3, similarity_top_k)</code>）。值得注意的实现细节：rerank 生效时会用 <code>index.as_retriever</code> 重建检索器，mmr 模式因此被覆盖——两者不能叠加使用。这条路径当前仅被未接线的 <code>KnowledgeRouter</code> 引用。</p>
+</li>
+</ul>
 <p>关于 MMR：当多个候选在语义上高度相似（如同属同一情感场景）时，仅按相似度排序会得到一堆&quot;雷同&quot;结果。MMR 在排序目标中加入了一项目标集合内部多样性的惩罚项，用 $\lambda$ 在&quot;与查询更相关&quot;和&quot;与已选集合更多样&quot;之间做权衡，适合需要一份覆盖多种类型的候选清单的场景。</p>
 <h3 id="核心架构">核心架构</h3>
 <pre><code class="highlight mermaid">flowchart LR
@@ -280,27 +288,29 @@
 
     subgraph Processing [处理层]
         P1[ScriptParserTool&lt;br/&gt;剧本解析器]
-        P2[SentenceSplitter&lt;br/&gt;节点解析器]
+        P2[节点解析器&lt;br/&gt;chunk_size&gt;1000 用 Window&lt;br/&gt;否则 SentenceSplitter]
         P3[EmbeddingModel&lt;br/&gt;嵌入模型]
     end
 
     subgraph Index [索引层]
-        I3[Document&lt;br/&gt;文档对象]
+        I3[Document&lt;br/&gt;场景/角色文档]
         I4[TextNode&lt;br/&gt;文本节点]
         I5[VectorStoreIndex&lt;br/&gt;向量索引]
         I6[SimpleVectorStore&lt;br/&gt;向量存储]
     end
 
-    subgraph Retrieval [检索层]
-        R1[VectorRetriever&lt;br/&gt;向量检索器]
-        R2[SentenceTransformerRerank&lt;br/&gt;重排序器]
-        R3[QueryEngine&lt;br/&gt;查询引擎]
+    subgraph Retrieval [检索层 - 真实主线]
+        R1[query 手动余弦扫描&lt;br/&gt;遍历 embedding_dict]
+        R2[排序并截断 top_k=5]
+    end
+
+    subgraph Candidate [候选路径 - 仅被未接线路由引用]
+        C1[create_retriever_for_script&lt;br/&gt;similarity / mmr]
+        C2[SentenceTransformerRerank&lt;br/&gt;可选]
     end
 
     subgraph Output [输出]
-        O1[相似场景]
-        O2[角色信息]
-        O3[提示词模板]
+        O1[检索结果 + 元数据]
     end
 
     I1 --&gt; P1
@@ -310,39 +320,48 @@
     I4 --&gt; P3
     P3 --&gt; I5
     I5 --&gt; I6
-    
+
     I2 --&gt; R1
     I6 --&gt; R1
     R1 --&gt; R2
-    R2 --&gt; R3
-    R3 --&gt; O1
-    R3 --&gt; O2
-    R3 --&gt; O3</code></pre>
+    R2 --&gt; O1
+
+    I2 -.-&gt; C1
+    I6 -.-&gt; C1
+    C1 -.-&gt; C2</code></pre>
 <h3 id="ScriptKnowledgeBase-核心类设计">ScriptKnowledgeBase 核心类设计</h3>
 <pre><code class="highlight mermaid">classDiagram
     class ScriptKnowledgeBase &#123;
-        -embedding_model: BaseEmbedding
-        -storage_dir: str
+        -embeddings: BaseEmbedding
+        -storage_dir: Path
         -chunk_size: int
         -chunk_overlap: int
-        -index: VectorStoreIndex
-        -retriever: BaseRetriever
+        -_indices: Dict~script_id, VectorStoreIndex~
+        -_vector_stores: Dict~script_id, SimpleVectorStore~
+        -_storage_contexts: Dict~script_id, StorageContext~
+        -_retrievers: Dict~script_id, BaseRetriever~
         -parsed_results: Dict
         -document_cache: Dict
         
+        +add_parsed_script(parsed_script, script_id) Dict
         +add_script_text(script_text, script_id) Dict
         +add_script_file(file_path, script_id) Dict
-        +add_script_directory(directory_path) Dict
-        +create_retriever(search_type, top_k, use_rerank) BaseRetriever
-        +query(query_text, search_type, top_k) Dict
-        +query_scene(scene_number) Dict
-        +query_character(character_name) Dict
-        +get_statistics() Dict
+        +remove_script(script_id) bool
+        +set_current_script(script_id)
+        +create_retriever(script_id, search_type, top_k, use_rerank) BaseRetriever
+        +create_retriever_for_script(script_id, search_type, use_rerank, rerank_model)
+        +get_retriever(script_id) BaseRetriever
+        +query(query_text, script_id, top_k) Dict
+        +query_scene(scene_id, script_id) Dict
+        +query_character(character_name, script_id) Dict
+        +query_structured(query_type, query_value, script_id) Dict
+        +get_statistics(script_id) Dict
         +clear()
+        -_ensure_script_index(script_id)
         -_add_documents_to_index(documents, script_id)
-        -_load_storage()
-        -_save_storage()
+        -_save_storage(script_id)
         -_save_parsed_result(script_id, result)
+        -_recreate_vector_store(script_id)
     &#125;
 
     class Document &#123;
@@ -368,11 +387,12 @@
     ScriptKnowledgeBase --&gt; Document : creates
     ScriptKnowledgeBase --&gt; VectorStoreIndex : manages
     VectorStoreIndex --&gt; SimpleVectorStore : uses</code></pre>
+<p>两点核订说明：图中的 <code>_indices</code> 等四个字段都是<strong>按 <code>script_id</code> 键控的字典</strong>，而不是单实例——这是数据隔离的实现载体；另外 <code>_recreate_vector_store</code> 是一个故障自愈方法：当向量存储损坏时，它先把损坏文件备份为 <code>*_corrupted_{时间戳}</code>，再清理 <code>docstore.json</code>、<code>index_store.json</code> 并重建空存储，让知识库能从损坏中恢复而不是直接崩溃。</p>
 <h3 id="文档解析与索引流程">文档解析与索引流程</h3>
-<p>向量知识库的数据流向如下：原始剧本首先通过解析工具转换为场景文档和角色文档，每个文档都附带元数据信息如类型、场景编号、地点、时间等。这些文档被转换为 LlamaIndex 的 Document 对象后，通过节点解析器切分成 nodes，最后存入向量存储并建立索引。当用户发起查询时，查询文本被转换为向量，通过相似度计算找到最相关的节点，经过重排序后返回结果。</p>
+<p>向量知识库的数据流向如下：原始剧本首先通过 <code>ScriptParserTool</code> 转换为场景文档和角色文档——场景文档的元数据为 <code>type=scene, scene_id, location, time_of_day, element_count</code>，角色文档为 <code>type=character, character_name, gender, role</code>。这些文档在进入 <code>VectorStoreIndex</code> 前会按条件选择节点解析器切分，再逐块向量化写入 <code>SimpleVectorStore</code>，随后立即持久化——<code>_save_storage</code> 会同时保存向量存储、docstore 与索引文件，并校验向量文件与 docstore 是否都已写盘成功。</p>
 <pre><code class="highlight mermaid">flowchart TD
     subgraph Parse [剧本解析]
-        A1[原始剧本文本] --&gt; A2[ScriptParserTool.parse]
+        A1[原始剧本或 ParsedScript] --&gt; A2[ScriptParserTool.parse]
         A2 --&gt; A3[场景识别]
         A3 --&gt; A4[角色提取]
         A4 --&gt; A5[元素序列化]
@@ -381,104 +401,115 @@
 
     subgraph Document [文档创建]
         B1[遍历场景列表] --&gt; B2[创建场景文档]
-        B2 --&gt; B3[添加场景元数据&lt;br/&gt;type=scene, scene_id, location]
-        B1 --&gt; B4[遍历角色字典]
+        B2 --&gt; B3[元数据: type=scene&lt;br/&gt;scene_id/location/time_of_day]
+        B1 --&gt; B4[遍历角色列表]
         B4 --&gt; B5[创建角色文档]
-        B5 --&gt; B6[添加角色元数据&lt;br/&gt;type=character, character_name]
+        B5 --&gt; B6[元数据: type=character&lt;br/&gt;character_name/gender/role]
     end
 
     subgraph Index [索引构建]
-        C1[Document 列表] --&gt; C2&#123;SentenceWindowNodeParser&lt;br/&gt;或 SentenceSplitter&#125;
-        C2 --&gt; C3[TextNode 列表]
+        C1[Document 列表] --&gt; C2&#123;chunk_size &gt; 1000 ?&#125;
+        C2 --&gt;|是| C2A[SentenceWindowNodeParser&lt;br/&gt;window_size=3]
+        C2 --&gt;|否| C2B[SentenceSplitter&lt;br/&gt;512/20]
+        C2A --&gt; C3[TextNode 列表]
+        C2B --&gt; C3
         C3 --&gt; C4[Embedding 向量化]
         C4 --&gt; C5[VectorStoreIndex]
-        C5 --&gt; C6[持久化到磁盘]
+        C5 --&gt; C6[持久化: default__vector_store.json&lt;br/&gt;docstore.json / index_store.json]
     end
 
     A6 --&gt; B1
     B2 --&gt; C1
     B5 --&gt; C1</code></pre>
 <h3 id="检索查询流程">检索查询流程</h3>
+<p>真实主线（<code>query()</code> 方法）的检索流程如下——没有检索器对象、没有阈值过滤、也没有重排序环节：</p>
 <pre><code class="highlight mermaid">flowchart TD
-    Q[查询文本] --&gt; R&#123;检索器类型&#125;
-    
-    R --&gt;|similarity| S1[向量相似度检索]
-    R --&gt;|mmr| S2[MMR 多样性检索]
-    
-    S1 --&gt; V[向量数据库查询]
-    S2 --&gt; V
-    
-    V --&gt; T&#123;相似度阈值过滤&#125;
-    T --&gt;|低于阈值| D[丢弃]
-    T --&gt;|高于阈值| K[保留]
-    
-    K --&gt; RE&#123;是否启用重排序&#125;
-    RE --&gt;|是| RS[SentenceTransformerRerank]
-    RS --&gt; RT[返回 top_k 结果]
-    RE --&gt;|否| RT
-    
-    RT --&gt; F[格式化结果]
-    F --&gt; FU[结果融合]</code></pre>
+    Q[查询文本] --&gt; E[embeddings.embed_query&lt;br/&gt;转查询向量]
+    E --&gt; S[遍历 embedding_dict&lt;br/&gt;逐条手动余弦相似度]
+    S --&gt; D[按相似度降序排序]
+    D --&gt; K[截断 top_k&lt;br/&gt;默认 5]
+    K --&gt; M[从 docstore 取文本与元数据]
+    M --&gt; F[组装 results 列表返回]</code></pre>
+<p>整个扫描过程的复杂度是 O(N)（N 为向量总数），每次查询都要把全部向量的余弦相似度算一遍。对单剧本知识库（几十到几百个文本块）而言这个开销可以接受，但它不具备向量数据库的近似索引（如 HNSW）能力；一旦向量规模上万，这种做法的查询延迟会线性上升。<code>create_retriever_for_script</code> 里的检索器装配（相似度/MMR/重排序）是现成的升级备选，但因为唯一的引用方 <code>KnowledgeRouter</code> 未接线，目前没有走到生产路径上。</p>
 <hr>
 <h2 id="关键要点拆解（二）：多层级记忆管理器">关键要点拆解（二）：多层级记忆管理器</h2>
-<p>MemoryManager 类实现了一个多层级记忆系统，模仿人类的记忆机制，将记忆分为三个层次。</p>
-<p><strong>短期记忆</strong>用于存储当前任务的上下文信息，容量为 20 条，每条记忆的存活时间为一小时（TTL 3600 秒）。这个层级的记忆主要用于在当前工作流执行过程中保持状态连贯，比如当前解析策略、最近发现的问题等。短期记忆会在任务完成后被清理。</p>
-<p><strong>中期记忆</strong>用于存储跨任务的统计信息和修复历史，容量限制为 500 tokens。这个层级的记忆记录了每个智能体节点的历史统计，比如解析成功次数、平均片段时长、常见问题类型等。这些信息在后续任务中可以用于预测和优化。</p>
-<p><strong>长期记忆</strong>用于存储全局知识，可以无限期保存。这个层级主要存储两类信息：常见问题模式和成功修复模式。长期记忆会与 Chroma 向量数据库联动，支持基于相似度的检索。</p>
-<p>这种分层设计的优势在于：不同粒度的信息存储在不同层级，既保证了当前任务的高效执行，又实现了跨任务的知识积累。它对应了人类记忆的&quot;工作记忆—中期巩固—长期沉淀&quot;模型，让系统在单个任务内快速、在跨任务间持久地&quot;记住&quot;关键信息。</p>
+<p>记忆层是这个知识体系里<strong>真实接线深度最高</strong>的部分——它是工作流四个阶段节点共同的读写枢纽。需要先理清一个结构事实：<code>MemoryManager</code> 本身是<strong>多剧本容器</strong>（内部是 <code>_script_memories: Dict[str, ScriptMemory]</code>），真正持有三层记忆的是每个剧本对应的 <code>ScriptMemory</code>；<code>MemoryManager</code> 的职责是按 <code>script_id</code> 路由到对应容器，并统一做序列化与反序列化。</p>
+<p>配置值来自 <code>WorkflowNodes</code> 构造时的注入（<code>MemoryConfig</code>）：短期 20 条 / TTL 3600 秒、中期 500 tokens 上限、长期启用且召回 <code>k=3</code>。三个层级的真实机制各有不同：</p>
+<p><strong>短期记忆</strong>的底层是 LangChain 的 <code>ChatMessageHistory</code>，容量控制用 <code>deque(maxlen=20)</code> 实现——是<strong>滑动窗口（FIFO）</strong>，超出容量的最旧消息被自动挤出，而不是按访问频率淘汰的 LRU。TTL 由 Redis 会话历史继承（<code>RedisChatMessageHistory</code> 的 <code>ttl</code> 参数），键为 <code>penshot:memory:{session_id}</code>；Redis 不可用时降级为内存存储，若配置了持久化目录还会把消息归档到 <code>short_term.json</code>。</p>
+<p><strong>中期记忆</strong>常被误读为&quot;统计仓库&quot;，真实实现是<strong>基于 LLM 的摘要链</strong>：每次写入（<code>add(stage_name, content)</code>）都会调用一次 LLM，把新内容&quot;逐步总结&quot;融合进旧摘要；超出 <code>500*4</code> 字符的输入先截断，生成后超过 <code>500*2</code> 字符的摘要也会被截断——容量限制实际体现在字符截断上。</p>
+<p><strong>长期记忆</strong>的底层是 Chroma 向量库（<code>langchain_chroma</code>），集合命名为 <code>script_{script_id}_memory</code>，写入时拼接标签等信息增强文本，检索走 <code>similarity_search_with_score</code> 并按分数阈值过滤。它是三层中唯一具备语义检索能力的层级。</p>
+<p>三层之间存在<strong>有条件的自动流转</strong>：写入时若条目标记 <code>important</code>，会从短期提升到中期；短期使用量达到容量 80% 时，系统取最近 5 条生成摘要自动压缩进中期；<code>add_stage</code> 写入的重要阶段内容还会同步写入长期。不过这是&quot;阈值触发&quot;而非&quot;持续学习式的自动升华&quot;——写什么、何时写，主要仍由调用方显式决定，行为可预测、可调试。</p>
 <h3 id="记忆层级架构">记忆层级架构</h3>
 <pre><code class="highlight mermaid">flowchart TB
-    subgraph Memory_Arch [记忆层级架构]
+    subgraph Memory_Arch [三层记忆真实机制]
         direction TB
         
         subgraph Short [短期记忆层 ShortTerm]
-            S1[容量: 20条]
-            S2[TTL: 3600秒]
-            S3[存储内容:&lt;br/&gt;当前任务上下文&lt;br/&gt;最近问题列表&lt;br/&gt;解析策略]
+            S1[容量: 20条&lt;br/&gt;deque 滑动窗口 FIFO]
+            S2[TTL: 3600秒&lt;br/&gt;由 Redis 会话历史承载]
+            S3[降级链: Redis&lt;br/&gt;→ 内存 → short_term.json]
         end
 
         subgraph Medium [中期记忆层 MediumTerm]
-            M1[容量: 500 tokens]
-            M2[存储内容:&lt;br/&gt;任务统计信息&lt;br/&gt;修复历史记录&lt;br/&gt;各阶段指标]
+            M1[上限: 500 tokens&lt;br/&gt;按字符截断保障]
+            M2[机制: LLM 摘要链&lt;br/&gt;逐步总结融合]
         end
 
         subgraph Long [长期记忆层 LongTerm]
-            L1[容量: 无限]
-            L2[存储内容:&lt;br/&gt;常见问题模式&lt;br/&gt;成功修复模式&lt;br/&gt;提示词模板]
-            L3[支持: Chroma 向量检索]
+            L1[底层: Chroma 向量库&lt;br/&gt;集合 script_xxx_memory]
+            L2[写入: 增强文本&lt;br/&gt;检索: 相似度分数过滤]
         end
     end
 
     subgraph DataFlow [数据流动]
-        D1[工作流执行] --&gt;|写入| S1
-        D1 --&gt;|写入统计| M1
-        D1 --&gt;|写入成功模式| L1
-        
-        S1 --&gt;|过期清理| D2((丢弃))
-        M1 --&gt;|汇总| L1
-        L1 --&gt;|加载| D1
-    end
-
-    Short --&gt; Medium --&gt; Long</code></pre>
+        D1[工作流阶段节点] --&gt;|写入交互| S1
+        D1 --&gt;|add_stage 摘要| M1
+        D1 --&gt;|成功模式写入| L1
+        S1 --&gt;|80% 容量触发压缩| M1
+        S1 --&gt;|important 标记提升| M1
+        L1 --&gt;|语义检索 k=3| D1
+    end</code></pre>
 <h3 id="MemoryManager-类设计">MemoryManager 类设计</h3>
 <pre><code class="highlight mermaid">classDiagram
     class MemoryManager &#123;
-        -llm: BaseLLM
-        -script_id: str
+        -llm: BaseLanguageModel
         -config: MemoryConfig
-        -short_term: Dict
-        -medium_term: Dict
-        -long_term: Dict
-        -embeddings: BaseEmbedding
+        -_script_memories: Dict~script_id, ScriptMemory~
+        -_current_script_id: str
         
-        +add(key, value, level, metadata)
-        +get(key, level, default)
-        +get_latest_deserialized(key, level)
+        +set_script(script_id)
+        +get_script(script_id) ScriptMemory
+        +add(input_text, output_text, level, metadata, script_id)
+        +add_raw(input_text, output_text, level, metadata, script_id)
+        +add_stage(stage_name, content, metadata, script_id)
+        +recall(query, level, k, script_id) MemoryContext
+        +get(key, level, default, script_id)
+        +get_list(key, level, script_id)
+        +get_latest_deserialized(key, level, script_id)
+        +search(query, k, level, script_id)
+        +get_context_for_llm(query, max_tokens, script_id)
+        +get_stats(script_id) Dict
         +clear_script(script_id)
-        +get_statistics()
-        -_serialize(value)
-        -_deserialize(value)
-        -_clean_expired()
+        -_deserialize(value, metadata)
+        -_to_str(value)
+    &#125;
+
+    class ScriptMemory &#123;
+        +short_term: ShortTermMemory
+        +medium_term: MediumTermMemory
+        +long_term: LongTermMemory
+        +add(input_text, output_text, level, metadata)
+        +add_stage(stage_name, content, metadata)
+        +recall(query, level, k) MemoryContext
+        +search(query, k, level)
+        +get_stats() Dict
+    &#125;
+
+    class MemoryContext &#123;
+        +short_term: List
+        +medium_term: str
+        +long_term: List
+        +to_prompt(max_tokens) str
     &#125;
 
     class MemoryConfig &#123;
@@ -491,49 +522,46 @@
     &#125;
 
     class MemoryLevel &#123;
-        
         SHORT_TERM
         MEDIUM_TERM
         LONG_TERM
     &#125;
 
+    MemoryManager &quot;1&quot; --&gt; &quot;*&quot; ScriptMemory : 按 script_id 隔离
+    ScriptMemory --&gt; MemoryContext : recall 产出
     MemoryManager --&gt; MemoryConfig
     MemoryManager --&gt; MemoryLevel</code></pre>
+<p>这里有三个容易搞错的细节：其一，<code>add()</code> 的语义是&quot;输入文本 + 输出内容&quot;这对交互，而不是简单的键值写入——写长期时会被拼接为 <code>问题: xxx\n回答: xxx</code>；其二，<code>recall()</code> 返回的 <code>MemoryContext</code> 是三段融合结构（短期列表 + 中期摘要字符串 + 长期条目列表），可用 <code>to_prompt(max_tokens)</code> 直接格式化为 LLM 上下文（内部按 1 token ≈ 2 字符保守估算截断）；其三，<code>get(key, ...)</code> 系列便捷接口底层都走 <code>recall()</code>——按 key 匹配最近一条，取短期时返回最后一条的 <code>output</code>，取长期时返回最后一条的 <code>content</code>。</p>
 <h3 id="记忆读写流程">记忆读写流程</h3>
+<p>真实读写流程（以 <code>ScriptMemory</code> 为执行主体）：</p>
 <pre><code class="highlight mermaid">flowchart LR
-    subgraph Write [写入流程]
-        W1[调用 add] --&gt; W2&#123;判断层级&#125;
-        W2 --&gt;|SHORT_TERM| W3[存入短期缓存]
-        W2 --&gt;|MEDIUM_TERM| W4[存入中期缓存&lt;br/&gt;检查 Token 限制]
-        W2 --&gt;|LONG_TERM| W5[存入长期存储&lt;br/&gt;可选 Chroma 索引]
-        W3 --&gt; W6[设置过期时间]
+    subgraph Write [写入流程 add]
+        W1[调用 add] --&gt; W2[序列化 output 为 JSON 字符串]
+        W2 --&gt; W3[始终写入短期记忆]
+        W3 --&gt; W4&#123;显式 level&#125;
+        W4 --&gt;|MEDIUM_TERM| W5[LLM 摘要链融合]
+        W4 --&gt;|LONG_TERM| W6[Chroma 增强文本写入]
+        W4 --&gt;|未指定| W7&#123;important 或 容量达 80% ?&#125;
+        W7 --&gt;|是| W5
+        W7 --&gt;|否| W8[仅保留在短期]
     end
 
-    subgraph Read [读取流程]
-        R1[调用 get] --&gt; R2&#123;判断层级&#125;
-        R2 --&gt;|SHORT_TERM| R3[读取短期缓存]
-        R2 --&gt;|MEDIUM_TERM| R4[读取中期缓存]
-        R2 --&gt;|LONG_TERM| R5[读取长期存储]
-        R3 --&gt; R6&#123;检查过期&#125;
-        R6 --&gt;|过期| R7[返回默认值]
-        R6 --&gt;|有效| R8[反序列化]
-        R5 --&gt; R8
-    end
-
-    subgraph Clean [清理流程]
-        C1[定时触发] --&gt; C2[扫描短期记忆]
-        C2 --&gt; C3&#123;是否过期&#125;
-        C3 --&gt;|是| C4[删除条目]
-        C3 --&gt;|否| C5[保留]
+    subgraph Read [读取流程 recall]
+        R1[调用 recall] --&gt; R2[短期: 最近 k 条]
+        R1 --&gt; R3[中期: 整体摘要文本]
+        R1 --&gt; R4[长期: Chroma 语义检索 k 条]
+        R2 --&gt; R5[反序列化 JSON]
+        R4 --&gt; R5
+        R5 --&gt; R6[组装 MemoryContext]
+        R6 --&gt; R7[to_prompt 格式化并截断]
     end</code></pre>
+<p>对照这幅图可以回答一个常见疑问：为什么中期的 <code>get_summary()</code> 不重不漏地代表&quot;全部历史&quot;？因为它是<strong>压缩摘要</strong>而不是逐条记录——每次 <code>add</code> 都会用 LLM 把旧摘要和新内容重新融合，信息在不断损失细节的同时保留趋势。这也是 LLM 摘要式记忆的固有取舍：很省 token、能表达&quot;倾向&quot;，但不适合存需要精确回放的原始数据。</p>
 <hr>
 <h2 id="关键要点拆解（三）：知识路由器">关键要点拆解（三）：知识路由器</h2>
-<p>KnowledgeRouter 类是所有知识访问的统一入口，它封装了向量检索、记忆检索和结构化检索三种检索方式，并根据查询类型自动选择最优策略。</p>
-<p><strong>向量检索</strong>通过 LlamaIndex 知识库执行语义搜索，适用于查找内容相似的场景、角色描述或提示词模板。当查询文本较长或需要理解语义含义时，向量检索效果最好。</p>
-<p><strong>记忆检索</strong>从多层级记忆管理器中获取信息。短期记忆返回当前任务的上下文，中期记忆返回历史统计和修复记录，长期记忆返回常见问题模式。这种检索适合获取统计信息和历史经验。</p>
-<p><strong>结构化检索</strong>直接从剧本解析结果中精确查询，比如根据场景编号查询场景信息、根据角色名称查询角色描述。这种检索速度快、准确性高，适合已知标识符的查询。</p>
-<p><strong>混合检索</strong>模式会并行执行上述三种检索，然后将结果按分数排序、去重融合。这种模式提供了最佳的召回率，但耗时也最长。这里的关键难点在于不同来源的分数不在同一量纲（向量相似度、记忆相关度、精确匹配分值），因此需要先做<strong>分数归一化</strong>再进行排序融合，否则某一来源会&quot;淹没&quot;其他来源的结果。</p>
-<p>知识路由器的设计使得工作流节点不需要关心底层知识存储的细节，只需要构造一个 KnowledgeQuery 对象，指定查询文本和期望的来源类型，路由器就会自动完成检索并返回格式化的结果。</p>
+<p>先说结论：<code>KnowledgeRouter</code>（<code>knowledge/llama_index_router.py</code>，约 550 行）是一个<strong>已实现但未接线</strong>的组件。它确实封装了四类检索源的统一入口、带有完整的查询对象与结果对象定义，但全仓库找不到任何实例化它的生产代码——工作流节点用的一直是 <code>PromptTemplateManager</code> 这条线。因此下文描述的是&quot;设计与实现&quot;，而不是&quot;线上行为&quot;。</p>
+<p><strong>向量检索</strong>（<code>VECTOR_INDEX</code>）转发到 <code>ScriptKnowledgeBase.query</code> 或经过缓存的检索器；<strong>记忆检索</strong>（<code>SEMANTIC_MEMORY</code>）按短期/中期/长期分别从 <code>MemoryManager</code> 取数据；<strong>结构化检索</strong>（<code>STRUCTURED</code>）走 <code>query_scene</code> / <code>query_character</code> 的精确字段匹配；<strong>混合检索</strong>（<code>HYBRID</code>）则是把上面几路的结果合并排序。</p>
+<p>关于混合检索的&quot;并行执行、分数归一化&quot;这类说法，需要按源码纠偏：<code>_hybrid_search</code> 的真实实现是<strong>串行</strong>依次调用三路（代码注释自认&quot;简化版，实际可用 asyncio.gather 并行&quot;）；融合时<strong>没有分数归一化</strong>，而是给不同来源<strong>硬编码固定分数</strong>——短期记忆 0.9、中期记忆 0.7、长期记忆 0.6、结构化场景 1.0、结构化角色 0.9；去重用的是&quot;内容前 100 字符作前缀 key&quot;的朴素策略。这套分数设计保证了结构化结果优先、记忆越&quot;近&quot;越优先的排序直觉，但不同来源的分数不可比，融合结果并不能反映真实相关性。</p>
+<p>路由器的设计意图是：调用方只构造一个 <code>KnowledgeQuery</code> 对象（指定查询文本与期望来源），路由器自动完成检索并返回格式化结果。接口设计本身是合理的——问题在于它从未被接入工作流。</p>
 <h3 id="路由器架构">路由器架构</h3>
 <pre><code class="highlight mermaid">flowchart TB
     subgraph Input [查询输入]
@@ -544,33 +572,29 @@
         I5[similarity_threshold: float]
     end
 
-    subgraph Router [KnowledgeRouter]
+    subgraph Router [KnowledgeRouter - 未接线]
         direction TB
         
-        subgraph Vector [向量检索]
-            V1[ScriptKnowledgeBase]
-            V2[语义相似度搜索]
-            V3[重排序优化]
+        subgraph Vector [向量检索路径]
+            V1[ScriptKnowledgeBase.query]
+            V2[或缓存的 DocumentRetriever]
         end
         
-        subgraph Memory [记忆检索]
-            M1[MemoryManager]
-            M2[短期记忆查询]
-            M3[中期统计查询]
-            M4[长期模式查询]
+        subgraph Memory [记忆检索路径]
+            M1[MemoryManager 三层记忆]
+            M2[短期 0.9 / 中期 0.7 / 长期 0.6]
         end
         
-        subgraph Structured [结构化检索]
-            S1[剧本解析缓存]
-            S2[场景精确查找]
-            S3[角色精确查找]
+        subgraph Structured [结构化检索路径]
+            S1[query_scene 精确匹配 1.0]
+            S2[query_character 精确匹配 0.9]
         end
     end
 
-    subgraph Fusion [结果融合]
-        F1[分数归一化]
-        F2[去重合并]
-        F3[按分数排序]
+    subgraph Fusion [结果融合 - 真实形态]
+        F1[串行依次调用&lt;br/&gt;非 asyncio.gather]
+        F2[硬编码分数排序&lt;br/&gt;非分数归一化]
+        F3[内容前 100 字符前缀去重]
         F4[截取 top_k]
     end
 
@@ -598,43 +622,34 @@
 <h3 id="查询决策流程">查询决策流程</h3>
 <pre><code class="highlight mermaid">flowchart TD
     Start([接收查询请求]) --&gt; Parse[解析 KnowledgeQuery]
-    Parse --&gt; Check&#123;查询类型判断&#125;
+    Parse --&gt; Check&#123;source 类型分发&#125;
     
-    Check --&gt;|关键词明确| Struct[结构化检索]
-    Check --&gt;|语义相似| Vector[向量检索]
-    Check --&gt;|统计信息| Memory[记忆检索]
-    Check --&gt;|综合需求| Hybrid[混合检索]
+    Check --&gt;|STRUCTURED| Struct[结构化精确查询]
+    Struct --&gt; S1[query_scene / query_character]
     
-    Struct --&gt; S1[查询场景/角色缓存]
-    S1 --&gt; S2[返回精确结果]
+    Check --&gt;|VECTOR_INDEX| Vector[向量检索]
+    Vector --&gt; V1[确保索引已加载]
+    V1 --&gt;|索引缺失| V2[返回空结果]
+    V1 --&gt;|索引存在| V3[执行相似度检索]
     
-    Vector --&gt; V1[检查索引是否存在]
-    V1 --&gt;|不存在| V2[返回空结果]
-    V1 --&gt;|存在| V3[执行相似度检索]
-    V3 --&gt; V4[重排序]
-    V4 --&gt; V5[返回向量结果]
+    Check --&gt;|SEMANTIC_MEMORY| Mem[记忆检索]
+    Mem --&gt; M1[按级别取短期/中期/长期]
     
-    Memory --&gt; M1[查询短期记忆]
-    M1 --&gt; M2[查询中期统计]
-    M2 --&gt; M3[查询长期模式]
-    M3 --&gt; M4[返回记忆结果]
+    Check --&gt;|HYBRID| Hybrid[混合检索 _hybrid_search]
+    Hybrid --&gt; H1[串行调用三路]
+    H1 --&gt; H2[硬编码分数合并]
+    H2 --&gt; H3[前缀去重]
+    H3 --&gt; H4[排序取 top_k]
     
-    Hybrid --&gt; H1[并行执行三种检索]
-    H1 --&gt; H2[收集所有结果]
-    H2 --&gt; H3[分数归一化]
-    H3 --&gt; H4[内容去重]
-    H4 --&gt; H5[排序取 top_k]
+    S1 --&gt; Format[组装 KnowledgeResult&lt;br/&gt;记录 query_time_ms]
+    V3 --&gt; Format
+    M1 --&gt; Format
+    H4 --&gt; Format
     
-    S2 --&gt; Format[格式化结果]
-    V5 --&gt; Format
-    M4 --&gt; Format
-    H5 --&gt; Format
-    
-    Format --&gt; Return([返回 KnowledgeResult])</code></pre>
+    Format --&gt; Return([返回结果])</code></pre>
 <h3 id="知识来源枚举">知识来源枚举</h3>
 <pre><code class="highlight mermaid">classDiagram
     class KnowledgeSource &#123;
-        
         VECTOR_INDEX
         SEMANTIC_MEMORY
         STRUCTURED
@@ -644,11 +659,11 @@
     class KnowledgeQuery &#123;
         +query_text: str
         +source: KnowledgeSource
-        +top_k: int
+        +top_k: int = 5
         +filter_script_id: str
         +filter_scene_id: str
-        +similarity_threshold: float
-        +include_metadata: bool
+        +similarity_threshold: float = 0.6
+        +include_metadata: bool = True
     &#125;
 
     class KnowledgeResult &#123;
@@ -661,129 +676,129 @@
 
     KnowledgeQuery --&gt; KnowledgeSource
     KnowledgeResult --&gt; KnowledgeSource</code></pre>
+<p>这三个数据类在源码中是 <code>@dataclass</code>（而非 Pydantic 模型），字段与默认值均来自 <code>llama_index_router.py</code> 开头部分。写本文时特别提醒：<code>KnowledgeQuery</code> 的默认阈值 0.6、<code>top_k=5</code> 目前只存在于未接线的路由链路上，不能用它们去解释工作流的真实行为——真实配置以拆解六中的对照表为准。</p>
 <hr>
 <h2 id="关键要点拆解（四）：提示词模板管理器">关键要点拆解（四）：提示词模板管理器</h2>
-<p>PromptTemplateManager 是专门管理成功提示词模板的组件。它在向量知识库和记忆层的基础上，增加了模板的存储、检索和应用功能。</p>
-<p>当质量审计节点判定某个片段的提示词通过审查后，系统会自动调用 save_successful_prompt 方法将该提示词保存到模板库。保存时不仅存储提示词文本，还会附带片段 ID、场景信息、风格类型、质量分数等元数据。</p>
-<p>在后续任务执行时，当提示词转换节点生成新的提示词后，系统会调用 enhance_prompt 方法，使用当前生成的提示词作为查询，在模板库中检索相似的成功模板，然后将检索到的模板以追加或融合的方式增强原提示词。</p>
-<p>模板管理器在启动时会从长期记忆层加载历史成功模板，构建向量索引。这样即使服务重启，历史积累的知识也不会丢失。当质量审查再次通过时，新的成功模板会被同时存入向量索引和长期记忆层，实现双向同步。</p>
-<p>这形成了一个正向循环：更多任务执行产生更多成功模板，更多成功模板带来更好的提示词增强效果，更好的提示词又产生更高质量的片段。</p>
+<p><code>PromptTemplateManager</code>（<code>prompts/prompt_template_manager.py</code>，约 1000 行）是专门管理成功提示词模板的组件，也是工作流节点接触知识系统的真实中枢：它同时持有按剧本隔离的模板向量索引与内嵌的 <code>ScriptKnowledgeBase</code> 剧本内容索引（拆解一），并可挂接三层记忆管理器（拆解二）。先澄清一个常见误解：模板库<strong>并不是全局共享</strong>的——<code>_indices</code>、<code>_caches</code> 等结构都以 <code>script_id</code> 为键隔离，模板只在所属剧本内可见；真正全局的只有长期记忆层。</p>
+<p>写入链路是真实接线的：当质量审计节点判定某个片段的提示词通过审查后，<code>workflow_nodes.py</code> 会调用 <code>save_successful_prompt(fragment_id, prompt_text, quality_score, script_id, additional_metadata)</code>。内部组装元数据（<code>source</code> 标记为 <code>quality_audit_passed</code>，叠加片段 ID、质量分数、场景、风格等外部字段），转交 <code>add_template</code> 入库：超过 2000 字符的模板会被截断为 1997 字符加省略号；入库前做 hash 与全文双重去重，并用 <code>_processing_stack</code> 防止递归重入；随后更新索引与 <code>templates_cache.json</code> 缓存，并以默认的 <code>save_to_memory=True</code> 把模板写入长期记忆。</p>
+<p>读取链路同样真实：提示词转换节点生成新提示词后调用 <code>enhance_prompt(fragment.prompt, enhancement_mode=&quot;append&quot;)</code>。内部先走 <code>get_best_match</code>（本质是 <code>search_similar</code> 传 <code>top_k=1</code>），检索经 <code>index.as_retriever</code> 的相似度模式取候选，再做<strong>后置过滤</strong>——低于 <code>min_similarity_score</code> 的丢弃，且只保留 <code>metadata.type</code> 为 <code>prompt_template</code> 的节点；命中后按模式拼装增强文本（精确格式见后文流程图）。</p>
+<p>这里必须纠偏一处编造：&quot;模板管理器在启动时会从长期记忆层加载历史成功模板构建向量索引&quot;并不存在。真实实现中 <code>_save_to_memory</code> 是<strong>只写不读</strong>的单向沉淀（写入长期记忆的 <code>successful_prompt_patterns</code> 键），全类没有任何回读方法。进程重启后，模板库的恢复完全依赖磁盘上的 <code>templates_cache.json</code> 与 <code>index_store/</code>，长期记忆中的模板不会自动回流——这是当前实现的真实缺口，而非特性。</p>
+<p>在这个前提下，&quot;正向循环&quot;是有限成立的：同一剧本内沉淀的成功模板越多，<code>enhance_prompt</code> 可参考的样本越好；但循环半径受限于剧本隔离与单向沉淀，跨剧本的经验复用尚未形成闭环。</p>
 <h3 id="模板管理架构">模板管理架构</h3>
-<p>保存模板时需要注意检索阈值设置：若相似度阈值过低（如 <code>&lt;0.7</code>），会引入大量低质量模板干扰语义；阈值过高则可能召回过少。这个阈值通常需要在&quot;召回够用&quot;与&quot;宁缺毋滥&quot;之间反复校准。</p>
+<p>先纠正两处流传较广的说法：其一，模板库并非&quot;全局共享&quot;——索引与缓存都按 <code>script_id</code> 隔离；其二，检索阈值不是写死的 0.7，而是构造参数 <code>min_similarity_score</code>（类默认 0.5，WorkflowNodes 注入 0.7）。阈值过低会引入低质量模板干扰语义，过高则召回过少，需要在&quot;召回够用&quot;与&quot;宁缺毋滥&quot;之间校准。</p>
 <pre><code class="highlight mermaid">flowchart TB
-    subgraph Collect [模板收集]
-        C1[质量审计通过] --&gt; C2[提取成功提示词]
-        C2 --&gt; C3[收集元数据&lt;br/&gt;fragment_id, scene, style, score]
+    subgraph Collect [模板收集 - 已接线]
+        C1[质量审计通过] --&gt; C2[save_successful_prompt&lt;br/&gt;提取成功提示词]
+        C2 --&gt; C3[收集元数据&lt;br/&gt;fragment_id, score, scene, style]
     end
 
     subgraph Store [模板存储]
-        S1[PromptTemplateManager]
-        S2[向量索引存储]
-        S3[长期记忆存储]
-        S4[内存缓存]
+        S1[add_template&lt;br/&gt;超长截断 + hash/全文去重] --&gt; S2[模板向量索引&lt;br/&gt;按剧本隔离]
+        S1 --&gt; S3[templates_cache.json&lt;br/&gt;磁盘缓存]
     end
 
     subgraph Retrieve [模板检索]
-        R1[新提示词查询] --&gt; R2[向量相似度检索]
-        R2 --&gt; R3[相似度过滤 &gt;0.7]
-        R3 --&gt; R4[返回最佳匹配]
+        R1[新提示词查询] --&gt; R2[index.as_retriever&lt;br/&gt;similarity_top_k]
+        R2 --&gt; R3[后置过滤&lt;br/&gt;score &gt;= min_similarity_score]
+        R3 --&gt; R4[get_best_match&lt;br/&gt;top_k=1 最佳匹配]
     end
 
     subgraph Apply [模板应用]
-        A1[原始提示词] --&gt; A2&#123;增强模式&#125;
-        A2 --&gt;|append| A3[追加参考]
-        A2 --&gt;|replace| A4[模板替换]
-        A2 --&gt;|hybrid| A5[智能融合]
+        A1[原始提示词] --&gt; A2&#123;enhancement_mode&#125;
+        A2 --&gt;|append| A3[原始在前&lt;br/&gt;追加参考优秀模板块]
+        A2 --&gt;|replace / hybrid| A4[模板在前&lt;br/&gt;原始置后同一实现]
     end
 
-    subgraph Sync [双向同步]
-        Y1[内存缓存] &lt;--&gt; Y2[向量索引]
-        Y1 &lt;--&gt; Y3[长期记忆]
+    subgraph Sink [单向沉淀 - 只写不读]
+        Y1[长期记忆&lt;br/&gt;successful_prompt_patterns]
     end
 
     Collect --&gt; Store
-    Store --&gt; Sync
-    Retrieve --&gt; Apply
-    Sync --&gt; Retrieve</code></pre>
+    Store -.-&gt; Sink
+    Retrieve --&gt; Apply</code></pre>
 <h3 id="PromptTemplateManager-类设计">PromptTemplateManager 类设计</h3>
 <pre><code class="highlight mermaid">classDiagram
     class PromptTemplateManager &#123;
         -embedding_model: BaseEmbedding
         -memory_manager: MemoryManager
-        -storage_dir: str
-        -index: VectorStoreIndex
-        -_templates_cache: List
-        -node_parser: SentenceSplitter
-        -min_similarity_score: float
-        -top_k: int
+        -script_id: str
+        -base_storage_dir: str
+        -chunk_size: int = 512
+        -chunk_overlap: int = 20
+        -min_similarity_score: float = 0.5
+        -top_k: int = 3
+        -max_cache_size: int = 200
+        -script_kb: ScriptKnowledgeBase
+        -_indices: Dict
+        -_caches: Dict
+        -_processing_stack: List
         
-        +add_template(prompt_text, metadata) bool
-        +search_similar(query_text, top_k, min_score) List
-        +get_best_match(query_text, min_score) Dict
-        +enhance_prompt(original_prompt, mode) str
-        +save_successful_prompt(fragment_id, prompt, score, metadata)
+        +add_template(prompt_text, metadata, script_id, save_to_memory) bool
+        +save_successful_prompt(fragment_id, prompt_text, quality_score, script_id, metadata) bool
+        +search_similar(query_text, script_id, top_k, min_score, include_global) List
+        +get_best_match(query_text, script_id, min_score) Dict
+        +enhance_prompt(original_prompt, script_id, enhancement_mode) str
+        +search_similar_scene(query_text, script_id, top_k) List
+        +add_parsed_script(parsed_data, script_id) bool
         +is_available() bool
-        +get_statistics() Dict
-        -_load_from_memory()
-        -_add_template_direct(prompt_text, metadata)
+        +is_script_kb_available() bool
+        +get_statistics(script_id) Dict
+        +clear_for_script(script_id)
+        +clear_all()
+        -_load_cache_for_script(script_id)
+        -_load_index_for_script(script_id)
+        -_create_index_for_script(script_id, documents)
+        -_is_duplicate(script_id, prompt_text) bool
+        -_generate_template_hash(prompt_text) str
         -_save_to_memory(prompt_text, metadata)
-        -_merge_prompts(original, template)
+        -_merge_prompts(original, template) str
     &#125;
 
-    class EnhancementMode &#123;
-        
-        APPEND
-        REPLACE
-        HYBRID
+    class ScriptKnowledgeBase &#123;
+        &lt;&lt;内嵌剧本内容索引&gt;&gt;
     &#125;
 
-    PromptTemplateManager --&gt; EnhancementMode</code></pre>
+    class MemoryManager &#123;
+        &lt;&lt;长期记忆写入目标&gt;&gt;
+    &#125;
+
+    PromptTemplateManager --&gt; ScriptKnowledgeBase : script_kb 内嵌实例
+    PromptTemplateManager --&gt; MemoryManager : 只写不读</code></pre>
+<p>这张类图删掉了原稿中的三个不存在成员：<code>EnhancementMode</code> 枚举（源码中 <code>enhancement_mode</code> 只是字符串参数，取值 append/replace/hybrid/none 由调用方约定）、<code>_load_from_memory</code> 与 <code>_add_template_direct</code> 两个虚构方法。另外三个细节值得注意：<code>search_similar</code> 的 <code>include_global</code> 是哑参数——文档字符串写着&quot;是否包含全局模板（其他剧本）&quot;，但函数体从未使用它，实际检索只在本剧本索引内进行；<code>is_available</code> / <code>is_script_kb_available</code> 是工作流节点的接线前判断，不可用时静默跳过增强而不抛错；<code>_processing_stack</code> 是入库递归保护，防止写入流程触发检索、检索又递归触发写入。</p>
 <h3 id="提示词增强流程">提示词增强流程</h3>
 <pre><code class="highlight mermaid">flowchart TD
-    Start([生成原始提示词]) --&gt; Check&#123;模板库是否可用&#125;
-    Check --&gt;|不可用| Return1[返回原始提示词]
-    
-    Check --&gt;|可用| Query[使用提示词作为查询]
-    Query --&gt; Search[检索相似模板]
-    Search --&gt; Result&#123;是否找到匹配模板&#125;
-    
-    Result --&gt;|未找到| Return1
-    
-    Result --&gt;|找到| Score&#123;相似度评分&#125;
-    Score --&gt;|&lt;0.7| Return1
-    Score --&gt;|&gt;=0.7| Select[选择最佳模板]
-    
-    Select --&gt; Mode&#123;增强模式选择&#125;
-    
-    Mode --&gt;|append| Append[追加模板作为参考]
-    Append --&gt; Merge1[原始 + 参考模板]
-    
-    Mode --&gt;|replace| Replace[提取模板结构]
-    Replace --&gt; Merge2[模板结构 + 原始内容]
-    
-    Mode --&gt;|hybrid| Hybrid[智能融合]
-    Hybrid --&gt; Merge3[保留两者优点]
-    
-    Merge1 --&gt; Return2[返回增强后提示词]
-    Merge2 --&gt; Return2
-    Merge3 --&gt; Return2
-    
+    Start([生成原始提示词]) --&gt; None&#123;enhancement_mode == none&#125;
+    None --&gt;|是| Return1[返回原始提示词]
+    None --&gt;|否| Best[get_best_match&lt;br/&gt;search_similar 取 top_k=1]
+
+    Best --&gt; Filter[后置过滤&lt;br/&gt;score &lt; min_similarity_score 丢弃&lt;br/&gt;非 prompt_template 类型丢弃]
+    Filter --&gt; Result&#123;是否有结果&#125;
+
+    Result --&gt;|无| Return1
+    Result --&gt;|有| Mode&#123;增强模式&#125;
+
+    Mode --&gt;|append| Append[原始在前&lt;br/&gt;参考优秀模板块追加在后]
+    Mode --&gt;|replace 及其他非 append| Merge[_merge_prompts&lt;br/&gt;模板在前 + 原始置后]
+
+    Append --&gt; Return2[返回增强后提示词]
+    Merge --&gt; Return2
+
     Return1 --&gt; End([结束])
     Return2 --&gt; End</code></pre>
+<p>流程里有三处与原稿不同：其一，增强入口不判断&quot;模板库是否可用&quot;——<code>is_available</code> 判断在调用方 <code>workflow_nodes.py</code> 完成，<code>enhance_prompt</code> 自身只先处理 <code>none</code> 模式短路；其二，相似度检查不在 <code>enhance_prompt</code> 里，而是 <code>search_similar</code> 的后置过滤（分数达标且类型为 <code>prompt_template</code>），未通过的结果根本不会进入 <code>get_best_match</code>；其三，<code>replace</code> 与 <code>hybrid</code>（以及任何非 append 取值）走的是同一个 <code>_merge_prompts</code> 实现——并没有真正的&quot;智能融合&quot;。两种模式各自的精确拼接都只是一个 f-string：append 为 <code>f&quot;{original}\n\n参考优秀模板:\n{template}&quot;</code>，merge 为 <code>f&quot;{template}\n\n根据当前片段调整:\n{original}&quot;</code>，之后交给 LLM 按&quot;根据当前片段调整&quot;的指令自行消化。</p>
 <hr>
 <h2 id="关键要点拆解（五）：工作流节点集成与数据流">关键要点拆解（五）：工作流节点集成与数据流</h2>
 <h3 id="连续性检查的知识增强">连续性检查的知识增强</h3>
-<p>连续性守护节点的职责是检查片段序列中是否存在视觉、角色、场景或动作上的不一致。传统的做法是依靠规则和 LLM 判断，但在 PenShot 中，这个节点也得到了知识库的增强。</p>
-<blockquote>
-<p>当连续性检查发现问题时，系统会使用问题描述作为查询，去剧本知识库中检索相似的场景，查看历史上类似问题是如何解决的。检索到的历史解决方案会被附加到问题对象上，供后续修复使用。</p>
-<p>例如，如果检查发现某个角色的服装在相邻片段中不一致，系统会检索该角色在其他场景中的服装描述，或者检索类似服装问题的历史修复方案，为修复生成器提供参考。</p>
-</blockquote>
+<p>连续性守护节点的职责是检查片段序列中是否存在视觉、角色、场景或动作上的不一致。这个节点的知识库增强是<strong>真实接线的</strong>，也是知识系统中少数真正落地的高级功能之一。</p>
+<p>当检查发现问题后，<code>workflow_nodes.py</code> 先判断 <code>is_script_kb_available()</code>，再逐条遍历问题：以 <code>getattr(issue, 'description', str(issue))</code> 取出问题描述作为查询文本，调用 <code>search_similar_scene(issue_desc, script_id=..., top_k=2)</code> 检索相似场景，命中后写入问题对象的 <code>historical_solutions</code> 属性，供后续修复流程参考：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># workflow_nodes.py 连续性检查中的检索调用（源码摘录）</span></span><br><span class="line"><span class="keyword">if</span> <span class="variable language_">self</span>.knowledge_manager <span class="keyword">and</span> <span class="variable language_">self</span>.knowledge_manager.is_script_kb_available():</span><br><span class="line">    enhanced_issues = []</span><br><span class="line">    <span class="keyword">for</span> issue <span class="keyword">in</span> continuity_issues:</span><br><span class="line">        issue_desc = <span class="built_in">getattr</span>(issue, <span class="string">&#x27;description&#x27;</span>, <span class="built_in">str</span>(issue))</span><br><span class="line">        similar_scenes = <span class="variable language_">self</span>.knowledge_manager.search_similar_scene(issue_desc,script_id=state.<span class="built_in">input</span>.script_id, top_k=<span class="number">2</span>)</span><br><span class="line">        <span class="keyword">if</span> similar_scenes:</span><br><span class="line">            <span class="keyword">if</span> <span class="built_in">hasattr</span>(issue, <span class="string">&#x27;historical_solutions&#x27;</span>):</span><br><span class="line">                issue.historical_solutions = similar_scenes</span><br><span class="line">        enhanced_issues.append(issue)</span><br><span class="line">    state.domain.continuity_issues = enhanced_issues</span><br></pre></td></tr></table></figure>
+<p><strong>例如</strong>：若检查发现某角色服装在相邻片段不一致，检索会命中该角色在其他场景中的服装描述或类似问题的历史场景记录，作为修复生成的参考素材。</p>
+<p>三个实现细节值得注意：其一，调用方 <code>self.knowledge_manager</code> 的真实类型是 <code>PromptTemplateManager</code>（历史命名遗留，下一节展开）；其二，<code>search_similar_scene</code> 内部调用 <code>script_kb.query(..., search_type=&quot;similarity&quot;, similarity_top_k=top_k, use_rerank=True)</code>——表面开启了重排序，但拆解一已考证 <code>query()</code> 的三个模式参数是哑参数，<code>use_rerank=True</code> 实际不产生任何重排序行为；其三，<code>hasattr(issue, 'historical_solutions')</code> 的守卫意味着：只有问题对象本身定义了该属性时，检索结果才会被真正挂载。</p>
 <h3 id="知识库的初始化流程">知识库的初始化流程</h3>
-<p>知识库的初始化发生在 WorkflowNodes 的构造函数中。它会创建 PromptTemplateManager 实例，传入嵌入模型、记忆管理器和存储目录。PromptTemplateManager 在初始化时会做三件事：创建存储目录、从磁盘加载已有的向量索引、从长期记忆层加载历史成功模板。</p>
-<blockquote>
-<p>在剧本解析节点执行时，系统会将当前剧本添加到知识库。添加过程包括：解析剧本为场景和角色文档、创建 Document 对象、节点切分、向量化、存入索引、保存解析结果到磁盘。</p>
-<p>这样设计的好处是：每个剧本的知识都被独立存储，同时成功提示词模板被全局共享，实现了任务隔离与知识共享的平衡。</p>
-</blockquote>
+<p>知识库的初始化发生在 WorkflowNodes 的构造函数中，真实接线如下（源码节选）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># workflow_nodes.py 构造函数（节选）</span></span><br><span class="line"><span class="variable language_">self</span>._memory = MemoryManager(llm=<span class="variable language_">self</span>.llm, script_id=<span class="variable language_">self</span>.script_id, config=MemoryConfig(...))</span><br><span class="line"></span><br><span class="line"><span class="variable language_">self</span>.knowledge_manager = PromptTemplateManager(</span><br><span class="line">    embedding_model=<span class="variable language_">self</span>.embeddings,</span><br><span class="line">    script_id=<span class="variable language_">self</span>.script_id,</span><br><span class="line">    storage_dir=settings.get_data_paths().get(<span class="string">&#x27;data_embedding&#x27;</span>),</span><br><span class="line">    memory_manager=<span class="variable language_">self</span>._memory,</span><br><span class="line">    min_similarity_score=<span class="number">0.7</span>,</span><br><span class="line">    top_k=<span class="number">3</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="variable language_">self</span>.workflow_memory = WorkflowMemory(script_id, <span class="variable language_">self</span>._memory, <span class="variable language_">self</span>.knowledge_manager)</span><br></pre></td></tr></table></figure>
+<p>这里有三个容易被误读的细节：其一，属性名叫 <code>self.knowledge_manager</code>，类型却是 <code>PromptTemplateManager</code>——历史命名遗留，极易与 <code>knowledge/knowledge_manager.py</code> 中的门面类混淆；其二，<code>PromptTemplateManager.__init__</code> 并没有做&quot;从磁盘加载向量索引、从长期记忆加载历史模板&quot;这两件事——它只做参数赋值、创建 <code>SentenceSplitter</code>、初始化递归保护栈并实例化内嵌的 <code>ScriptKnowledgeBase</code>；其三，索引与缓存是<strong>懒加载</strong>：首次对某剧本执行 <code>set_current_script</code> 或 <code>search_similar</code> 时，才通过 <code>_load_cache_for_script</code> / <code>_load_index_for_script</code> 读盘，存储目录也在此时由 <code>_get_script_storage_dir</code> 惰性创建。</p>
+<p>剧本解析节点执行时，解析结果确实会入库：<code>script_parser.process(..., knowledge_manager=self.knowledge_manager, script_id=...)</code> 内部调用 <code>knowledge_manager.add_parsed_script(parsed_script, script_id)</code>，完成文档转换、切分、向量化与持久化——入库失败只记 warning 不阻断主流程，是刻意的容错设计。另外要纠正&quot;成功提示词模板被全局共享&quot;的说法：剧本内容索引与模板库<strong>都</strong>按 <code>script_id</code> 隔离，真正跨剧本全局的只有长期记忆层。</p>
 <h3 id="知识库在工作流中的位置">知识库在工作流中的位置</h3>
 <pre><code class="highlight mermaid">flowchart TB
     subgraph Workflow [LangGraph 工作流]
@@ -800,11 +815,14 @@
         N1 --&gt; N2 --&gt; N3 --&gt; N4 --&gt; N5 --&gt; N6 --&gt; N7
     end
 
-    subgraph Knowledge [知识系统]
+    subgraph Knowledge [知识系统 - 已接线]
+        K4[PromptTemplateManager&lt;br/&gt;属性名 self.knowledge_manager]
+        K2[ScriptKnowledgeBase&lt;br/&gt;内嵌于 K4]
+        K3[MemoryManager&lt;br/&gt;经 WorkflowMemory 封装]
+    end
+
+    subgraph Idle [已实现未接线]
         K1[KnowledgeRouter]
-        K2[ScriptKnowledgeBase]
-        K3[MemoryManager]
-        K4[PromptTemplateManager]
     end
 
     subgraph Integration [集成点]
@@ -823,56 +841,62 @@
     N5 -.-&gt; I4
     N6 -.-&gt; I5
 
-    I1 --&gt; K2
+    I1 --&gt; K4
     I2 --&gt; K3
     I3 --&gt; K4
     I4 --&gt; K4
-    I5 --&gt; K1
-    K1 --&gt; K2
-    K1 --&gt; K3</code></pre>
+    I5 --&gt; K4
+    K4 --&gt; K2
+    K4 --&gt; K3
+    K1 -.-&gt;|悬空引用| K2
+    K1 -.-&gt;|悬空引用| K3</code></pre>
+<p>与原文版本相比，这张图做了三处纠偏：知识入口统一为 <code>PromptTemplateManager</code>（K4）——剧本入库、模板增强、成功模板保存、相似场景检索四条线全部经它转发，<code>ScriptKnowledgeBase</code>（K2）只是它内嵌的子组件，不是工作流直接接触的对象；<code>KnowledgeRouter</code>（K1）不属于工作流链路，仅以虚线标注悬空引用；“加载历史上下文”（I2）不经过知识中枢，而是 <code>WorkflowMemory</code> 对三层记忆的封装（见下节）。</p>
 <h3 id="各节点的知识库使用方式">各节点的知识库使用方式</h3>
 <pre><code class="highlight mermaid">flowchart LR
-    subgraph Parse [剧本解析节点]
-        P1[添加剧本到知识库]
-        P2[加载历史解析策略]
-        P3[加载常见问题模式]
+    subgraph Parse [剧本解析节点 - 三段式加载]
+        P1[parsing_strategy_recent&lt;br/&gt;短期]
+        P2[stats_parse_script&lt;br/&gt;中期]
+        P3[common_parse_issues&lt;br/&gt;长期]
+        P4[apply_historical_context]
     end
 
     subgraph Convert [提示词转换节点]
-        C1[生成原始提示词]
-        C2[检索相似成功模板]
-        C3[增强提示词内容]
+        C1[加载历史上下文&lt;br/&gt;含 successful_prompt_patterns]
+        C2[生成原始提示词]
+        C3[enhance_prompt 模板增强]
     end
 
     subgraph Audit [质量审计节点]
         A1[执行质量审查]
-        A2&#123;审查是否通过&#125;
-        A3[保存为成功模板]
-        A4[记录失败模式]
+        A2[store_short_term_memory&lt;br/&gt;latest_audit_result]
+        A3&#123;审查是否通过&#125;
+        A4[save_successful_prompt 保存]
     end
 
     subgraph Continuity [连续性守护节点]
         D1[检测连续性问题]
-        D2[检索相似历史场景]
-        D3[获取历史解决方案]
-        D4[生成修复参数]
+        D2[search_similar_scene&lt;br/&gt;top_k=2]
+        D3[写入 historical_solutions]
     end
 
-    P2 --&gt; P3
+    P1 --&gt; P4
+    P2 --&gt; P4
+    P3 --&gt; P4
     C1 --&gt; C2 --&gt; C3
-    A1 --&gt; A2
-    A2 --&gt;|通过| A3
-    A2 --&gt;|失败| A4
-    D1 --&gt; D2 --&gt; D3 --&gt; D4</code></pre>
+    A1 --&gt; A2 --&gt; A3
+    A3 --&gt;|通过| A4
+    D1 --&gt; D2 --&gt; D3</code></pre>
+<p>这张图相较原稿删掉了三处未落地的描述：&quot;加载历史解析策略→加载常见问题模式&quot;的链式结构与真实不符——真实是 <code>workflow_memory.get_memory_dict/list</code> 的三段式加载（键名已标注在图中），随后 <code>apply_historical_context</code> 注入解析器；&quot;记录失败模式&quot;并不存在——质量审计失败时不会把失败提示词写入模板库，审查记录只以 <code>latest_audit_result</code> 为键进入短期记忆；&quot;生成修复参数&quot;夸大了检索结果的用途——<code>historical_solutions</code> 只是附加到问题对象上的参考素材，修复参数由另一套 <code>_create_continuity_repair_params</code> 逻辑生成。</p>
 <h3 id="数据流全景">数据流全景</h3>
-<p>在整个工作流执行过程中，知识库的数据流动如下：</p>
+<p>在整个工作流执行过程中，知识库的数据流动如下（对照 <code>workflow_nodes.py</code> 与 <code>workflow_memory.py</code> 源码核实）：</p>
 <blockquote>
-<p><strong>剧本解析阶段</strong>：原始剧本流入 ScriptKnowledgeBase，被解析和索引，生成场景文档和角色文档存入向量库。同时，剧本解析结果存入结构化存储，问题检测结果存入短期记忆，统计信息存入中期记忆。</p>
-<p><strong>分镜生成阶段</strong>：从短期记忆加载历史拆分策略，从长期记忆加载常见镜头模式，用于指导当前的分镜生成。</p>
-<p><strong>视频分割阶段</strong>：从短期记忆加载历史分割问题，从中期记忆加载分割统计，利用这些信息优化分割策略。</p>
-<p><strong>提示词转换阶段</strong>：生成的提示词会通过 PromptTemplateManager 检索相似的成功模板进行增强。增强后的提示词被用于最终输出。</p>
-<p><strong>质量审计阶段</strong>：如果审查通过，当前的提示词被保存为成功模板，同时存入向量索引和长期记忆层。</p>
-<p><strong>连续性检查阶段</strong>：发现的问题会触发剧本知识库检索，查找相似场景和历史解决方案。</p>
+<p><strong>四个处理节点的&quot;两段式&quot;读写</strong>：剧本解析（<code>parse_script</code>）、分镜生成（<code>segment_shot</code>）、视频分割（<code>split_video</code>）、提示词转换（<code>convert_prompt</code>）四个节点开工前先用 <code>workflow_memory.get_memory_dict/list</code> 加载历史上下文（短期问题 + 中期统计 + 长期模式三个键），经 <code>apply_historical_context</code> 注入对应智能体；收工后调用 <code>workflow_memory.after_stage_completion</code> 做三段写入——短期存完整结果、中期存统计摘要、长期存成功模式。</p>
+<p><strong>剧本解析阶段</strong>：问题检测结果以 <code>parse_script_issues</code> 为键写入短期记忆；解析结果经 <code>add_parsed_script</code> 入剧本向量库，并持久化到 <code>parsed_results/</code>。</p>
+<p><strong>分镜生成阶段</strong>：加载 <code>stats_segment_shot</code>（中期）、<code>issues_segment_shot</code>（短期）、<code>common_shot_patterns</code>（长期）指导拆分。</p>
+<p><strong>视频分割阶段</strong>：加载 <code>stats_split_video</code>（中期）、<code>issues_split_video</code>（短期）、<code>common_split_patterns</code>（长期）优化分割。</p>
+<p><strong>提示词转换阶段</strong>：加载 <code>stats_convert_prompt</code>（中期）、<code>issues_convert_prompt</code>（短期）、<code>successful_prompt_patterns</code>（长期）——最后一个键正是拆解四中模板管理器 <code>_save_to_memory</code> 写入的那个，因此&quot;只写不读&quot;要精确理解为&quot;不回读进模板索引&quot;，该键仍会被本节点读作生成参考；生成的提示词经 <code>enhance_prompt</code> 检索本剧本模板增强后用于输出。</p>
+<p><strong>质量审计阶段</strong>：审查结果先以 <code>latest_audit_result</code> 为键写入短期记忆（含分数、违规清单、修复参数与完整报告）；<code>AuditStatus.PASSED</code> 时逐片段 <code>save_successful_prompt</code> 落库（模板索引 + 长期记忆）；失败时不会把失败提示词写入模板库。</p>
+<p><strong>连续性检查阶段</strong>：发现问题后逐条 <code>search_similar_scene(top_k=2)</code>，命中结果写入 <code>historical_solutions</code>。</p>
 </blockquote>
 <h3 id="完整数据流图">完整数据流图</h3>
 <pre><code class="highlight mermaid">flowchart TB
@@ -886,11 +910,10 @@
         S3[场景/角色/元素]
     end
 
-    subgraph Stage2 [阶段二：知识入库]
-        K1[ScriptKnowledgeBase.add_script_text]
-        K2[Document 创建]
-        K3[向量索引构建]
-        K4[解析结果缓存]
+    subgraph Stage2 [阶段二：知识入库 - 已接线]
+        K1[add_parsed_script]
+        K2[Document 创建 + 节点切分]
+        K4[parsed_results/ 持久化]
     end
 
     subgraph Stage3 [阶段三：分镜处理]
@@ -899,23 +922,27 @@
         G3[PromptConverter]
     end
 
-    subgraph Stage4 [阶段四：知识增强]
-        E1[加载历史上下文]
-        E2[检索成功模板]
-        E3[提示词增强]
+    subgraph Stage4 [阶段四：模板增强 - 已接线]
+        E1[enhance_prompt&lt;br/&gt;检索本剧本模板]
+        E2[拼接增强文本]
     end
 
-    subgraph Stage5 [阶段五：质量控制]
+    subgraph Stage5 [阶段五：质量控制 - 已接线]
         Q1[QualityAuditor]
         Q2&#123;审查结果&#125;
-        Q3[保存成功模板]
-        Q4[记录失败问题]
+        Q3[save_successful_prompt]
     end
 
-    subgraph Stage6 [阶段六：连续性检查]
-        C1[ContinuityGuardian]
-        C2[检索相似场景]
-        C3[获取历史解决方案]
+    subgraph Stage6 [阶段六：连续性检查 - 已接线]
+        C1[ContinuityGuardianChecker]
+        C2[search_similar_scene&lt;br/&gt;top_k=2]
+        C3[historical_solutions 附加]
+    end
+
+    subgraph Store [知识存储]
+        V1[(剧本向量索引&lt;br/&gt;ScriptKnowledgeBase)]
+        T1[(模板索引&lt;br/&gt;每剧本独立)]
+        M1[(三层记忆&lt;br/&gt;经 WorkflowMemory)]
     end
 
     subgraph Output [输出层]
@@ -926,233 +953,209 @@
     I1 --&gt; S1
     S1 --&gt; S2
     S2 --&gt; S3
-    
+
     S3 --&gt; K1
     K1 --&gt; K2
-    K2 --&gt; K3
+    K2 --&gt; V1
     K2 --&gt; K4
-    
+
     S3 --&gt; G1
     G1 --&gt; G2
     G2 --&gt; G3
-    
+
     G3 --&gt; E1
-    K4 --&gt; E1
+    T1 -.-&gt;|检索相似模板| E1
     E1 --&gt; E2
-    K3 --&gt; E2
-    E2 --&gt; E3
-    E3 --&gt; G3
-    
+    E2 --&gt; G3
+
     G3 --&gt; Q1
     Q1 --&gt; Q2
     Q2 --&gt;|通过| Q3
-    Q3 --&gt; K3
-    Q2 --&gt;|失败| Q4
-    Q4 --&gt; K4
-    
+    Q3 --&gt; T1
+    Q3 --&gt; M1
+
     G3 --&gt; C1
     C1 --&gt; C2
-    K3 --&gt; C2
+    V1 -.-&gt;|query 检索| C2
     C2 --&gt; C3
-    
+    C3 -.-&gt;|供修复参考| C1
+
     G3 --&gt; O1
     O1 --&gt; O2</code></pre>
+<p>对照原稿，这张图有四处关键修正：其一，删除了&quot;失败→记录失败问题→写入缓存&quot;的链路——审计失败分支在源码中只更新错误状态；其二，原稿把剧本向量索引与模板索引混在同一条 K 链路里，实际上它们是两套独立存储——模板检索只查按剧本隔离的模板索引（T1），剧本索引（V1）只服务相似场景查询；其三，&quot;加载历史上下文&quot;的来源是三层记忆（M1，经 WorkflowMemory 封装），不是解析结果缓存；其四，相似场景检索结果（C3）只是附加到问题对象上的参考素材，并不生成修复参数。</p>
 <h3 id="知识积累正向循环">知识积累正向循环</h3>
 <pre><code class="highlight mermaid">flowchart TD
-    Start([任务开始]) --&gt; Execute[执行工作流]
-    Execute --&gt; Generate[生成提示词]
+    Start([任务执行]) --&gt; Generate[生成提示词]
     Generate --&gt; Audit[质量审查]
-    
-    Audit --&gt;|通过| Save[保存成功模板]
-    Audit --&gt;|失败| Record[记录失败模式]
-    
-    Save --&gt; Index[更新向量索引]
-    Save --&gt; Memory[存入长期记忆]
-    
-    Index --&gt; NextTask[下一个任务]
-    Memory --&gt; NextTask
-    Record --&gt; NextTask
-    
-    NextTask --&gt; Load[加载历史经验]
-    Load --&gt; Better[更优的提示词生成]
-    Better --&gt; Higher[更高的通过率]
-    
-    Higher --&gt; Execute
-    
-    Save --&gt;|积累| DB[(知识库)]
-    DB --&gt;|增强| Better</code></pre>
+
+    Audit --&gt;|通过| Save[save_successful_prompt]
+    Audit --&gt;|失败| Noop[失败提示词不落库]
+
+    Save --&gt; Local[写入本剧本模板索引&lt;br/&gt;+ templates_cache.json]
+    Save -.-&gt; Global[写入长期记忆&lt;br/&gt;不回读进模板索引]
+
+    Local --&gt;|同剧本后续任务| Retrieve[enhance_prompt 检索]
+    Retrieve --&gt; Enhanced[增强后的提示词]
+    Enhanced --&gt; Generate
+
+    Noop -.-&gt; Generate</code></pre>
+<p>真实的循环范围比原稿描述小得多：闭环只发生在<strong>同一剧本</strong>的模板索引内；长期记忆方向虽会被提示词转换节点读作上下文，但不会回流模板索引。原稿图中的 <code>记录失败模式</code>、<code>加载历史经验</code>、<code>更高的通过率</code> 三个环节均无源码依据——审计失败不会把失败提示词沉淀成任何知识，&quot;通过率提升&quot;也没有任何代码测量——已移除，只保留可被源码验证的链路。</p>
 <hr>
 <h2 id="关键要点拆解（六）：检索策略配置与持久化">关键要点拆解（六）：检索策略配置与持久化</h2>
 <h3 id="检索策略配置">检索策略配置</h3>
-<p>根据不同的使用场景，系统采用不同的检索策略配置：</p>
+<p>先分清一个常被混用的概念：<strong>KnowledgeRouter 的&quot;四源路由 + 混合检索&quot;配置链并未在工作流中启用</strong>（未接线）。线上真实生效的检索配置只有三条，全部以构造参数或调用点传参的形式存在：</p>
 <blockquote>
-<p>对于剧本解析阶段的历史上下文加载，使用混合检索模式，top_k 设置为 5，相似度阈值 0.5，优先从中期记忆获取统计信息。</p>
-<p>对于提示词模板检索，使用纯向量检索模式，top_k 设置为 3，相似度阈值 0.7，启用重排序以提高相关性。</p>
-<p>对于连续性检查的场景检索，使用纯向量检索模式，top_k 设置为 2，相似度阈值 0.6，只返回剧本知识库中的场景文档。</p>
+<p><strong>剧本历史上下文加载</strong>（四个处理节点经 WorkflowMemory）：不是向量检索，也不走 KnowledgeRouter——而是按固定键名（如 <code>stats_parse_script</code>、<code>common_parse_issues</code>）从三层记忆直接读取，因此没有&quot;top_k&quot;与&quot;相似度阈值&quot;这两个概念，取舍是&quot;键名精确、范围固定&quot;。</p>
+<p><strong>提示词模板检索</strong>（<code>PromptTemplateManager.search_similar</code>）：相似度检索，<code>top_k</code> 取构造参数默认 3（WorkflowNodes 注入同值），<code>min_similarity_score</code> 取 WorkflowNodes 注入的 0.7（类默认 0.5）；不启用任何重排序。</p>
+<p><strong>连续性检查场景检索</strong>（<code>search_similar_scene</code>）：<code>top_k=2</code>，由调用点直接传入；内部走 <code>script_kb.query</code> 的手动余弦扫描，<strong>全程没有相似度阈值过滤</strong>——与拆解一&quot;query 无阈值、无重排序&quot;的结论一致。</p>
 </blockquote>
-<p>这些配置可以根据实际效果进行调整，系统设计支持动态修改而不需要重启服务。注意，不同场景的阈值差异反映了各自对召回&quot;宽容度&quot;的不同要求：历史上下文加载需要&quot;尽量不遗漏&quot;因而取低阈值，模板匹配需要&quot;宁缺毋滥&quot;因而取高阈值。</p>
+<p>还要纠正一句原稿结论：&quot;支持动态修改而不需要重启&quot;并不成立——这些都是构造参数与调用点硬编码，调整后需要重新初始化组件才能生效。不同场景的取舍差异倒是真实的：模板匹配宁缺毋滥（0.7 高阈值只留强相关），场景检索则靠 <code>top_k</code> 限制条数而非分数过滤噪声。</p>
 <h3 id="不同场景的检索配置">不同场景的检索配置</h3>
 <pre><code class="highlight mermaid">flowchart LR
-    subgraph Scene1 [剧本解析场景]
-        Config1[来源: HYBRID]
-        Config1A[top_k: 5]
-        Config1B[阈值: 0.5]
-        Config1C[优先: 中期记忆]
+    subgraph S1 [模板检索 - 已接线]
+        T1[search_similar]
+        T2[top_k 3 · 构造参数]
+        T3[min_score 0.7 · 注入值]
+        T4[无重排序]
     end
 
-    subgraph Scene2 [提示词模板场景]
-        Config2[来源: VECTOR_INDEX]
-        Config2A[top_k: 3]
-        Config2B[阈值: 0.7]
-        Config2C[启用重排序]
+    subgraph S2 [场景检索 - 已接线]
+        C1[search_similar_scene]
+        C2[top_k 2 · 调用点传入]
+        C3[无相似度阈值过滤]
+        C4[use_rerank 哑参数]
     end
 
-    subgraph Scene3 [连续性检查场景]
-        Config3[来源: VECTOR_INDEX]
-        Config3A[top_k: 2]
-        Config3B[阈值: 0.6]
-        Config3C[过滤: 场景文档]
-    end
-
-    subgraph Scene4 [错误处理场景]
-        Config4[来源: SEMANTIC_MEMORY]
-        Config4A[top_k: 3]
-        Config4B[优先: 短期记忆]
-        Config4C[回退: 长期模式]
+    subgraph S3 [历史上下文加载 - 已接线]
+        H1[WorkflowMemory 按固定键读取]
+        H2[短期问题 · 中期统计 · 长期模式]
+        H3[非向量检索]
     end</code></pre>
+<p>原稿的四个&quot;场景配置&quot;中，只有模板检索与场景检索两条与真实行为部分对应（数值已修正）；&quot;剧本解析场景（HYBRID / 阈值 0.5）&quot;与&quot;错误处理场景（SEMANTIC_MEMORY）&quot;是把未接线 KnowledgeRouter 的默认值与枚举值误当成了线上配置——它们只在独立实例化 KnowledgeRouter 时才存在。</p>
 <h3 id="持久化与恢复">持久化与恢复</h3>
-<p>知识库的持久化分为两个层面：向量索引的持久化和解析结果的持久化。</p>
+<p>知识库的持久化分三层，真实文件名与加载时机如下：</p>
 <blockquote>
-<p>向量索引通过 LlamaIndex 的 SimpleVectorStore 的 persist 方法保存为 JSON 文件。保存路径由 storage_dir 参数指定，可以区分不同的剧本或模板库。</p>
-<p>解析结果以 JSON 格式单独保存，每个剧本对应一个文件，存储在 parsed_results 子目录下。这种分离设计使得删除某个剧本时只需要删除对应的文件，不影响其他剧本的知识。</p>
-<p>系统启动时会自动尝试加载持久化的数据：首先检查 vector_store.json 是否存在，存在则加载重建索引；然后扫描 parsed_results 目录，加载所有解析结果到缓存。</p>
+<p><strong>剧本向量存储</strong>：<code>SimpleVectorStore</code> 持久化为 <code>default__vector_store.json</code>（兼容读取旧名 <code>vector_store.json</code>），配套 <code>docstore.json</code> 与 <code>index_store.json</code>。加载时优先读新文件名，空文件或异常只记 warning 并返回 None；恢复主索引走 <code>StorageContext.from_defaults(persist_dir=...)</code>——源码注释特别标注&quot;关键修复：使用 VectorStoreIndex 构造函数，而不是 from_vector_store&quot;。遇到损坏文件，<code>_recreate_vector_store</code> 会先把损坏文件备份为 <code>*_corrupted_{时间戳}</code>，同时清掉可能损坏的 <code>docstore.json</code> / <code>index_store.json</code>，再重建空存储——自愈而非报错退出。</p>
+<p><strong>解析结果</strong>：每个剧本单独存放在 <code>{storage_dir}/{script_id}/parsed_results/{script_id}.json</code>，与向量文件分离；<code>ScriptKnowledgeBase</code> 构造时通过 <code>_load_all_scripts</code> 扫描全部剧本目录、把这些 JSON 读入内存，而<strong>向量索引不在此时加载</strong>——源码注释明确写着&quot;延迟加载向量存储（在需要时加载）&quot;。</p>
+<p><strong>模板库</strong>：按剧本存放在 <code>{base_storage_dir}/prompt_templates/{script_id}/</code> 下的 <code>templates_cache.json</code> 与 <code>index_store/</code> 目录；模板管理器对两者采用懒加载（首次访问该剧本时读盘），而不是启动时全量扫描。</p>
 </blockquote>
-<p>这种设计支持服务的优雅重启，同时支持多剧本管理。对线上运行而言，&quot;重启可恢复&quot;是知识系统能否长期演化的关键——它保证了积累的成功经验不因进程重启而丢失。</p>
+<p>&quot;重启可恢复&quot;的边界也要说清：恢复的是磁盘上的解析结果、剧本索引与模板缓存三类文件；拆解四已述，长期记忆中的模板不会自动回流模板索引——三者各自独立恢复。</p>
 <h3 id="持久化架构">持久化架构</h3>
 <pre><code class="highlight mermaid">flowchart TB
     subgraph Runtime [运行时]
-        R1[向量索引内存]
-        R2[解析结果缓存]
-        R3[记忆层缓存]
+        R1[剧本向量索引]
+        R2[模板索引 + _caches]
+        R3[解析结果结构]
+        R4[三层记忆&lt;br/&gt;deque / 摘要 / Chroma 客户端]
     end
 
-    subgraph Disk [磁盘存储]
-        D1[(vector_store.json&lt;br/&gt;向量索引文件)]
-        D2[(parsed_results/&lt;br/&gt;剧本解析结果)]
-        D3[(memory_cache.json&lt;br/&gt;记忆层备份)]
+    subgraph Disk [磁盘存储 - 按剧本隔离]
+        D1[(default__vector_store.json&lt;br/&gt;+ docstore.json + index_store.json)]
+        D2[(templates_cache.json&lt;br/&gt;+ index_store/)]
+        D3[(parsed_results/&lt;br/&gt;script_id.json)]
     end
 
     subgraph External [外部存储]
-        E1[(Chroma DB&lt;br/&gt;长期记忆向量库)]
+        E1[(Chroma DB&lt;br/&gt;script_xxx_memory)]
     end
 
-    R1 --&gt;|persist| D1
-    R2 --&gt;|save_json| D2
-    R3 --&gt;|backup| D3
-    R3 --&gt;|sync| E1
+    R1 --&gt;|_save_storage| D1
+    R2 --&gt;|_save_cache_for_script| D2
+    R3 --&gt;|_save_parsed_result| D3
+    R4 --&gt;|add| E1
 
-    D1 --&gt;|load| R1
-    D2 --&gt;|load| R2
-    D3 --&gt;|restore| R3
-    E1 --&gt;|retrieve| R3</code></pre>
+    D1 --&gt;|首次访问懒加载| R1
+    D2 --&gt;|首次访问懒加载| R2
+    D3 --&gt;|启动时 _load_all_scripts| R3
+    E1 --&gt;|search| R4</code></pre>
+<p>原稿图中的 <code>memory_cache.json</code> 并不存在——三层记忆没有统一的磁盘备份文件（短期记忆落 Redis 或内存 deque，中期摘要有独立文件，长期记忆落 Chroma）。而三类磁盘文件的恢复时机也各不相同：解析结果在构造时加载，其余两类都在首次访问时。</p>
 <h3 id="服务启动恢复流程">服务启动恢复流程</h3>
 <pre><code class="highlight mermaid">flowchart TD
-    Start([服务启动]) --&gt; Init[初始化 KnowledgeRouter]
-    
-    Init --&gt; LoadVector[加载向量索引]
-    LoadVector --&gt; CheckVector&#123;vector_store.json&lt;br/&gt;是否存在&#125;
-    CheckVector --&gt;|存在| RestoreVector[恢复向量索引]
-    CheckVector --&gt;|不存在| CreateVector[创建空索引]
-    
-    Init --&gt; LoadParsed[加载解析结果]
-    LoadParsed --&gt; ScanDir[扫描 parsed_results 目录]
-    ScanDir --&gt; LoadJSON[加载 JSON 文件]
-    LoadJSON --&gt; RestoreCache[恢复解析缓存]
-    
-    Init --&gt; LoadMemory[加载记忆层]
-    LoadMemory --&gt; RestoreMemory[从长期记忆恢复]
-    RestoreMemory --&gt; SyncChroma[同步 Chroma 向量库]
-    
-    RestoreVector --&gt; Ready[就绪状态]
-    RestoreCache --&gt; Ready
-    SyncChroma --&gt; Ready
-    
-    Ready --&gt; Log[记录统计信息]
-    Log --&gt; End([服务可用])</code></pre>
+    Start([服务启动]) --&gt; Init[WorkflowNodes 构造函数]
+    Init --&gt; PM[创建 PromptTemplateManager]
+    PM --&gt; SKB[构造内嵌 ScriptKnowledgeBase&lt;br/&gt;makedirs + _load_all_scripts]
+    SKB --&gt; Parse[扫描全部剧本目录&lt;br/&gt;解析结果读入内存]
+    Parse --&gt; Idle[等待任务]
+
+    Idle --&gt; Access&#123;某剧本首次被访问&#125;
+    Access --&gt;|模板检索| T1[懒加载 _load_cache_for_script&lt;br/&gt;+ _load_index_for_script]
+    Access --&gt;|剧本索引| S1[_ensure_script_index]
+    S1 --&gt; S2&#123;docstore.json 存在?&#125;
+    S2 --&gt;|是| S3[StorageContext.from_defaults&lt;br/&gt;恢复 VectorStoreIndex]
+    S2 --&gt;|否| S4[创建空存储]
+    S3 --&gt; Ready[该剧本知识就绪]
+    S4 --&gt; Ready
+    T1 --&gt; Ready
+    Ready --&gt; Idle</code></pre>
+<p>真实启动流程分两段：构造期只做&quot;轻工作&quot;——<code>ScriptKnowledgeBase</code> 构造时扫描 <code>storage_dir</code> 下所有剧本并把<strong>解析结果 JSON</strong> 读入内存（<code>_load_all_scripts</code>），<strong>向量索引在此阶段不加载</strong>（注释直言&quot;延迟加载向量存储&quot;）；此后所有重活发生在某剧本首次被访问时：<code>_ensure_script_index</code> 用 <code>StorageContext.from_defaults(persist_dir=...)</code> 恢复索引，模板侧由 <code>_load_cache_for_script</code> / <code>_load_index_for_script</code> 读盘。原稿中&quot;初始化 KnowledgeRouter&quot;的步骤不存在——该组件未被任何生产代码实例化；&quot;从长期记忆恢复并同步 Chroma&quot;也无对应实现——Chroma 集合由长期记忆组件自行管理，不存在启动同步动作。</p>
 <h3 id="扩展性设计">扩展性设计</h3>
-<p>知识库系统在设计时充分考虑了扩展性：</p>
+<p>按照&quot;三口径&quot;重新审视原稿列出的四个扩展点，真实成色差异很大：</p>
 <blockquote>
-<p>向量存储支持替换为 Chroma、Pinecone 等外部向量数据库，只需要修改 ScriptKnowledgeBase 中的 vector_store 实例化方式。</p>
-<p>嵌入模型支持替换，通过构造函数传入 embedding_model 参数即可。</p>
-<p>检索器支持自定义，可以在 KnowledgeRouter 中添加新的检索源。</p>
-<p>记忆层级支持扩展，可以在 MemoryLevel 枚举中添加新的层级。</p>
+<p><strong>嵌入模型替换</strong>（真实扩展点）：通过构造函数注入 <code>embedding_model</code>，索引与查询共用同一实例即可替换——代价是替换后必须重建全部索引。</p>
+<p><strong>向量存储替换</strong>（可改造点）：<code>ScriptKnowledgeBase</code> 内部实例化 <code>SimpleVectorStore</code>，替换为 Chroma、Pinecone 需要<strong>修改源码中的实例化与持久化逻辑</strong>，原文&quot;只需修改实例化方式&quot;的说法本身就说明了它是一条改写路径，而非配置项切换。</p>
+<p><strong>检索器自定义</strong>（纸面扩展）：<code>KnowledgeRouter</code> 支持注册新检索源，但该组件本身未接线，扩展它不会影响任何线上行为。</p>
+<p><strong>记忆层级扩展</strong>（纸面扩展）：<code>MemoryLevel</code> 枚举可以加值，但 <code>ScriptMemory</code> 的读写分发基于 <code>short_term / medium_term / long_term</code> 三个硬编码属性与 if/elif 分支——新增层级需要同步改造组合结构与所有分发逻辑。</p>
 </blockquote>
-<p>这些扩展点使得系统可以根据实际需求灵活调整，而不需要重写核心逻辑。尤其需要强调的是<strong>嵌入模型一致性</strong>：索引建立与查询必须使用相同的嵌入模型，否则查询向量与文档向量落在不同向量空间，相似度计算将完全失去意义。</p>
+<p>尤其需要强调<strong>嵌入模型一致性</strong>：索引建立与查询必须使用相同的嵌入模型，否则查询向量与文档向量落在不同向量空间，相似度计算将完全失去意义。这个约束对剧本索引与模板索引同时成立，还存在一个隐蔽的运维陷阱：更换嵌入模型配置后若不清空磁盘索引文件，旧向量与新查询向量会静默失配——检索不报错，只是结果不可信。</p>
 <h3 id="扩展点架构">扩展点架构</h3>
 <pre><code class="highlight mermaid">flowchart TB
     subgraph Core [核心系统]
-        Core1[KnowledgeRouter]
-        Core2[MemoryManager]
-        Core3[ScriptKnowledgeBase]
+        Core1[PromptTemplateManager&lt;br/&gt;知识中枢 · 已接线]
+        Core2[MemoryManager&lt;br/&gt;三层记忆 · 已接线]
+        Core3[ScriptKnowledgeBase&lt;br/&gt;剧本索引 · 已接线]
+        Core4[KnowledgeRouter&lt;br/&gt;已实现未接线]
     end
 
     subgraph Extension [扩展点]
-        E1[VectorStore&lt;br/&gt;可替换向量存储]
-        E2[EmbeddingModel&lt;br/&gt;可替换嵌入模型]
-        E3[Retriever&lt;br/&gt;可定制检索器]
-        E4[MemoryLevel&lt;br/&gt;可扩展记忆层级]
+        E1[VectorStore 实现&lt;br/&gt;需修改源码实例化]
+        E2[EmbeddingModel&lt;br/&gt;构造注入 · 真实可替换]
+        E3[检索源注册&lt;br/&gt;纸面扩展]
+        E4[MemoryLevel 枚举&lt;br/&gt;需同步改造分发]
     end
 
-    subgraph Impl [实现选项]
-        I1[SimpleVectorStore]
-        I2[ChromaVectorStore]
-        I3[OpenAIEmbedding]
-        I4[HuggingFaceEmbedding]
-        I5[HybridRetriever]
-        I6[CustomRetriever]
+    subgraph Impl [实现现状]
+        I1[SimpleVectorStore&lt;br/&gt;剧本/模板索引在用]
+        I2[外部注入的嵌入模型&lt;br/&gt;索引与查询必须同源]
+        I3[langchain_chroma&lt;br/&gt;长期记忆专用向量库]
     end
 
     Core3 --&gt; E1
     Core3 --&gt; E2
-    Core1 --&gt; E3
+    Core4 -.-&gt; E3
     Core2 --&gt; E4
-    
+
     E1 --&gt; I1
-    E1 --&gt; I2
-    E2 --&gt; I3
-    E2 --&gt; I4
-    E3 --&gt; I5
-    E3 --&gt; I6</code></pre>
+    E2 --&gt; I2
+    Core2 --&gt; I3</code></pre>
+<p>原稿 Impl 中的 ChromaVectorStore / HybridRetriever / CustomRetriever 等&quot;实现选项&quot;在 LlamaIndex 侧没有对应落点，已替换为真实在用的实现。</p>
 <hr>
 <h2 id="排坑提示">排坑提示</h2>
-<p>在落地此类 RAG 知识库时，通常需要在以下几个方面重点排查：</p>
+<p>在落地此类 RAG 知识库时，通常需要在以下几个方面重点排查（每条都对应本文考证中的真实实现）：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>嵌入模型一致性</strong>：索引与查询必须使用同一套嵌入模型与同一维度，混用会导致检索结果随机化。</p>
+<p><strong>嵌入模型一致性</strong>：索引与查询必须使用同一套嵌入模型与同一维度，混用会导致相似度失配——注意这种失配通常<strong>不报错</strong>，只是检索结果变得不可信，排查时优先核对磁盘索引文件的生成时间与当前模型配置。</p>
 </li>
 <li class="lvl-2">
-<p><strong>分块参数调优</strong>：<code>chunk_size</code> 与 <code>chunk_overlap</code> 需结合剧本文本长度反复调试，重叠区过大浪费存储、过小则切分截断语义。</p>
+<p><strong>分块参数调优</strong>：<code>chunk_size</code> 与 <code>chunk_overlap</code> 需结合剧本文本长度反复调试；本项目默认 512/20，且 <code>chunk_size &gt; 1000</code> 会自动切换到 <code>SentenceWindowNodeParser</code>（窗口 3）——调参时要意识到解析器也会跟着变。</p>
 </li>
 <li class="lvl-2">
-<p><strong>相似度阈值</strong>：默认阈值（如 0.7）会过滤大量有效结果，应根据场景将阈值降到可接受区间并在融合前做归一化。</p>
+<p><strong>相似度阈值的真实语义</strong>：过滤是<strong>检索后的后置过滤</strong>（<code>search_similar</code> 先取回候选再按 <code>min_similarity_score</code> 丢弃），阈值调高会直接改变&quot;有没有结果&quot;，而不是改变&quot;结果的质量排序&quot;；连续性检查链路则完全没有阈值过滤，结果质量完全依赖 <code>top_k</code> 控制。</p>
 </li>
 <li class="lvl-2">
-<p><strong>存储文件完整性</strong>：向量索引同时依赖 vector_store 与 docstore，缺失任一都可能导致加载失败或检索为空。</p>
+<p><strong>存储文件完整性</strong>：剧本索引同时依赖 <code>default__vector_store.json</code> 与 <code>docstore.json</code>（模板索引为 <code>templates_cache.json</code> + <code>index_store/</code>），缺失任一都可能导致加载失败或检索为空；项目内置了 <code>*_corrupted_*</code> 备份自愈机制，遇到检索突然为空时先去目录里找这类备份文件。</p>
 </li>
 <li class="lvl-2">
-<p><strong>多剧本隔离</strong>：查询时必须携带 <code>script_id</code>，否则会检索到其他剧本内容导致上下文串扰。</p>
+<p><strong>多剧本隔离</strong>：所有索引、缓存、模板库都以 <code>script_id</code> 为键隔离——漏传 <code>script_id</code> 时会静默降级（如 <code>search_similar</code> 直接返回空列表并记 debug 日志），而不是抛错，排查&quot;检索没结果&quot;时先确认剧本 ID 传了没有。</p>
 </li>
 </ul>
 <hr>
 <h2 id="总结与建议">总结与建议</h2>
-<p>PenShot 的 RAG 知识库系统通过三个核心组件实现了高效的知识存储与检索：</p>
-<p><strong>LlamaIndex 向量知识库</strong>提供了语义级别的相似度搜索能力。它支持多种文档格式的加载，提供了 Similarity 和 MMR 两种检索模式，还可以通过重排序模型提高检索质量。</p>
-<p><strong>多层级记忆管理</strong>实现了不同粒度的信息存储。短期记忆保持当前任务的上下文，中期记忆积累跨任务的统计信息，长期记忆沉淀全局的常见模式和成功经验。</p>
-<p><strong>知识路由器</strong>统一了知识访问接口。它根据查询类型自动选择最优的检索策略，支持向量检索、记忆检索、结构化检索和混合检索四种模式，并将多源结果融合后返回。</p>
-<p><strong>提示词模板管理器</strong>专门管理成功提示词模板的存储和检索。质量审计通过的提示词被自动保存，后续任务可以通过相似度检索找到最匹配的模板来增强新生成的提示词。</p>
-<p><strong>连续性检查的知识增强</strong>使用问题描述作为查询，从剧本知识库中检索相似的场景和历史解决方案，为修复生成器提供参考。</p>
-<p>这个设计使得工作流的每个节点都能获得历史经验的支撑。随着处理的任务增多，知识库不断积累，系统会变得越来越智能。成功提示词的积累和复用形成了一个正向循环，持续提升提示词的质量和一致性。</p>
-<p>对于需要构建类似&quot;带记忆的创作智能体&quot;的开发者，建议：先从单一向量知识库起步，再逐步叠加记忆分层与多路路由，并始终把&quot;嵌入模型一致性与检索阈值归一化&quot;作为调试的首要检查项。</p>
+<p>按&quot;三口径&quot;回收全文考证，PenShot 的 RAG 知识库真实成色如下：</p>
+<p><strong>已接线的两条主线</strong>。其一，<strong>三层记忆</strong>：短期 deque 滑动窗口（Redis TTL 1 小时）、中期 LLM 摘要链、长期 Chroma 向量库，经 <code>WorkflowMemory</code> 在每个处理节点做&quot;两段式&quot;读写（加载历史上下文 + <code>after_stage_completion</code> 三段写入）；其二，<strong>提示词模板增强</strong>：质量审计通过后 <code>save_successful_prompt</code> 落库（模板索引 + 长期记忆），后续任务经 <code>enhance_prompt</code> 检索本剧本模板拼接增强——这是全系统最完整的&quot;积累-复用&quot;闭环。另有一处已接线的点状增强：连续性检查用 <code>search_similar_scene(top_k=2)</code> 检索相似场景并附加到问题的 <code>historical_solutions</code> 上。</p>
+<p><strong>已接线但以简化实现落地的部分</strong>。剧本向量库 <code>ScriptKnowledgeBase</code> 的 <code>query()</code> 走手动余弦全量扫描（O(N)），<code>search_type / use_rerank / rerank_model</code> 三个接收参数从不使用；<code>search_similar_scene</code> 内部的 <code>use_rerank=True</code> 因此也从不生效——&quot;重排序&quot;在这条链路上只存在于图纸。</p>
+<p><strong>已实现未接线</strong>。<code>KnowledgeRouter</code>（四源路由 + 串行混合检索 + 硬编码分数融合）代码完整但无调用方；<code>create_retriever_for_script</code> 的 MMR 与重排序装配只服务这个未接线的组件；<code>PromptStyleGuardian</code> 与 <code>save_contract</code> 是悬空引用。评估这套系统时，不应把未接线的能力算入&quot;现有能力&quot;。</p>
+<p><strong>三个值得注意的边界</strong>。其一，模板库按剧本隔离，长期记忆的 <code>successful_prompt_patterns</code> 不会回读进模板索引（但仍会被提示词转换节点读作上下文）——跨剧本经验复用尚未闭环；其二，审计失败分支没有任何知识沉淀——失败样本没有被利用；其三，中期记忆是摘要而非台账——不适合需要精确回放的数据。</p>
+<p>对于要构建类似&quot;带记忆的创作智能体&quot;的开发者，建议从可验证的最小闭环起步：先做单剧本的&quot;成功样本沉淀 → 检索增强&quot;循环（这是当前代码里唯一真正跑通的循环），再考虑记忆分层与多路路由；调试时把&quot;嵌入模型一致性、<code>script_id</code> 传递、磁盘索引文件状态&quot;作为首要检查项——<strong>不要</strong>把&quot;检索阈值归一化&quot;列入检查清单，本项目的融合链路上并不存在归一化。</p>
 <hr>
 <h2 id="相关链接">相关链接</h2>
 <p><strong>核心文档</strong></p>
@@ -1209,7 +1212,7 @@
 <p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com">PenShot 官网</a></p>
 </li>
 </ul>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027/">https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E5%89%A7%E6%9C%AC%E5%88%86%E9%95%9C/">剧本分镜</a><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/%E7%9F%AD%E5%89%A7%E5%88%86%E9%95%9C/">短剧分镜</a><a class="post-meta__tags" href="/tags/%E6%99%BA%E8%83%BD%E5%88%86%E9%95%9C/">智能分镜</a><a class="post-meta__tags" href="/tags/PenShot/">PenShot</a><a class="post-meta__tags" href="/tags/story-shot-agent/">story-shot-agent</a><a class="post-meta__tags" href="/tags/neopen/">neopen</a><a class="post-meta__tags" href="/tags/RAG%E6%A3%80%E7%B4%A2/">RAG检索</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E5%BA%93%E5%A2%9E%E5%BC%BA/">知识库增强</a><a class="post-meta__tags" href="/tags/LlamaIndex/">LlamaIndex</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E5%B1%82%E7%BA%A7%E8%AE%B0%E5%BF%86/">多层级记忆</a><a class="post-meta__tags" href="/tags/%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%A8%A1%E6%9D%BF/">提示词模板</a><a class="post-meta__tags" href="/tags/%E8%AF%AD%E4%B9%89%E6%90%9C%E7%B4%A2/">语义搜索</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E8%B7%AF%E7%94%B1/">知识路由</a><a class="post-meta__tags" href="/tags/%E6%B7%B7%E5%90%88%E5%8F%AC%E5%9B%9E/">混合召回</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/" title="剧本分镜智能体（PenShot）开发指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">剧本分镜智能体（PenShot）开发指南</div></div><div class="info-2"><div class="info-item-1">PenShot 完整开发指南：从环境准备、依赖安装、.env 配置到服务启动与 REST API 调用，详解 Python SDK、FastAPI、LangGraph、A2A、MCP 五种集成方式与性能优化实践。</div></div></div></a><a class="pagination-related" href="/2026/04/9e54e62ce6e048df829f436213bd6bca/" title="NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204389694163420438918.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</div></div><div class="info-2"><div class="info-item-1">阐述 NeoTask 架构：一种代码三种形态的能力阶梯、TaskPool 装配拓扑与两阶段生命周期、组件接线状态清单、高可用与可观测性的真实形态。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/05/f6bdb468a82d411c970148a7fd1de52c/" title="PenShot 向量检索：原理、实现与 LlamaIndex 排坑实战"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-21</div><div class="info-item-2">PenShot 向量检索：原理、实现与 LlamaIndex 排坑实战</div></div><div class="info-2"><div class="info-item-1">系统讲解 PenShot 剧本分镜智能体的向量检索原理与实现，覆盖余弦相似度、索引存储结构、重排序优化，并给出 LlamaIndex 检索器"返回 0 条结果"的完整排查方案与修复代码。</div></div></div></a><a class="pagination-related" href="/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e/" title="剧本分镜智能体（PenShot）一致性策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）一致性策略</div></div><div class="info-2"><div class="info-item-1">PenShot 全局一致性保障策略全解。涵盖已实现的连续性锚点、状态快照、修复参数反馈、统一提示词约束、一致性校验器、固定种子值、向量数据库 RAG，以及规划中的色彩/光照/情绪曲线等十余项增强策略与最佳实践。</div></div></div></a><a class="pagination-related" href="/2026/05/a133fb49803447c5ab302ef47370112f/" title="PenShot 召回系统性能评测：向量检索、MMR、重排序与三层记忆"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-21</div><div class="info-item-2">PenShot 召回系统性能评测：向量检索、MMR、重排序与三层记忆</div></div><div class="info-2"><div class="info-item-1">系统评测 PenShot 召回系统的向量检索准确率、MMR 多样性优化、重排序精度提升及三层记忆系统表现。结果显示重排序将 top-1 准确率从 68% 提升至 86%，混合检索使提示词质量提升 15%。</div></div></div></a><a class="pagination-related" href="/2026/05/1c76b03cdafb48eb96ae6655f551f0e2/" title="PenShot 重排序（Reranking）原理与实践：CrossEncoder 精排提升召回质量"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-14</div><div class="info-item-2">PenShot 重排序（Reranking）原理与实践：CrossEncoder 精排提升召回质量</div></div><div class="info-2"><div class="info-item-1">深入讲解重排序在多路召回中的应用，通过 CrossEncoder 实现查询与文档的细粒度交互，解决多源分数不可比与语义相似度局限，结合 BGE-reranker 与 RRF 融合显著提升排序质量。</div></div></div></a><a class="pagination-related" href="/2026/02/7e6cd67dd5ee45248f2276ac145555f5/" title="NLP 剧本分镜智能体（PenShot）——任意剧本到 AI 视频片段的一站式拆分方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634265801642163426580161.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">NLP 剧本分镜智能体（PenShot）——任意剧本到 AI 视频片段的一站式拆分方案</div></div><div class="info-2"><div class="info-item-1">将任意格式剧本自动拆分为AI视频模型适配的片段序列，保证角色/场景/动作连贯性。支持LangGraph多智能体协作、MCP协议、向量记忆检索、质量审查与自动修复。</div></div></div></a><a class="pagination-related" href="/2026/02/b027d930c0b84ba6abd24bbef7d78afc/" title="剧本分镜智能体（PenShot）MCP 服务"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755143991957175514399123.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">剧本分镜智能体（PenShot）MCP 服务</div></div><div class="info-2"><div class="info-item-1">PenShot MCP Server 完整实现详解：从 Model Context Protocol 核心概念、架构原理到工具集成，覆盖 breakdown_script 等工具、优先级队列、并发控制与状态持久化。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot 剧本分镜智能体：RAG 知识库设计与实现</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E4%BB%B7%E5%80%BC%E4%B8%8E%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="toc-number">1.1.</span> <span class="toc-text">核心价值与整体架构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%80%E4%B9%88%E6%98%AF-RAG-%E7%9F%A5%E8%AF%86%E5%BA%93%EF%BC%8C%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%AE%83"><span class="toc-number">1.1.1.</span> <span class="toc-text">什么是 RAG 知识库，为什么需要它</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%EF%BC%9A%E5%9B%9B%E5%B1%82%E5%88%86%E5%B1%82%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.1.2.</span> <span class="toc-text">整体架构：四层分层设计</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E4%B8%80%EF%BC%89%EF%BC%9ALlamaIndex-%E5%90%91%E9%87%8F%E7%9F%A5%E8%AF%86%E5%BA%93"><span class="toc-number">1.2.</span> <span class="toc-text">关键要点拆解（一）：LlamaIndex 向量知识库</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#LlamaIndex-%E6%98%AF%E4%BB%80%E4%B9%88"><span class="toc-number">1.2.1.</span> <span class="toc-text">LlamaIndex 是什么</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.2.</span> <span class="toc-text">核心架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ScriptKnowledgeBase-%E6%A0%B8%E5%BF%83%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.2.3.</span> <span class="toc-text">ScriptKnowledgeBase 核心类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%87%E6%A1%A3%E8%A7%A3%E6%9E%90%E4%B8%8E%E7%B4%A2%E5%BC%95%E6%B5%81%E7%A8%8B"><span class="toc-number">1.2.4.</span> <span class="toc-text">文档解析与索引流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A3%80%E7%B4%A2%E6%9F%A5%E8%AF%A2%E6%B5%81%E7%A8%8B"><span class="toc-number">1.2.5.</span> <span class="toc-text">检索查询流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E4%BA%8C%EF%BC%89%EF%BC%9A%E5%A4%9A%E5%B1%82%E7%BA%A7%E8%AE%B0%E5%BF%86%E7%AE%A1%E7%90%86%E5%99%A8"><span class="toc-number">1.3.</span> <span class="toc-text">关键要点拆解（二）：多层级记忆管理器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E5%B1%82%E7%BA%A7%E6%9E%B6%E6%9E%84"><span class="toc-number">1.3.1.</span> <span class="toc-text">记忆层级架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#MemoryManager-%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.3.2.</span> <span class="toc-text">MemoryManager 类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E8%AF%BB%E5%86%99%E6%B5%81%E7%A8%8B"><span class="toc-number">1.3.3.</span> <span class="toc-text">记忆读写流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E4%B8%89%EF%BC%89%EF%BC%9A%E7%9F%A5%E8%AF%86%E8%B7%AF%E7%94%B1%E5%99%A8"><span class="toc-number">1.4.</span> <span class="toc-text">关键要点拆解（三）：知识路由器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B7%AF%E7%94%B1%E5%99%A8%E6%9E%B6%E6%9E%84"><span class="toc-number">1.4.1.</span> <span class="toc-text">路由器架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9F%A5%E8%AF%A2%E5%86%B3%E7%AD%96%E6%B5%81%E7%A8%8B"><span class="toc-number">1.4.2.</span> <span class="toc-text">查询决策流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E6%9D%A5%E6%BA%90%E6%9E%9A%E4%B8%BE"><span class="toc-number">1.4.3.</span> <span class="toc-text">知识来源枚举</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E5%9B%9B%EF%BC%89%EF%BC%9A%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%A8%A1%E6%9D%BF%E7%AE%A1%E7%90%86%E5%99%A8"><span class="toc-number">1.5.</span> <span class="toc-text">关键要点拆解（四）：提示词模板管理器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A8%A1%E6%9D%BF%E7%AE%A1%E7%90%86%E6%9E%B6%E6%9E%84"><span class="toc-number">1.5.1.</span> <span class="toc-text">模板管理架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#PromptTemplateManager-%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.5.2.</span> <span class="toc-text">PromptTemplateManager 类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%A2%9E%E5%BC%BA%E6%B5%81%E7%A8%8B"><span class="toc-number">1.5.3.</span> <span class="toc-text">提示词增强流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E4%BA%94%EF%BC%89%EF%BC%9A%E5%B7%A5%E4%BD%9C%E6%B5%81%E8%8A%82%E7%82%B9%E9%9B%86%E6%88%90%E4%B8%8E%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.6.</span> <span class="toc-text">关键要点拆解（五）：工作流节点集成与数据流</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%9E%E7%BB%AD%E6%80%A7%E6%A3%80%E6%9F%A5%E7%9A%84%E7%9F%A5%E8%AF%86%E5%A2%9E%E5%BC%BA"><span class="toc-number">1.6.1.</span> <span class="toc-text">连续性检查的知识增强</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E5%BA%93%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96%E6%B5%81%E7%A8%8B"><span class="toc-number">1.6.2.</span> <span class="toc-text">知识库的初始化流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E5%BA%93%E5%9C%A8%E5%B7%A5%E4%BD%9C%E6%B5%81%E4%B8%AD%E7%9A%84%E4%BD%8D%E7%BD%AE"><span class="toc-number">1.6.3.</span> <span class="toc-text">知识库在工作流中的位置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%84%E8%8A%82%E7%82%B9%E7%9A%84%E7%9F%A5%E8%AF%86%E5%BA%93%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F"><span class="toc-number">1.6.4.</span> <span class="toc-text">各节点的知识库使用方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E6%B5%81%E5%85%A8%E6%99%AF"><span class="toc-number">1.6.5.</span> <span class="toc-text">数据流全景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%8C%E6%95%B4%E6%95%B0%E6%8D%AE%E6%B5%81%E5%9B%BE"><span class="toc-number">1.6.6.</span> <span class="toc-text">完整数据流图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E7%A7%AF%E7%B4%AF%E6%AD%A3%E5%90%91%E5%BE%AA%E7%8E%AF"><span class="toc-number">1.6.7.</span> <span class="toc-text">知识积累正向循环</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E5%85%AD%EF%BC%89%EF%BC%9A%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5%E9%85%8D%E7%BD%AE%E4%B8%8E%E6%8C%81%E4%B9%85%E5%8C%96"><span class="toc-number">1.7.</span> <span class="toc-text">关键要点拆解（六）：检索策略配置与持久化</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5%E9%85%8D%E7%BD%AE"><span class="toc-number">1.7.1.</span> <span class="toc-text">检索策略配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%8D%E5%90%8C%E5%9C%BA%E6%99%AF%E7%9A%84%E6%A3%80%E7%B4%A2%E9%85%8D%E7%BD%AE"><span class="toc-number">1.7.2.</span> <span class="toc-text">不同场景的检索配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E4%B8%8E%E6%81%A2%E5%A4%8D"><span class="toc-number">1.7.3.</span> <span class="toc-text">持久化与恢复</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.4.</span> <span class="toc-text">持久化架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9C%8D%E5%8A%A1%E5%90%AF%E5%8A%A8%E6%81%A2%E5%A4%8D%E6%B5%81%E7%A8%8B"><span class="toc-number">1.7.5.</span> <span class="toc-text">服务启动恢复流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E6%80%A7%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.7.6.</span> <span class="toc-text">扩展性设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E7%82%B9%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.7.</span> <span class="toc-text">扩展点架构</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8E%92%E5%9D%91%E6%8F%90%E7%A4%BA"><span class="toc-number">1.8.</span> <span class="toc-text">排坑提示</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93%E4%B8%8E%E5%BB%BA%E8%AE%AE"><span class="toc-number">1.9.</span> <span class="toc-text">总结与建议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.10.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027/">https://pengline.cn/2026/04/1e7f1f2a5a184427b4711cc7c1903027/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E5%89%A7%E6%9C%AC%E5%88%86%E9%95%9C/">剧本分镜</a><a class="post-meta__tags" href="/tags/%E5%90%91%E9%87%8F%E6%A3%80%E7%B4%A2/">向量检索</a><a class="post-meta__tags" href="/tags/neopen/">neopen</a><a class="post-meta__tags" href="/tags/%E6%BA%90%E7%A0%81%E8%80%83%E8%AF%81/">源码考证</a><a class="post-meta__tags" href="/tags/%E7%9F%AD%E5%89%A7%E5%88%86%E9%95%9C/">短剧分镜</a><a class="post-meta__tags" href="/tags/%E6%99%BA%E8%83%BD%E5%88%86%E9%95%9C/">智能分镜</a><a class="post-meta__tags" href="/tags/PenShot/">PenShot</a><a class="post-meta__tags" href="/tags/RAG%E6%A3%80%E7%B4%A2/">RAG检索</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E5%BA%93%E5%A2%9E%E5%BC%BA/">知识库增强</a><a class="post-meta__tags" href="/tags/LlamaIndex/">LlamaIndex</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E5%B1%82%E7%BA%A7%E8%AE%B0%E5%BF%86/">多层级记忆</a><a class="post-meta__tags" href="/tags/%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%A8%A1%E6%9D%BF/">提示词模板</a><a class="post-meta__tags" href="/tags/%E8%AF%AD%E4%B9%89%E6%90%9C%E7%B4%A2/">语义搜索</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E8%B7%AF%E7%94%B1/">知识路由</a><a class="post-meta__tags" href="/tags/%E6%B7%B7%E5%90%88%E5%8F%AC%E5%9B%9E/">混合召回</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/04/6ddcf1cbfa17488e83c16d032d9814c7/" title="PenShot 开发指南源码考证：双启动链、双层状态机与二次开发扩展点"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746443697174574644362.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">PenShot 开发指南源码考证：双启动链、双层状态机与二次开发扩展点</div></div><div class="info-2"><div class="info-item-1">以 main.py、rest_api.py 与 function_calls.py 源码为准绳考证 PenShot 开发全流程：核验依赖安装与 .env 配置键、多条启动链与五种集成通道的真实行为，解析手写 CLI、任务级与阶段级双层状态机及 LangGraph 编排细节，纠正 COMPLETED 终态与 Redis 队列等常见误读，并给出智能体与提示词模板的二次开发扩展路径。</div></div></div></a><a class="pagination-related" href="/2026/04/9e54e62ce6e048df829f436213bd6bca/" title="NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1712590388795171259038894.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">NeoTask 架构设计：三种部署形态 + 装配拓扑与两阶段生命周期 + 能力阶梯与架构决策</div></div><div class="info-2"><div class="info-item-1">阐述 NeoTask 架构：一种代码三种形态的能力阶梯、TaskPool 装配拓扑与两阶段生命周期、组件接线状态清单、高可用与可观测性的真实形态。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/05/f6bdb468a82d411c970148a7fd1de52c/" title="PenShot 向量检索考证：手动余弦替代检索器，空结果与重排序的源码真相"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small230155Wg8Hm1760194915.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-21</div><div class="info-item-2">PenShot 向量检索考证：手动余弦替代检索器，空结果与重排序的源码真相</div></div><div class="info-2"><div class="info-item-1">以源码为准绳考证 PenShot 向量检索：辨析"文本→向量→余弦排序"链路的真实实现，解析 query() 为何用手写余弦相似度替代 LlamaIndex 检索器，"返回 0 条结果"的完整排查复盘与索引损坏自愈机制，以及 BGE 重排序默认关闭、仅停在未接线路由上的真实接线现状与排坑清单。</div></div></div></a><a class="pagination-related" href="/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e/" title="PenShot 一致性策略：多片段生成如何压制角色与场景漂移"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">PenShot 一致性策略：多片段生成如何压制角色与场景漂移</div></div><div class="info-2"><div class="info-item-1">从全局元数据、连续性注释到六项规则检查与 RAG 检索，逐层考证 PenShot 多片段一致性策略的真实实现与源码依据：哪些链路已接线、哪些是预留未接通、修复参数为何未能回流，以及规划中的色彩、光照、情绪曲线等增强策略方向与适用边界。</div></div></div></a><a class="pagination-related" href="/2026/05/a133fb49803447c5ab302ef47370112f/" title="PenShot 召回评测源码考证：三层记忆真机实测、静默失效与评测方法论"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small105211JwvB81759459931.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-21</div><div class="info-item-2">PenShot 召回评测源码考证：三层记忆真机实测、静默失效与评测方法论</div></div><div class="info-2"><div class="info-item-1">以源码与真机数据为准绳考证 PenShot 召回链路：拆解三层记忆的写入分发、Redis 降级与摘要持久化机制，澄清嵌入模型与向量库的选型误传，并实测记录长期记忆空库与评测脚本哑参数两类静默失效边界，附一套可复现的召回评测方法论与排查清单。</div></div></div></a><a class="pagination-related" href="/2026/05/5a6c623f4c334b7c86ad92c7ad179b90/" title="PenShot 召回体系考证：GraphRAG 缺席、混合检索未接线，召回靠什么在跑？"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860420693163886042042.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-01</div><div class="info-item-2">PenShot 召回体系考证：GraphRAG 缺席、混合检索未接线，召回靠什么在跑？</div></div><div class="info-2"><div class="info-item-1">以源码考证口径重审 PenShot 召回体系：GraphRAG 与 RRF 融合为何尚未落地、所谓混合检索为何未接线、手动余弦全量扫描与已接线的三层记忆系统各自如何运转，并按已接线、未接线、规划中三口径逐项给出真实状态与工程边界参考，澄清外部宣传与代码事实之间的差距。</div></div></div></a><a class="pagination-related" href="/2026/05/1c76b03cdafb48eb96ae6655f551f0e2/" title="PenShot 重排序源码考证：装配逻辑、哑参数与默认关闭的接线真相"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194719J0vNx1759578439.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-14</div><div class="info-item-2">PenShot 重排序源码考证：装配逻辑、哑参数与默认关闭的接线真相</div></div><div class="info-2"><div class="info-item-1">以源码为准绳考证 PenShot 重排序：解析 CrossEncoder 精排的真实装配逻辑、BGE-reranker 模型链路与 top_n 截断细节，逐条揭示 use_rerank 哑参数、配置默认关闭与路由未接线三条静默失效证据链，辨析模型谱系选型误传，并附固定召回集的评测方法论、模型路径排查与配置启用清单。</div></div></div></a><a class="pagination-related" href="/2026/02/b027d930c0b84ba6abd24bbef7d78afc/" title="PenShot MCP 服务源码考证：七工具契约、手写 JSON-RPC 与双传输真相"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small211845B4zPN1756646325.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">PenShot MCP 服务源码考证：七工具契约、手写 JSON-RPC 与双传输真相</div></div><div class="info-2"><div class="info-item-1">以 mcp_server.py 与 mcp_http_server.py 源码为准绳考证 PenShot MCP 服务：逐条核验七个工具的输入输出契约与任务状态机、stdio 版手写 JSON-RPC 循环与 HTTP 版完整参数 schema 的差异，解析 initialize 握手、错误码约定与 stdout/stderr 分离的工程细节，纠正 completed 终态、stage 字段等常见误读，并给出经真实示例验证的客户端实现、配置模板与排坑清单。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot RAG 知识库考证：模板增强已接线，路由与重排序为何停在图纸上？</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E4%BB%B7%E5%80%BC%E4%B8%8E%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="toc-number">1.1.</span> <span class="toc-text">核心价值与整体架构</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BB%80%E4%B9%88%E6%98%AF-RAG-%E7%9F%A5%E8%AF%86%E5%BA%93%EF%BC%8C%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%AE%83"><span class="toc-number">1.1.1.</span> <span class="toc-text">什么是 RAG 知识库，为什么需要它</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84%EF%BC%9A%E5%9B%9B%E5%B1%82%E5%88%86%E5%B1%82%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.1.2.</span> <span class="toc-text">整体架构：四层分层设计</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E4%B8%80%EF%BC%89%EF%BC%9ALlamaIndex-%E5%90%91%E9%87%8F%E7%9F%A5%E8%AF%86%E5%BA%93"><span class="toc-number">1.2.</span> <span class="toc-text">关键要点拆解（一）：LlamaIndex 向量知识库</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#LlamaIndex-%E6%98%AF%E4%BB%80%E4%B9%88"><span class="toc-number">1.2.1.</span> <span class="toc-text">LlamaIndex 是什么</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E6%9E%B6%E6%9E%84"><span class="toc-number">1.2.2.</span> <span class="toc-text">核心架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ScriptKnowledgeBase-%E6%A0%B8%E5%BF%83%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.2.3.</span> <span class="toc-text">ScriptKnowledgeBase 核心类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%87%E6%A1%A3%E8%A7%A3%E6%9E%90%E4%B8%8E%E7%B4%A2%E5%BC%95%E6%B5%81%E7%A8%8B"><span class="toc-number">1.2.4.</span> <span class="toc-text">文档解析与索引流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A3%80%E7%B4%A2%E6%9F%A5%E8%AF%A2%E6%B5%81%E7%A8%8B"><span class="toc-number">1.2.5.</span> <span class="toc-text">检索查询流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E4%BA%8C%EF%BC%89%EF%BC%9A%E5%A4%9A%E5%B1%82%E7%BA%A7%E8%AE%B0%E5%BF%86%E7%AE%A1%E7%90%86%E5%99%A8"><span class="toc-number">1.3.</span> <span class="toc-text">关键要点拆解（二）：多层级记忆管理器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E5%B1%82%E7%BA%A7%E6%9E%B6%E6%9E%84"><span class="toc-number">1.3.1.</span> <span class="toc-text">记忆层级架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#MemoryManager-%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.3.2.</span> <span class="toc-text">MemoryManager 类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E8%AF%BB%E5%86%99%E6%B5%81%E7%A8%8B"><span class="toc-number">1.3.3.</span> <span class="toc-text">记忆读写流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E4%B8%89%EF%BC%89%EF%BC%9A%E7%9F%A5%E8%AF%86%E8%B7%AF%E7%94%B1%E5%99%A8"><span class="toc-number">1.4.</span> <span class="toc-text">关键要点拆解（三）：知识路由器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B7%AF%E7%94%B1%E5%99%A8%E6%9E%B6%E6%9E%84"><span class="toc-number">1.4.1.</span> <span class="toc-text">路由器架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9F%A5%E8%AF%A2%E5%86%B3%E7%AD%96%E6%B5%81%E7%A8%8B"><span class="toc-number">1.4.2.</span> <span class="toc-text">查询决策流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E6%9D%A5%E6%BA%90%E6%9E%9A%E4%B8%BE"><span class="toc-number">1.4.3.</span> <span class="toc-text">知识来源枚举</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E5%9B%9B%EF%BC%89%EF%BC%9A%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%A8%A1%E6%9D%BF%E7%AE%A1%E7%90%86%E5%99%A8"><span class="toc-number">1.5.</span> <span class="toc-text">关键要点拆解（四）：提示词模板管理器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A8%A1%E6%9D%BF%E7%AE%A1%E7%90%86%E6%9E%B6%E6%9E%84"><span class="toc-number">1.5.1.</span> <span class="toc-text">模板管理架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#PromptTemplateManager-%E7%B1%BB%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.5.2.</span> <span class="toc-text">PromptTemplateManager 类设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8F%90%E7%A4%BA%E8%AF%8D%E5%A2%9E%E5%BC%BA%E6%B5%81%E7%A8%8B"><span class="toc-number">1.5.3.</span> <span class="toc-text">提示词增强流程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E4%BA%94%EF%BC%89%EF%BC%9A%E5%B7%A5%E4%BD%9C%E6%B5%81%E8%8A%82%E7%82%B9%E9%9B%86%E6%88%90%E4%B8%8E%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="toc-number">1.6.</span> <span class="toc-text">关键要点拆解（五）：工作流节点集成与数据流</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%BF%9E%E7%BB%AD%E6%80%A7%E6%A3%80%E6%9F%A5%E7%9A%84%E7%9F%A5%E8%AF%86%E5%A2%9E%E5%BC%BA"><span class="toc-number">1.6.1.</span> <span class="toc-text">连续性检查的知识增强</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E5%BA%93%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96%E6%B5%81%E7%A8%8B"><span class="toc-number">1.6.2.</span> <span class="toc-text">知识库的初始化流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E5%BA%93%E5%9C%A8%E5%B7%A5%E4%BD%9C%E6%B5%81%E4%B8%AD%E7%9A%84%E4%BD%8D%E7%BD%AE"><span class="toc-number">1.6.3.</span> <span class="toc-text">知识库在工作流中的位置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%90%84%E8%8A%82%E7%82%B9%E7%9A%84%E7%9F%A5%E8%AF%86%E5%BA%93%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F"><span class="toc-number">1.6.4.</span> <span class="toc-text">各节点的知识库使用方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B0%E6%8D%AE%E6%B5%81%E5%85%A8%E6%99%AF"><span class="toc-number">1.6.5.</span> <span class="toc-text">数据流全景</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%8C%E6%95%B4%E6%95%B0%E6%8D%AE%E6%B5%81%E5%9B%BE"><span class="toc-number">1.6.6.</span> <span class="toc-text">完整数据流图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9F%A5%E8%AF%86%E7%A7%AF%E7%B4%AF%E6%AD%A3%E5%90%91%E5%BE%AA%E7%8E%AF"><span class="toc-number">1.6.7.</span> <span class="toc-text">知识积累正向循环</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E8%A6%81%E7%82%B9%E6%8B%86%E8%A7%A3%EF%BC%88%E5%85%AD%EF%BC%89%EF%BC%9A%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5%E9%85%8D%E7%BD%AE%E4%B8%8E%E6%8C%81%E4%B9%85%E5%8C%96"><span class="toc-number">1.7.</span> <span class="toc-text">关键要点拆解（六）：检索策略配置与持久化</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A3%80%E7%B4%A2%E7%AD%96%E7%95%A5%E9%85%8D%E7%BD%AE"><span class="toc-number">1.7.1.</span> <span class="toc-text">检索策略配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%8D%E5%90%8C%E5%9C%BA%E6%99%AF%E7%9A%84%E6%A3%80%E7%B4%A2%E9%85%8D%E7%BD%AE"><span class="toc-number">1.7.2.</span> <span class="toc-text">不同场景的检索配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E4%B8%8E%E6%81%A2%E5%A4%8D"><span class="toc-number">1.7.3.</span> <span class="toc-text">持久化与恢复</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%8C%81%E4%B9%85%E5%8C%96%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.4.</span> <span class="toc-text">持久化架构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9C%8D%E5%8A%A1%E5%90%AF%E5%8A%A8%E6%81%A2%E5%A4%8D%E6%B5%81%E7%A8%8B"><span class="toc-number">1.7.5.</span> <span class="toc-text">服务启动恢复流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E6%80%A7%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.7.6.</span> <span class="toc-text">扩展性设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A9%E5%B1%95%E7%82%B9%E6%9E%B6%E6%9E%84"><span class="toc-number">1.7.7.</span> <span class="toc-text">扩展点架构</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8E%92%E5%9D%91%E6%8F%90%E7%A4%BA"><span class="toc-number">1.8.</span> <span class="toc-text">排坑提示</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93%E4%B8%8E%E5%BB%BA%E8%AE%AE"><span class="toc-number">1.9.</span> <span class="toc-text">总结与建议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.10.</span> <span class="toc-text">相关链接</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
