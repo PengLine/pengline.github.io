@@ -1,84 +1,238 @@
 (function () {
-  const START_HOUR = 19; // 19:00 开始护眼/夜间
-  const END_HOUR = 7;    // 07:00 结束护眼/夜间
+  'use strict';
 
-  /**
-   * 1. 获取当前系统时间属于哪个“模式周期”
-   * @returns {Object} { isNight: boolean, periodKey: string }
-   */
+  // =========================
+  // 配置
+  // =========================
+  const START_HOUR = 19; // 19:00 开始夜间模式
+  const END_HOUR = 7;    // 07:00 开始白天模式
+
+  const USER_PERIOD_KEY = 'theme_user_period';
+  const THEME_KEY = 'theme';
+
+  let timer = null;
+
+  // =========================
+  // 安全 localStorage
+  // =========================
+  function getStorage(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function removeStorage(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      // 忽略 storage 异常
+    }
+  }
+
+  function setStorage(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      // 忽略 storage 异常
+    }
+  }
+
+  // =========================
+  // 获取当前时间周期
+  // =========================
   function getCurrentPeriod() {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const date = now.getDate();
     const hour = now.getHours();
 
     const isNight = hour >= START_HOUR || hour < END_HOUR;
-    
-    // 生成当期的唯一标识，例如 "2026-9-10-night" 或 "2026-9-10-day"
-    // 注意：跨深夜（00:00 - 06:59）时，属于前一天晚上开始的 night 周期
-    let periodDate = `${year}-${month}-${date}`;
+
+    // 00:00 ~ 06:59 仍属于“前一天的夜间周期”
+    const periodDate = new Date(now);
+
     if (hour < END_HOUR) {
-      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      periodDate = `${yesterday.getFullYear()}-${yesterday.getMonth() + 1}-${yesterday.getDate()}`;
+      periodDate.setDate(periodDate.getDate() - 1);
     }
 
-    const periodKey = `${periodDate}-${isNight ? 'night' : 'day'}`;
-    return { isNight, periodKey };
+    const periodKey =
+      `${periodDate.getFullYear()}-` +
+      `${periodDate.getMonth() + 1}-` +
+      `${periodDate.getDate()}-` +
+      `${isNight ? 'night' : 'day'}`;
+
+    return {
+      isNight,
+      periodKey,
+      now
+    };
   }
 
-  /**
-   * 2. 检查并应用主题模式
-   */
+  // =========================
+  // 获取当前主题
+  // =========================
+  function getCurrentTheme() {
+    return document.documentElement.getAttribute('data-theme');
+  }
+
+  // =========================
+  // 切换主题
+  // =========================
+  function applyTheme(isNight) {
+    if (typeof btf === 'undefined') {
+      return;
+    }
+
+    const currentTheme = getCurrentTheme();
+
+    if (isNight) {
+      if (currentTheme === 'dark') {
+        return;
+      }
+
+      if (typeof switchNightMode === 'function') {
+        switchNightMode();
+      } else if (typeof btf.activateDarkMode === 'function') {
+        btf.activateDarkMode();
+      }
+
+    } else {
+      if (currentTheme !== 'dark') {
+        return;
+      }
+
+      if (typeof switchNightMode === 'function') {
+        switchNightMode();
+      } else if (typeof btf.activateLightMode === 'function') {
+        btf.activateLightMode();
+      }
+    }
+  }
+
+  // =========================
+  // 检查并应用主题
+  // =========================
   function checkAndApplyTheme() {
-    if (typeof btf === 'undefined') return;
+    if (typeof btf === 'undefined') {
+      return;
+    }
 
-    const { isNight, periodKey } = getCurrentPeriod();
-    const lastUserPeriod = localStorage.getItem('theme_user_period');
-    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const {
+      isNight,
+      periodKey
+    } = getCurrentPeriod();
 
-    // 如果用户在“当前时间段”内有过手动设置，刷新页面时保持用户手动设置的状态，不强行覆盖
+    const lastUserPeriod = getStorage(USER_PERIOD_KEY);
+
+    // 用户已经在当前周期手动切换过
+    // 本周期内不再自动干预
     if (lastUserPeriod === periodKey) {
       return;
     }
 
-    // 进入新时间段或用户未干预，清理历史干预标记
+    // 进入新的时间周期
+    // 清除上一周期的用户干预状态
     if (lastUserPeriod && lastUserPeriod !== periodKey) {
-      localStorage.removeItem('theme_user_period');
-      localStorage.removeItem('theme'); // 清除 btf 遗留的主题标记，防止干扰
+      removeStorage(USER_PERIOD_KEY);
+
+      // 清除 Butterfly 可能保存的旧主题状态
+      removeStorage(THEME_KEY);
     }
 
-    // 核心自动切换逻辑：刷新页面时触发此处判定并切换
-    if (isNight && currentTheme !== 'dark') {
-      // 到了夜间，自动切换为夜间/护眼模式
-      typeof switchNightMode === 'function' ? switchNightMode() : btf.activateDarkMode();
-    } else if (!isNight && currentTheme === 'dark') {
-      // 到了白天，自动切换为白天模式
-      typeof switchNightMode === 'function' ? switchNightMode() : btf.activateLightMode();
-    }
+    // 自动应用主题
+    applyTheme(isNight);
   }
 
-  /**
-   * 3. 监听用户手动点击切换动作
-   */
-  window.addEventListener('click', (e) => {
-    if (e.target.closest('#darkmode_button') || e.target.closest('#modeicon') || e.target.closest('.darkmode_main')) {
-      const { periodKey } = getCurrentPeriod();
-      // 记录用户在当前时间段内手动做了修改
-      localStorage.setItem('theme_user_period', periodKey);
-    }
-  });
+  // =========================
+  // 监听用户手动切换
+  // =========================
+  function handleUserThemeClick(event) {
+    const target = event.target;
 
-  /**
-   * 4. 页面刷新/加载时立即执行，并开启后台定时轮询
-   */
-  // 方案 A：DOM 树准备好就立即执行（比 load 触发更快，防止刷新页面闪烁）
+    if (
+      !target.closest('#darkmode_button') &&
+      !target.closest('#modeicon') &&
+      !target.closest('.darkmode_main')
+    ) {
+      return;
+    }
+
+    const { periodKey } = getCurrentPeriod();
+
+    // 标记：
+    // 用户已经在当前时间周期内主动操作过主题
+    setStorage(USER_PERIOD_KEY, periodKey);
+  }
+
+  // =========================
+  // 计算下一次自动切换时间
+  // =========================
+  function getNextSwitchTime() {
+    const now = new Date();
+    const next = new Date(now);
+
+    const hour = now.getHours();
+
+    if (hour >= START_HOUR) {
+      // 今天 19:00
+      next.setHours(START_HOUR, 0, 0, 0);
+
+      // 如果已经过了 19:00，则等待明天 19:00
+      if (next <= now) {
+        next.setDate(next.getDate() + 1);
+      }
+
+    } else if (hour < END_HOUR) {
+      // 今天 07:00
+      next.setHours(END_HOUR, 0, 0, 0);
+
+      if (next <= now) {
+        next.setDate(next.getDate() + 1);
+      }
+
+    } else {
+      // 白天阶段，下一次切换是今天 19:00
+      next.setHours(START_HOUR, 0, 0, 0);
+    }
+
+    return next;
+  }
+
+  // =========================
+  // 安排下一次检查
+  // =========================
+  function scheduleNextCheck() {
+    if (timer) {
+      clearTimeout(timer);
+    }
+
+    const next = getNextSwitchTime();
+    const delay = Math.max(next.getTime() - Date.now(), 1000);
+
+    timer = setTimeout(function () {
+      checkAndApplyTheme();
+      scheduleNextCheck();
+    }, delay);
+  }
+
+  // =========================
+  // 初始化
+  // =========================
+  function init() {
+    checkAndApplyTheme();
+    scheduleNextCheck();
+  }
+
+  // =========================
+  // 事件
+  // =========================
+  window.addEventListener('click', handleUserThemeClick);
+
+  // 页面首次加载
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', checkAndApplyTheme);
+    document.addEventListener('DOMContentLoaded', init, { once: true });
   } else {
-    checkAndApplyTheme(); // 如果脚本加载时 DOM 已就绪，直接执行
+    init();
   }
 
-  // 方案 B：挂载定时器，每 60 秒定期检查（处理页面不刷新、一直打开的情况）
-  setInterval(checkAndApplyTheme, 60000);
 })();

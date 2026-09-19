@@ -1,0 +1,904 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>AI 应用 Token 优化：从 Prompt 压缩到 Agent 成本控制 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="从 Prompt、上下文、RAG、Tool Calling、缓存、模型路由和 Agent 循环等多个层面分析 Token 消耗，并通过 Java 示例展示如何在真实 AI 应用中落地 Token 预算、上下文裁剪、Tool 结果压缩和请求缓存。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="AI 应用 Token 优化：从 Prompt 压缩到 Agent 成本控制">
+<meta property="og:url" content="https://pengline.cn/2026/09/ai-token-optimization/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="从 Prompt、上下文、RAG、Tool Calling、缓存、模型路由和 Agent 循环等多个层面分析 Token 消耗，并通过 Java 示例展示如何在真实 AI 应用中落地 Token 预算、上下文裁剪、Tool 结果压缩和请求缓存。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small160843rjlZC1759046923.webp">
+<meta property="article:published_time" content="2026-09-16T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-18T08:27:43.926Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="AI Agent">
+<meta property="article:tag" content="Agent成本控制">
+<meta property="article:tag" content="LLM">
+<meta property="article:tag" content="Prompt">
+<meta property="article:tag" content="Prompt压缩">
+<meta property="article:tag" content="RAG">
+<meta property="article:tag" content="Token">
+<meta property="article:tag" content="Token成本">
+<meta property="article:tag" content="Token节约">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small160843rjlZC1759046923.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/09/ai-token-optimization/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'AI 应用 Token 优化：从 Prompt 压缩到 Agent 成本控制',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">117</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">883</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">52</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small160843rjlZC1759046923.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">AI 应用 Token 优化：从 Prompt 压缩到 Agent 成本控制</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">AI 应用 Token 优化：从 Prompt 压缩到 Agent 成本控制</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-09-16T16:00:00.000Z" title="发表于 2026-09-17 00:00:00">2026-09-17</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-18T08:27:43.926Z" title="更新于 2026-09-18 16:27:43">2026-09-18</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Token/">Token</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>从 Prompt 压缩到 Agent 成本控制</h1>
+<p>大模型应用上线以后，Token 往往不是一个单纯的计费指标。</p>
+<p>它同时影响请求成本、上下文长度、接口延迟、模型吞吐量，以及 Agent 能够持续运行多少轮。</p>
+<p>尤其是 AI Agent、RAG、代码生成这类应用，一次请求真正发送给模型的内容通常远比用户输入本身复杂：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[System Prompt] --&gt; C[Context 上下文组装]
+    B[历史对话] --&gt; C
+    D[当前任务] --&gt; C
+    E[用户上下文] --&gt; C
+    F[RAG 检索结果] --&gt; C
+    G[Tool 定义] --&gt; C
+    H[Tool 执行结果] --&gt; C
+    I[Agent 状态] --&gt; C
+
+    C --&gt; J[LLM 模型推理]
+    J --&gt; K&#123;是否需要调用 Tool&#125;
+
+    K -- 否 --&gt; L[模型输出]
+    K -- 是 --&gt; M[Tool 执行]
+    M --&gt; N[Tool 执行结果]
+    N --&gt; C</code></pre>
+<blockquote>
+<p>因此，Token 优化真正需要解决的问题并不是：如何让模型少输出几个字？而是：如何让模型只接收完成当前任务真正需要的信息。</p>
+</blockquote>
+<hr>
+<h2 id="先搞清楚-Token-到底消耗在哪里">先搞清楚 Token 到底消耗在哪里</h2>
+<p>一次典型 LLM 请求，可以抽象成：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[用户请求] --&gt; B[System Prompt]
+    A --&gt; C[历史上下文]
+    A --&gt; D[RAG 检索结果]
+    A --&gt; E[Tool 定义]
+    A --&gt; F[Agent 状态]
+
+    B --&gt; G[模型输入]
+    C --&gt; G
+    D --&gt; G
+    E --&gt; G
+    F --&gt; G
+
+    G --&gt; H[LLM]
+    H --&gt; I[模型输出]
+    I --&gt; J[响应 Token]</code></pre>
+<p>从工程角度，可以把 Token 消耗拆成：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">输入 Token + 输出 Token = 一次模型调用的主要 Token 消耗</span><br></pre></td></tr></table></figure>
+<p>对于 Agent，还需要进一步考虑：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">总 Token = 单轮输入 + 单轮输出 + Agent 多轮调用 + 重复上下文 + Tool 结果 + RAG 内容</span><br></pre></td></tr></table></figure>
+<p>所以第一步不是优化，而是<strong>测量</strong>。</p>
+<hr>
+<h2 id="先建立-Token-统计能力">先建立 Token 统计能力</h2>
+<p>如果连 Token 到底消耗在哪里都不知道，后面的优化基本只能靠猜。</p>
+<p>建议在 LLM Client 外面统一包一层。</p>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">TokenUsage</span><span class="params">(</span></span><br><span class="line"><span class="params">        String model,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> inputTokens,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> outputTokens,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> totalTokens,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> cachedTokens</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>定义一次模型调用结果：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">LlmResult</span>&lt;T&gt;(</span><br><span class="line">        T content,</span><br><span class="line">        TokenUsage usage</span><br><span class="line">) &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>然后统一记录：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">TokenMetrics</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">record</span><span class="params">(TokenUsage usage)</span> &#123;</span><br><span class="line">        System.out.printf(</span><br><span class="line">                <span class="string">&quot;model=%s input=%d output=%d total=%d cached=%d%n&quot;</span>,</span><br><span class="line">                usage.model(),</span><br><span class="line">                usage.inputTokens(),</span><br><span class="line">                usage.outputTokens(),</span><br><span class="line">                usage.totalTokens(),</span><br><span class="line">                usage.cachedTokens()</span><br><span class="line">        );</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>真实生产环境一般不会直接 <code>System.out.println</code>，而是接入 Micrometer、Prometheus、OpenTelemetry 或日志系统。</p>
+<p>建议至少记录：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">model</span><br><span class="line">input_tokens</span><br><span class="line">output_tokens</span><br><span class="line">total_tokens</span><br><span class="line">cached_tokens</span><br><span class="line">latency</span><br><span class="line">request_id</span><br><span class="line">agent_id</span><br><span class="line">agent_step</span><br><span class="line">tool_calls</span><br></pre></td></tr></table></figure>
+<p>如果是 Agent，还应该记录每一步：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">agent_step=1 input=3500 output=500</span><br><span class="line">agent_step=2 input=4100 output=700</span><br><span class="line">agent_step=3 input=6200 output=400</span><br></pre></td></tr></table></figure>
+<p>这样才能找到真正的 Token 黑洞。</p>
+<hr>
+<h2 id="Token-优化控制的18种手段">Token 优化控制的18种手段</h2>
+<h3 id="1-Prompt-优化：从字符串拼接开始">1. Prompt 优化：从字符串拼接开始</h3>
+<p>最容易出现问题的写法是：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">String</span> <span class="variable">prompt</span> <span class="operator">=</span> <span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">    你是一名专业助手。</span></span><br><span class="line"><span class="string">    你需要认真回答用户问题。</span></span><br><span class="line"><span class="string">    你必须准确回答。</span></span><br><span class="line"><span class="string">    你应该提供完整答案。</span></span><br><span class="line"><span class="string">    产品说明：</span></span><br><span class="line"><span class="string">    %s</span></span><br><span class="line"><span class="string">    历史消息：</span></span><br><span class="line"><span class="string">    %s</span></span><br><span class="line"><span class="string">    &quot;&quot;&quot;</span>.formatted(productDoc, history);</span><br></pre></td></tr></table></figure>
+<p>这种代码运行一段时间以后，Prompt 很容易不断膨胀。</p>
+<p>更推荐拆成几个明确的上下文组件：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">PromptContext</span><span class="params">(</span></span><br><span class="line"><span class="params">        String systemPrompt,</span></span><br><span class="line"><span class="params">        String task,</span></span><br><span class="line"><span class="params">        String state,</span></span><br><span class="line"><span class="params">        String knowledge,</span></span><br><span class="line"><span class="params">        String toolContext</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>然后统一构建：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">PromptBuilder</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> String <span class="title function_">build</span><span class="params">(PromptContext context)</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="string">&quot;&quot;&quot;</span></span><br><span class="line"><span class="string">                # System Rules</span></span><br><span class="line"><span class="string">                %s</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">                # Current Task</span></span><br><span class="line"><span class="string">                %s</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">                # Current State</span></span><br><span class="line"><span class="string">                %s</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">                # Relevant Knowledge</span></span><br><span class="line"><span class="string">                %s</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">                # Available Tools</span></span><br><span class="line"><span class="string">                %s</span></span><br><span class="line"><span class="string">                &quot;&quot;&quot;</span>.formatted(</span><br><span class="line">                context.systemPrompt(),</span><br><span class="line">                context.task(),</span><br><span class="line">                context.state(),</span><br><span class="line">                context.knowledge(),</span><br><span class="line">                context.toolContext()</span><br><span class="line">        );</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这样做的意义并不只是代码更漂亮。它允许后续单独优化：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">systemPrompt</span><br><span class="line">task</span><br><span class="line">state</span><br><span class="line">knowledge</span><br><span class="line">toolContext</span><br></pre></td></tr></table></figure>
+<p>而不是面对一整个字符串无从下手。</p>
+<hr>
+<h3 id="2-历史消息裁剪">2. 历史消息裁剪</h3>
+<p>最简单的策略是只保留最近 N 条消息。</p>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">HistoryReducer</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> <span class="type">int</span> maxMessages;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">HistoryReducer</span><span class="params">(<span class="type">int</span> maxMessages)</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.maxMessages = maxMessages;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> List&lt;ChatMessage&gt; <span class="title function_">reduce</span><span class="params">(List&lt;ChatMessage&gt; history)</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (history.size() &lt;= maxMessages) &#123;</span><br><span class="line">            <span class="keyword">return</span> history;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> history.subList(</span><br><span class="line">                history.size() - maxMessages,</span><br><span class="line">                history.size()</span><br><span class="line">        );</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>调用：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">List&lt;ChatMessage&gt; reducedHistory =</span><br><span class="line">        historyReducer.reduce(history);</span><br></pre></td></tr></table></figure>
+<p>但这种方式存在一个明显问题。</p>
+<p>假设：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">第 1 轮：用户选择了生产环境</span><br><span class="line">第 2 轮：设置数据库</span><br><span class="line">第 3 轮：配置 Redis</span><br><span class="line">...</span><br><span class="line">第 20 轮：当前问题</span><br></pre></td></tr></table></figure>
+<p>如果只保留最后 5 轮，第 1 轮的重要业务约束可能已经丢失。</p>
+<p>因此生产环境更推荐：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">长期摘要</span><br><span class="line">+</span><br><span class="line">最近消息</span><br><span class="line">+</span><br><span class="line">结构化 State</span><br></pre></td></tr></table></figure>
+<hr>
+<h3 id="3-用结构化-State-替代大量历史对话">3. 用结构化 State 替代大量历史对话</h3>
+<p>可以定义：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">AgentState</span><span class="params">(</span></span><br><span class="line"><span class="params">        String task,</span></span><br><span class="line"><span class="params">        String environment,</span></span><br><span class="line"><span class="params">        List&lt;String&gt; completedSteps,</span></span><br><span class="line"><span class="params">        List&lt;String&gt; pendingSteps,</span></span><br><span class="line"><span class="params">        List&lt;String&gt; constraints</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">AgentState</span> <span class="variable">state</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">AgentState</span>(</span><br><span class="line">        <span class="string">&quot;部署订单服务&quot;</span>,</span><br><span class="line">        <span class="string">&quot;production&quot;</span>,</span><br><span class="line">        List.of(</span><br><span class="line">                <span class="string">&quot;构建镜像&quot;</span>,</span><br><span class="line">                <span class="string">&quot;推送镜像&quot;</span></span><br><span class="line">        ),</span><br><span class="line">        List.of(</span><br><span class="line">                <span class="string">&quot;更新 Deployment&quot;</span></span><br><span class="line">        ),</span><br><span class="line">        List.of(</span><br><span class="line">                <span class="string">&quot;不能影响现有流量&quot;</span></span><br><span class="line">        )</span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+<p>序列化以后：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;task&quot;</span><span class="punctuation">:</span> <span class="string">&quot;部署订单服务&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;environment&quot;</span><span class="punctuation">:</span> <span class="string">&quot;production&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;completedSteps&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="string">&quot;构建镜像&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="string">&quot;推送镜像&quot;</span></span><br><span class="line">  <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;pendingSteps&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="string">&quot;更新 Deployment&quot;</span></span><br><span class="line">  <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;constraints&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="string">&quot;不能影响现有流量&quot;</span></span><br><span class="line">  <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p>相比几十轮聊天记录，这种结构更加适合 Agent。</p>
+<p>架构上可以理解为：</p>
+<pre><code class="highlight mermaid">flowchart LR
+    A[完整历史] --&gt; B[状态提取]
+    B --&gt; C[Agent State]
+
+    D[最近消息] --&gt; E[Context Builder]
+    C --&gt; E
+
+    E --&gt; F[LLM]</code></pre>
+<p>关键原则：</p>
+<blockquote>
+<p>能由程序维护的状态，不要让模型通过历史消息重新推理。</p>
+</blockquote>
+<hr>
+<h3 id="4-RAG：检索和最终上下文分离">4. RAG：检索和最终上下文分离</h3>
+<p>不要直接：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">List&lt;Document&gt; docs = vectorStore.search(query, <span class="number">20</span>);</span><br><span class="line"></span><br><span class="line"><span class="type">String</span> <span class="variable">context</span> <span class="operator">=</span> docs.stream()</span><br><span class="line">        .map(Document::getContent)</span><br><span class="line">        .collect(Collectors.joining(<span class="string">&quot;\n&quot;</span>));</span><br></pre></td></tr></table></figure>
+<p>这个写法最大的风险就是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Top 20 = 最终发送 20</span><br></pre></td></tr></table></figure>
+<p>应该增加过滤层。</p>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> List&lt;Document&gt; <span class="title function_">selectRelevant</span><span class="params">(</span></span><br><span class="line"><span class="params">        List&lt;Document&gt; documents,</span></span><br><span class="line"><span class="params">        <span class="type">double</span> minScore,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxDocuments</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> documents.stream()</span><br><span class="line">            .filter(doc -&gt; doc.getScore() &gt;= minScore)</span><br><span class="line">            .sorted(Comparator.comparing(</span><br><span class="line">                    Document::getScore</span><br><span class="line">            ).reversed())</span><br><span class="line">            .limit(maxDocuments)</span><br><span class="line">            .toList();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>完整流程：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">List&lt;Document&gt; candidates =</span><br><span class="line">        vectorStore.search(query, <span class="number">20</span>);</span><br><span class="line"></span><br><span class="line">List&lt;Document&gt; selected =</span><br><span class="line">        selector.selectRelevant(</span><br><span class="line">                candidates,</span><br><span class="line">                <span class="number">0.72</span>,</span><br><span class="line">                <span class="number">5</span></span><br><span class="line">        );</span><br></pre></td></tr></table></figure>
+<p>最终：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">检索 20</span><br><span class="line"> ↓</span><br><span class="line">过滤</span><br><span class="line"> ↓</span><br><span class="line">排序</span><br><span class="line"> ↓</span><br><span class="line">保留 5</span><br><span class="line"> ↓</span><br><span class="line">发送给模型</span><br></pre></td></tr></table></figure>
+<p>对应 Mermaid：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[User Query] --&gt; B[Vector Search]
+    B --&gt; C[Top 20 Candidates]
+    C --&gt; D[Score Filter]
+    D --&gt; E[Ranking]
+    E --&gt; F[Top 5]
+    F --&gt; G[Context Builder]
+    G --&gt; H[LLM]</code></pre>
+<p>这里最重要的不是“Top 5”这个数字。</p>
+<p>真正重要的是：</p>
+<blockquote>
+<p>检索数量和发送数量应该解耦。</p>
+</blockquote>
+<hr>
+<h3 id="5-RAG-文档内容还应该继续裁剪">5. RAG 文档内容还应该继续裁剪</h3>
+<p>即使只保留 5 个文档，每个文档也可能非常长。</p>
+<p>因此还需要做 Chunk 内容控制。</p>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> String <span class="title function_">truncate</span><span class="params">(String text, <span class="type">int</span> maxChars)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (text == <span class="literal">null</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="string">&quot;&quot;</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (text.length() &lt;= maxChars) &#123;</span><br><span class="line">        <span class="keyword">return</span> text;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> text.substring(<span class="number">0</span>, maxChars)</span><br><span class="line">            + <span class="string">&quot;\n[content truncated]&quot;</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>然后：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">String</span> <span class="variable">context</span> <span class="operator">=</span> documents.stream()</span><br><span class="line">        .map(doc -&gt; truncate(doc.getContent(), <span class="number">2000</span>))</span><br><span class="line">        .collect(Collectors.joining(<span class="string">&quot;\n\n&quot;</span>));</span><br></pre></td></tr></table></figure>
+<p>不过需要注意：<strong>字符数不等于 Token 数。</strong></p>
+<p>不同模型、不同语言的 Token 切分方式不同。</p>
+<p>因此生产系统如果对 Token 有严格预算，最好直接使用对应模型供应商提供的 tokenizer 进行估算，而不是简单地：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">1 Token = 4 个字符</span><br></pre></td></tr></table></figure>
+<p>这种经验公式只能做粗略估算。</p>
+<hr>
+<h3 id="6-Tool-Calling：不要把数据库对象直接返回给-LLM">6. Tool Calling：不要把数据库对象直接返回给 LLM</h3>
+<p>不推荐：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> Order <span class="title function_">queryOrder</span><span class="params">(Long orderId)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> orderRepository.findById(orderId)</span><br><span class="line">            .orElseThrow();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>然后直接序列化：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">return</span> objectMapper.writeValueAsString(order);</span><br></pre></td></tr></table></figure>
+<p>因为数据库实体通常包含大量模型根本不需要的信息。</p>
+<p>更合理的是定义 Agent DTO：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">OrderToolResult</span><span class="params">(</span></span><br><span class="line"><span class="params">        Long orderId,</span></span><br><span class="line"><span class="params">        String status,</span></span><br><span class="line"><span class="params">        BigDecimal amount</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Tool：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> OrderToolResult <span class="title function_">queryOrder</span><span class="params">(Long orderId)</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="type">Order</span> <span class="variable">order</span> <span class="operator">=</span> orderRepository.findById(orderId)</span><br><span class="line">            .orElseThrow();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">OrderToolResult</span>(</span><br><span class="line">            order.getId(),</span><br><span class="line">            order.getStatus().name(),</span><br><span class="line">            order.getAmount()</span><br><span class="line">    );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这样：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">Database Entity</span><br><span class="line">        ↓</span><br><span class="line">Service</span><br><span class="line">        ↓</span><br><span class="line">Agent DTO</span><br><span class="line">        ↓</span><br><span class="line">LLM</span><br></pre></td></tr></table></figure>
+<p>而不是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Database Entity</span><br><span class="line">        ↓</span><br><span class="line">LLM</span><br></pre></td></tr></table></figure>
+<hr>
+<h3 id="7-Tool-Result-进一步做摘要">7. Tool Result 进一步做摘要</h3>
+<p>如果 Tool 返回的数据依然很大，可以定义一个通用结果结构：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">ToolResult</span>&lt;T&gt;(</span><br><span class="line">        <span class="type">boolean</span> success,</span><br><span class="line">        T data,</span><br><span class="line">        String errorCode,</span><br><span class="line">        String message</span><br><span class="line">) &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>成功：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">ToolResult</span>&lt;&gt;(</span><br><span class="line">        <span class="literal">true</span>,</span><br><span class="line">        orderResult,</span><br><span class="line">        <span class="literal">null</span>,</span><br><span class="line">        <span class="literal">null</span></span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+<p>失败：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">ToolResult</span>&lt;&gt;(</span><br><span class="line">        <span class="literal">false</span>,</span><br><span class="line">        <span class="literal">null</span>,</span><br><span class="line">        <span class="string">&quot;DB_TIMEOUT&quot;</span>,</span><br><span class="line">        <span class="string">&quot;订单查询超时&quot;</span></span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+<p>不要把这种内容直接交给 LLM：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">java.sql.SQLException</span><br><span class="line">StackTrace...</span><br><span class="line">Connection Pool...</span><br><span class="line">SQL...</span><br><span class="line">Driver...</span><br></pre></td></tr></table></figure>
+<p>完整异常应该进入日志系统。</p>
+<p>模型只需要：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;success&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">false</span></span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;errorCode&quot;</span><span class="punctuation">:</span> <span class="string">&quot;DB_TIMEOUT&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;message&quot;</span><span class="punctuation">:</span> <span class="string">&quot;订单查询超时&quot;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p>核心原则：</p>
+<blockquote>
+<p>日志给工程师，摘要给模型。</p>
+</blockquote>
+<hr>
+<h3 id="8-Agent-Budget：给-Agent-建立硬预算">8. Agent Budget：给 Agent 建立硬预算</h3>
+<p>Agent 最危险的问题不是单次请求 Token 太高，而是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">LLM</span><br><span class="line"> ↓</span><br><span class="line">Tool</span><br><span class="line"> ↓</span><br><span class="line">LLM</span><br><span class="line"> ↓</span><br><span class="line">Tool</span><br><span class="line"> ↓</span><br><span class="line">LLM</span><br><span class="line"> ↓</span><br><span class="line">Tool</span><br><span class="line"> ↓</span><br><span class="line">无限循环</span><br></pre></td></tr></table></figure>
+<p>因此建议定义：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">AgentBudget</span><span class="params">(</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxSteps,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxToolCalls,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxInputTokens,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxOutputTokens,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxTotalTokens,</span></span><br><span class="line"><span class="params">        <span class="type">long</span> timeoutMs</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行时维护：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">AgentBudgetTracker</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> AgentBudget budget;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="type">int</span> steps;</span><br><span class="line">    <span class="keyword">private</span> <span class="type">int</span> toolCalls;</span><br><span class="line">    <span class="keyword">private</span> <span class="type">int</span> inputTokens;</span><br><span class="line">    <span class="keyword">private</span> <span class="type">int</span> outputTokens;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">AgentBudgetTracker</span><span class="params">(AgentBudget budget)</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.budget = budget;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">recordLlm</span><span class="params">(TokenUsage usage)</span> &#123;</span><br><span class="line">        inputTokens += usage.inputTokens();</span><br><span class="line">        outputTokens += usage.outputTokens();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">recordToolCall</span><span class="params">()</span> &#123;</span><br><span class="line">        toolCalls++;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">nextStep</span><span class="params">()</span> &#123;</span><br><span class="line">        steps++;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">exceeded</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="type">int</span> <span class="variable">totalTokens</span> <span class="operator">=</span> inputTokens + outputTokens;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> steps &gt;= budget.maxSteps()</span><br><span class="line">                || toolCalls &gt;= budget.maxToolCalls()</span><br><span class="line">                || inputTokens &gt;= budget.maxInputTokens()</span><br><span class="line">                || outputTokens &gt;= budget.maxOutputTokens()</span><br><span class="line">                || totalTokens &gt;= budget.maxTotalTokens();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>Agent Loop：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">while</span> (!tracker.exceeded()) &#123;</span><br><span class="line"></span><br><span class="line">    tracker.nextStep();</span><br><span class="line"></span><br><span class="line">    LlmResult&lt;Action&gt; result =</span><br><span class="line">            llmClient.plan(context);</span><br><span class="line"></span><br><span class="line">    tracker.recordLlm(result.usage());</span><br><span class="line"></span><br><span class="line">    <span class="type">Action</span> <span class="variable">action</span> <span class="operator">=</span> result.content();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!action.requiresTool()) &#123;</span><br><span class="line">        <span class="keyword">return</span> action.answer();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    tracker.recordToolCall();</span><br><span class="line"></span><br><span class="line">    ToolResult&lt;?&gt; toolResult =</span><br><span class="line">            toolExecutor.execute(action);</span><br><span class="line"></span><br><span class="line">    context = contextUpdater.update(</span><br><span class="line">            context,</span><br><span class="line">            toolResult</span><br><span class="line">    );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这样 Agent 至少不会因为模型异常一直执行。</p>
+<hr>
+<h3 id="9-防止-Tool-重复调用">9. 防止 Tool 重复调用</h3>
+<p>除了最大调用次数，还可以检测重复 Action。</p>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">DuplicateActionDetector</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> Set&lt;String&gt; executedActions =</span><br><span class="line">            <span class="keyword">new</span> <span class="title class_">HashSet</span>&lt;&gt;();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">duplicated</span><span class="params">(String action)</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> !executedActions.add(action);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>执行前：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">String</span> <span class="variable">actionKey</span> <span class="operator">=</span></span><br><span class="line">        action.getToolName()</span><br><span class="line">        + <span class="string">&quot;:&quot;</span></span><br><span class="line">        + action.getArguments();</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (duplicateDetector.duplicated(actionKey)) &#123;</span><br><span class="line">    <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalStateException</span>(</span><br><span class="line">            <span class="string">&quot;Duplicate tool action detected&quot;</span></span><br><span class="line">    );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>更复杂的系统可以根据：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Tool Name + 参数 + Agent Step + 业务状态</span><br></pre></td></tr></table></figure>
+<p>计算 Action Fingerprint。</p>
+<hr>
+<h3 id="10-给-Agent-设置-Token-Budget">10. 给 Agent 设置 Token Budget</h3>
+<p>可以把 Token Budget 直接作为请求级参数：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">TokenBudget</span><span class="params">(</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxInputTokens,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxOutputTokens,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> maxTotalTokens</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">TokenBudget</span> <span class="variable">budget</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">TokenBudget</span>(</span><br><span class="line">        <span class="number">12000</span>,</span><br><span class="line">        <span class="number">2000</span>,</span><br><span class="line">        <span class="number">14000</span></span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+<p>Context Builder 在构建上下文时进行预算检查：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> String <span class="title function_">build</span><span class="params">(</span></span><br><span class="line"><span class="params">        PromptContext context,</span></span><br><span class="line"><span class="params">        TokenBudget budget</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="type">String</span> <span class="variable">prompt</span> <span class="operator">=</span> promptBuilder.build(context);</span><br><span class="line"></span><br><span class="line">    <span class="type">int</span> <span class="variable">estimatedTokens</span> <span class="operator">=</span></span><br><span class="line">            tokenizer.countTokens(prompt);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (estimatedTokens &gt; budget.maxInputTokens()) &#123;</span><br><span class="line">        prompt = contextReducer.reduce(</span><br><span class="line">                context,</span><br><span class="line">                budget.maxInputTokens()</span><br><span class="line">        );</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> prompt;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里的 <code>tokenizer</code> 应该根据实际使用的模型实现。</p>
+<p>不要把某一个模型的 Token 估算规则硬编码到整个系统。</p>
+<hr>
+<h3 id="11-Context-Builder：把-Token-优化集中管理">11. Context Builder：把 Token 优化集中管理</h3>
+<p>如果每个业务 Service 都自己拼 Prompt：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">OrderService</span><br><span class="line">UserService</span><br><span class="line">ChatService</span><br><span class="line">AgentService</span><br><span class="line">RagService</span><br></pre></td></tr></table></figure>
+<p>很快就会出现大量重复逻辑。</p>
+<p>建议统一建立 Context Builder：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">AgentContextBuilder</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> HistoryReducer historyReducer;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> RagSelector ragSelector;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> ToolSchemaSelector toolSchemaSelector;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">AgentContextBuilder</span><span class="params">(</span></span><br><span class="line"><span class="params">            HistoryReducer historyReducer,</span></span><br><span class="line"><span class="params">            RagSelector ragSelector,</span></span><br><span class="line"><span class="params">            ToolSchemaSelector toolSchemaSelector</span></span><br><span class="line"><span class="params">    )</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.historyReducer = historyReducer;</span><br><span class="line">        <span class="built_in">this</span>.ragSelector = ragSelector;</span><br><span class="line">        <span class="built_in">this</span>.toolSchemaSelector = toolSchemaSelector;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> AgentContext <span class="title function_">build</span><span class="params">(</span></span><br><span class="line"><span class="params">            AgentRequest request</span></span><br><span class="line"><span class="params">    )</span> &#123;</span><br><span class="line"></span><br><span class="line">        List&lt;ChatMessage&gt; history =</span><br><span class="line">                historyReducer.reduce(</span><br><span class="line">                        request.history()</span><br><span class="line">                );</span><br><span class="line"></span><br><span class="line">        List&lt;Document&gt; documents =</span><br><span class="line">                ragSelector.select(</span><br><span class="line">                        request.query()</span><br><span class="line">                );</span><br><span class="line"></span><br><span class="line">        List&lt;ToolSchema&gt; tools =</span><br><span class="line">                toolSchemaSelector.select(</span><br><span class="line">                        request.query()</span><br><span class="line">                );</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">AgentContext</span>(</span><br><span class="line">                request.task(),</span><br><span class="line">                history,</span><br><span class="line">                documents,</span><br><span class="line">                tools,</span><br><span class="line">                request.state()</span><br><span class="line">        );</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>架构变成：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[Agent Request] --&gt; B[Context Builder]
+
+    B --&gt; C[History Reducer]
+    B --&gt; D[RAG Selector]
+    B --&gt; E[Tool Selector]
+    B --&gt; F[State Manager]
+
+    C --&gt; G[Final Context]
+    D --&gt; G
+    E --&gt; G
+    F --&gt; G
+
+    G --&gt; H[Token Budget]
+    H --&gt; I[LLM]</code></pre>
+<p>这样 Token 策略就不会散落在几十个业务类里面。</p>
+<hr>
+<h3 id="12-Tool-Schema-动态加载">12. Tool Schema 动态加载</h3>
+<p>如果系统有 50 个 Tool，不应该每次都把 50 个 Schema 全部发送给模型。</p>
+<p>可以定义：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">interface</span> <span class="title class_">ToolSelector</span> &#123;</span><br><span class="line"></span><br><span class="line">    List&lt;ToolSchema&gt; <span class="title function_">select</span><span class="params">(String query)</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>简单实现：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">KeywordToolSelector</span></span><br><span class="line">        <span class="keyword">implements</span> <span class="title class_">ToolSelector</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> List&lt;ToolSchema&gt; tools;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="keyword">public</span> List&lt;ToolSchema&gt; <span class="title function_">select</span><span class="params">(String query)</span> &#123;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> tools.stream()</span><br><span class="line">                .filter(tool -&gt;</span><br><span class="line">                        tool.description()</span><br><span class="line">                                .toLowerCase()</span><br><span class="line">                                .contains(</span><br><span class="line">                                        query.toLowerCase()</span><br><span class="line">                                )</span><br><span class="line">                )</span><br><span class="line">                .limit(<span class="number">5</span>)</span><br><span class="line">                .toList();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>真实系统可以升级成：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">规则匹配</span><br><span class="line">+</span><br><span class="line">Embedding</span><br><span class="line">+</span><br><span class="line">轻量模型分类</span><br><span class="line">+</span><br><span class="line">Tool Ranking</span><br></pre></td></tr></table></figure>
+<p>流程：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[User Query] --&gt; B[Tool Router]
+    B --&gt; C[Candidate Tools]
+    C --&gt; D[Tool Ranking]
+    D --&gt; E[Selected Tools]
+    E --&gt; F[Load Schema]
+    F --&gt; G[LLM]</code></pre>
+<p>核心目标：</p>
+<blockquote>
+<p>让模型看到“可能需要的 Tool”，而不是“系统拥有的所有 Tool”。</p>
+</blockquote>
+<hr>
+<h3 id="13-模型路由">13. 模型路由</h3>
+<p>可以定义一个简单的模型选择器：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">enum</span> <span class="title class_">TaskComplexity</span> &#123;</span><br><span class="line">    SIMPLE,</span><br><span class="line">    NORMAL,</span><br><span class="line">    COMPLEX</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>然后：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">interface</span> <span class="title class_">ModelRouter</span> &#123;</span><br><span class="line"></span><br><span class="line">    String <span class="title function_">route</span><span class="params">(TaskComplexity complexity)</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>实现：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">DefaultModelRouter</span></span><br><span class="line">        <span class="keyword">implements</span> <span class="title class_">ModelRouter</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="keyword">public</span> String <span class="title function_">route</span><span class="params">(</span></span><br><span class="line"><span class="params">            TaskComplexity complexity</span></span><br><span class="line"><span class="params">    )</span> &#123;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">switch</span> (complexity) &#123;</span><br><span class="line">            <span class="keyword">case</span> SIMPLE -&gt; <span class="string">&quot;small-model&quot;</span>;</span><br><span class="line">            <span class="keyword">case</span> NORMAL -&gt; <span class="string">&quot;medium-model&quot;</span>;</span><br><span class="line">            <span class="keyword">case</span> COMPLEX -&gt; <span class="string">&quot;large-model&quot;</span>;</span><br><span class="line">        &#125;;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>调用：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">TaskComplexity</span> <span class="variable">complexity</span> <span class="operator">=</span></span><br><span class="line">        classifier.classify(request);</span><br><span class="line"></span><br><span class="line"><span class="type">String</span> <span class="variable">model</span> <span class="operator">=</span></span><br><span class="line">        modelRouter.route(complexity);</span><br><span class="line"></span><br><span class="line">llmClient.call(model, context);</span><br></pre></td></tr></table></figure>
+<p>这里不要把模型名称写死成某个平台的具体型号。</p>
+<p>实际项目应该通过配置中心管理：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">ai:</span></span><br><span class="line">  <span class="attr">models:</span></span><br><span class="line">    <span class="attr">simple:</span> <span class="string">small-model</span></span><br><span class="line">    <span class="attr">normal:</span> <span class="string">medium-model</span></span><br><span class="line">    <span class="attr">complex:</span> <span class="string">large-model</span></span><br></pre></td></tr></table></figure>
+<p>这样切换模型不需要重新修改业务代码。</p>
+<hr>
+<h3 id="14-请求级缓存">14. 请求级缓存</h3>
+<p>对于确定性比较强的请求，可以建立缓存。</p>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Cacheable(</span></span><br><span class="line"><span class="meta">        cacheNames = &quot;llm&quot;,</span></span><br><span class="line"><span class="meta">        key = &quot;#request.cacheKey()&quot;</span></span><br><span class="line"><span class="meta">)</span></span><br><span class="line"><span class="keyword">public</span> LlmResult&lt;?&gt; execute(</span><br><span class="line">        LlmRequest request</span><br><span class="line">) &#123;</span><br><span class="line">    <span class="keyword">return</span> llmClient.call(request);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但 <code>cacheKey()</code> 不应该简单使用用户原始问题。</p>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> String <span class="title function_">cacheKey</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> model</span><br><span class="line">            + <span class="string">&quot;:&quot;</span></span><br><span class="line">            + promptVersion</span><br><span class="line">            + <span class="string">&quot;:&quot;</span></span><br><span class="line">            + knowledgeVersion</span><br><span class="line">            + <span class="string">&quot;:&quot;</span></span><br><span class="line">            + normalizedQuery;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这样可以避免：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">+</span><br><span class="line">知识库修改</span><br><span class="line">+</span><br><span class="line">模型修改</span><br></pre></td></tr></table></figure>
+<p>以后仍然命中旧缓存。</p>
+<hr>
+<h3 id="15-Redis-实现-Token-相关缓存">15. Redis 实现 Token 相关缓存</h3>
+<p>如果使用 Redis，可以简单封装：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">LlmCache</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> RedisTemplate&lt;String, Object&gt; redis;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">LlmCache</span><span class="params">(</span></span><br><span class="line"><span class="params">            RedisTemplate&lt;String, Object&gt; redis</span></span><br><span class="line"><span class="params">    )</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.redis = redis;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> &lt;T&gt; T <span class="title function_">get</span><span class="params">(String key, Class&lt;T&gt; type)</span> &#123;</span><br><span class="line"></span><br><span class="line">        <span class="type">Object</span> <span class="variable">value</span> <span class="operator">=</span> redis.opsForValue().get(key);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (value == <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> type.cast(value);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">set</span><span class="params">(</span></span><br><span class="line"><span class="params">            String key,</span></span><br><span class="line"><span class="params">            Object value,</span></span><br><span class="line"><span class="params">            Duration ttl</span></span><br><span class="line"><span class="params">    )</span> &#123;</span><br><span class="line">        redis.opsForValue().set(</span><br><span class="line">                key,</span><br><span class="line">                value,</span><br><span class="line">                ttl</span><br><span class="line">        );</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>业务层：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">String</span> <span class="variable">key</span> <span class="operator">=</span> cacheKeyGenerator.generate(request);</span><br><span class="line"></span><br><span class="line">LlmResult&lt;?&gt; cached =</span><br><span class="line">        cache.get(key, LlmResult.class);</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (cached != <span class="literal">null</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> cached;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">LlmResult&lt;?&gt; result =</span><br><span class="line">        llmClient.call(request);</span><br><span class="line"></span><br><span class="line">cache.set(</span><br><span class="line">        key,</span><br><span class="line">        result,</span><br><span class="line">        Duration.ofMinutes(<span class="number">10</span>)</span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"><span class="keyword">return</span> result;</span><br></pre></td></tr></table></figure>
+<p>但语义缓存一定要考虑数据时效性。</p>
+<p>例如：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">今天东京天气</span><br></pre></td></tr></table></figure>
+<p>不能简单因为：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">东京天气</span><br></pre></td></tr></table></figure>
+<p>语义相似就长时间复用缓存。</p>
+<hr>
+<h3 id="16-Prompt-Cache-与应用缓存不是一回事">16. Prompt Cache 与应用缓存不是一回事</h3>
+<p>这两个概念不要混淆。</p>
+<p>应用缓存：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">请求</span><br><span class="line"> ↓</span><br><span class="line">Redis</span><br><span class="line"> ↓</span><br><span class="line">命中</span><br><span class="line"> ↓</span><br><span class="line">不调用 LLM</span><br></pre></td></tr></table></figure>
+<p>Prompt Cache：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">请求</span><br><span class="line"> ↓</span><br><span class="line">固定上下文</span><br><span class="line"> ↓</span><br><span class="line">模型平台缓存</span><br><span class="line"> ↓</span><br><span class="line">仍然调用 LLM</span><br></pre></td></tr></table></figure>
+<p>两者解决的问题不同。</p>
+<p>应用缓存主要减少：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">模型调用次数</span><br></pre></td></tr></table></figure>
+<p>Prompt Cache 更关注：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">重复上下文的处理成本</span><br></pre></td></tr></table></figure>
+<p>具体是否支持、如何命中以及如何计费，需要根据实际模型平台的实现确定。</p>
+<hr>
+<h3 id="17-输出结构化">17. 输出结构化</h3>
+<p>如果模型输出最终交给程序处理，不建议让模型自由发挥。</p>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">IntentResult</span><span class="params">(</span></span><br><span class="line"><span class="params">        String intent,</span></span><br><span class="line"><span class="params">        String orderId,</span></span><br><span class="line"><span class="params">        String status</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>模型输出：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;intent&quot;</span><span class="punctuation">:</span> <span class="string">&quot;ORDER_STATUS&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;orderId&quot;</span><span class="punctuation">:</span> <span class="string">&quot;10001&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;PAID&quot;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p>然后程序直接：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">IntentResult</span> <span class="variable">result</span> <span class="operator">=</span></span><br><span class="line">        objectMapper.readValue(</span><br><span class="line">                json,</span><br><span class="line">                IntentResult.class</span><br><span class="line">        );</span><br></pre></td></tr></table></figure>
+<p>相比：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">用户似乎想查询订单状态，</span><br><span class="line">订单号应该是 10001，</span><br><span class="line">当前订单已经支付完成……</span><br></pre></td></tr></table></figure>
+<p>结构化结果更适合 Agent。</p>
+<hr>
+<h3 id="18-确定性逻辑不要交给-LLM">18. 确定性逻辑不要交给 LLM</h3>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">isAdult</span><span class="params">(<span class="type">int</span> age)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> age &gt;= <span class="number">18</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>不要：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">LLM 判断用户年龄是否超过 18</span><br></pre></td></tr></table></figure>
+<p>日期：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">boolean</span> <span class="title function_">expired</span><span class="params">(</span></span><br><span class="line"><span class="params">        LocalDate expireDate</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> expireDate.isBefore(</span><br><span class="line">            LocalDate.now()</span><br><span class="line">    );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>金额：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> BigDecimal <span class="title function_">total</span><span class="params">(</span></span><br><span class="line"><span class="params">        BigDecimal price,</span></span><br><span class="line"><span class="params">        <span class="type">int</span> quantity</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> price.multiply(</span><br><span class="line">            BigDecimal.valueOf(quantity)</span><br><span class="line">    );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>权限：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (!permissionService.hasPermission(</span><br><span class="line">        userId,</span><br><span class="line">        <span class="string">&quot;ORDER_READ&quot;</span></span><br><span class="line">)) &#123;</span><br><span class="line">    <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">AccessDeniedException</span>(</span><br><span class="line">            <span class="string">&quot;permission denied&quot;</span></span><br><span class="line">    );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>LLM 可以负责：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">理解用户意图</span><br><span class="line">规划下一步</span><br><span class="line">生成参数</span><br><span class="line">解释结果</span><br></pre></td></tr></table></figure>
+<p>程序负责：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">计算</span><br><span class="line">校验</span><br><span class="line">权限</span><br><span class="line">事务</span><br><span class="line">状态转换</span><br><span class="line">数据一致性</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="一个完整的-Agent-执行器">一个完整的 Agent 执行器</h2>
+<p>把前面的代码组合起来，可以形成一个简化版本：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">AgentExecutor</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> AgentContextBuilder contextBuilder;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> ModelRouter modelRouter;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> ToolExecutor toolExecutor;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> LlmClient llmClient;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> String <span class="title function_">execute</span><span class="params">(</span></span><br><span class="line"><span class="params">            AgentRequest request</span></span><br><span class="line"><span class="params">    )</span> &#123;</span><br><span class="line"></span><br><span class="line">        <span class="type">AgentBudgetTracker</span> <span class="variable">tracker</span> <span class="operator">=</span></span><br><span class="line">                <span class="keyword">new</span> <span class="title class_">AgentBudgetTracker</span>(</span><br><span class="line">                        request.budget()</span><br><span class="line">                );</span><br><span class="line"></span><br><span class="line">        <span class="type">AgentContext</span> <span class="variable">context</span> <span class="operator">=</span></span><br><span class="line">                contextBuilder.build(request);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">while</span> (!tracker.exceeded()) &#123;</span><br><span class="line"></span><br><span class="line">            tracker.nextStep();</span><br><span class="line"></span><br><span class="line">            <span class="type">String</span> <span class="variable">model</span> <span class="operator">=</span></span><br><span class="line">                    modelRouter.route(</span><br><span class="line">                            request.complexity()</span><br><span class="line">                    );</span><br><span class="line"></span><br><span class="line">            LlmResult&lt;Action&gt; result =</span><br><span class="line">                    llmClient.plan(</span><br><span class="line">                            model,</span><br><span class="line">                            context</span><br><span class="line">                    );</span><br><span class="line"></span><br><span class="line">            tracker.recordLlm(</span><br><span class="line">                    result.usage()</span><br><span class="line">            );</span><br><span class="line"></span><br><span class="line">            <span class="type">Action</span> <span class="variable">action</span> <span class="operator">=</span></span><br><span class="line">                    result.content();</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (!action.requiresTool()) &#123;</span><br><span class="line">                <span class="keyword">return</span> action.answer();</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            tracker.recordToolCall();</span><br><span class="line"></span><br><span class="line">            ToolResult&lt;?&gt; toolResult =</span><br><span class="line">                    toolExecutor.execute(action);</span><br><span class="line"></span><br><span class="line">            context =</span><br><span class="line">                    context.withToolResult(</span><br><span class="line">                            toolResult</span><br><span class="line">                    );</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalStateException</span>(</span><br><span class="line">                <span class="string">&quot;Agent budget exceeded&quot;</span></span><br><span class="line">        );</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>完整调用链：</p>
+<pre><code class="highlight mermaid">sequenceDiagram
+    participant U as User
+    participant A as Agent
+    participant C as Context Builder
+    participant L as LLM
+    participant T as Tool
+    participant R as Redis
+
+    U-&gt;&gt;A: Request
+    A-&gt;&gt;C: Build Context
+    C-&gt;&gt;R: Query Cache
+    R--&gt;&gt;C: Cache Result
+    C--&gt;&gt;A: Optimized Context
+
+    A-&gt;&gt;L: Plan
+    L--&gt;&gt;A: Action
+
+    A-&gt;&gt;T: Execute Tool
+    T--&gt;&gt;A: Compact Result
+
+    A-&gt;&gt;L: Continue
+    L--&gt;&gt;A: Final Answer
+
+    A--&gt;&gt;U: Response</code></pre>
+<hr>
+<h2 id="最终推荐的-Context-Pipeline">最终推荐的 Context Pipeline</h2>
+<p>如果要把 Token 优化做成基础设施，可以设计成：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[User Request] --&gt; B[Request Normalizer]
+
+    B --&gt; C[History Reducer]
+    B --&gt; D[State Manager]
+    B --&gt; E[RAG Retriever]
+    B --&gt; F[Tool Selector]
+
+    E --&gt; G[RAG Filter]
+    G --&gt; H[RAG Compressor]
+
+    C --&gt; I[Context Builder]
+    D --&gt; I
+    H --&gt; I
+    F --&gt; I
+
+    I --&gt; J[Token Estimator]
+    J --&gt; K&#123;Budget Enough&#125;
+
+    K --&gt;|Yes| L[Model Router]
+    K --&gt;|No| M[Context Reducer]
+
+    M --&gt; J
+
+    L --&gt; N[LLM]
+    N --&gt; O&#123;Need Tool&#125;
+
+    O --&gt;|Yes| P[Tool Executor]
+    P --&gt; Q[Tool Result Reducer]
+    Q --&gt; I
+
+    O --&gt;|No| R[Structured Output]</code></pre>
+<p>这个架构比单纯在 Prompt 里面做文章更加有价值。</p>
+<p>因为 Token 的问题本质上贯穿：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">Request</span><br><span class="line">History</span><br><span class="line">State</span><br><span class="line">RAG</span><br><span class="line">Tool</span><br><span class="line">Context</span><br><span class="line">Model</span><br><span class="line">Agent</span><br><span class="line">Output</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="一个可以直接落地的优化配置">一个可以直接落地的优化配置</h2>
+<p>可以把 Token 策略配置化：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">ai:</span></span><br><span class="line">  <span class="attr">token:</span></span><br><span class="line">    <span class="attr">max-input:</span> <span class="number">12000</span></span><br><span class="line">    <span class="attr">max-output:</span> <span class="number">2000</span></span><br><span class="line">    <span class="attr">max-total:</span> <span class="number">14000</span></span><br><span class="line"></span><br><span class="line">  <span class="attr">history:</span></span><br><span class="line">    <span class="attr">max-messages:</span> <span class="number">8</span></span><br><span class="line">    <span class="attr">summary-enabled:</span> <span class="literal">true</span></span><br><span class="line"></span><br><span class="line">  <span class="attr">rag:</span></span><br><span class="line">    <span class="attr">retrieve-top-k:</span> <span class="number">20</span></span><br><span class="line">    <span class="attr">context-top-k:</span> <span class="number">5</span></span><br><span class="line">    <span class="attr">min-score:</span> <span class="number">0.72</span></span><br><span class="line">    <span class="attr">max-chunk-chars:</span> <span class="number">2000</span></span><br><span class="line"></span><br><span class="line">  <span class="attr">agent:</span></span><br><span class="line">    <span class="attr">max-steps:</span> <span class="number">10</span></span><br><span class="line">    <span class="attr">max-tool-calls:</span> <span class="number">8</span></span><br><span class="line">    <span class="attr">timeout-ms:</span> <span class="number">60000</span></span><br><span class="line"></span><br><span class="line">  <span class="attr">cache:</span></span><br><span class="line">    <span class="attr">enabled:</span> <span class="literal">true</span></span><br><span class="line">    <span class="attr">ttl-seconds:</span> <span class="number">600</span></span><br><span class="line"></span><br><span class="line">  <span class="attr">models:</span></span><br><span class="line">    <span class="attr">simple:</span> <span class="string">small-model</span></span><br><span class="line">    <span class="attr">normal:</span> <span class="string">medium-model</span></span><br><span class="line">    <span class="attr">complex:</span> <span class="string">large-model</span></span><br></pre></td></tr></table></figure>
+<p>对应 Spring Boot 配置：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@ConfigurationProperties(prefix = &quot;ai&quot;)</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">record</span> <span class="title class_">AiProperties</span><span class="params">(</span></span><br><span class="line"><span class="params">        TokenProperties token,</span></span><br><span class="line"><span class="params">        HistoryProperties history,</span></span><br><span class="line"><span class="params">        RagProperties rag,</span></span><br><span class="line"><span class="params">        AgentProperties agent,</span></span><br><span class="line"><span class="params">        CacheProperties cache,</span></span><br><span class="line"><span class="params">        ModelProperties models</span></span><br><span class="line"><span class="params">)</span> &#123;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这样 Token 策略就从业务代码中抽离出来了。</p>
+<p>后续调整：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">RAG Top-K</span><br><span class="line">历史消息数量</span><br><span class="line">Agent 最大步骤</span><br><span class="line">输出预算</span><br><span class="line">缓存时间</span><br><span class="line">模型路由</span><br></pre></td></tr></table></figure>
+<p>都可以通过配置完成。</p>
+<hr>
+<h2 id="生产环境建议增加-Token-Dashboard">生产环境建议增加 Token Dashboard</h2>
+<p>最终最好不要只看日志。可以建立类似下面的指标：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">AI Token Dashboard</span><br><span class="line"></span><br><span class="line">Total Tokens</span><br><span class="line">├── Input Tokens</span><br><span class="line">├── Output Tokens</span><br><span class="line">└── Cached Tokens</span><br><span class="line"></span><br><span class="line">Input Tokens</span><br><span class="line">├── System Prompt</span><br><span class="line">├── History</span><br><span class="line">├── RAG</span><br><span class="line">├── Tool Schema</span><br><span class="line">├── Tool Result</span><br><span class="line">└── User Input</span><br><span class="line"></span><br><span class="line">Agent</span><br><span class="line">├── Average Steps</span><br><span class="line">├── Average Tool Calls</span><br><span class="line">├── Max Steps</span><br><span class="line">├── Retry Count</span><br><span class="line">└── Budget Exceeded Count</span><br></pre></td></tr></table></figure>
+<p>例如 Prometheus 指标可以设计成：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">ai_llm_input_tokens_total</span><br><span class="line">ai_llm_output_tokens_total</span><br><span class="line">ai_llm_cached_tokens_total</span><br><span class="line">ai_agent_steps_total</span><br><span class="line">ai_agent_tool_calls_total</span><br><span class="line">ai_agent_budget_exceeded_total</span><br><span class="line">ai_llm_request_duration_seconds</span><br></pre></td></tr></table></figure>
+<p>然后通过 Grafana 做趋势分析。</p>
+<p>真正值得关注的不是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">今天用了多少 Token</span><br></pre></td></tr></table></figure>
+<p>而是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">哪类请求用了最多 Token？</span><br><span class="line">为什么？</span><br><span class="line">哪个 Agent 最浪费？</span><br><span class="line">哪个 Tool 返回的数据最多？</span><br><span class="line">RAG 占多少？</span><br><span class="line">历史消息占多少？</span><br><span class="line">优化以后任务成功率有没有变化？</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="Token-优化的排查顺序">Token 优化的排查顺序</h2>
+<p>线上出现 Token 成本异常时，可以按照这个顺序排查：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[Token 成本异常] --&gt; B[统计请求组成]
+
+    B --&gt; C[History]
+    C --&gt; D[System Prompt]
+    D --&gt; E[RAG]
+    E --&gt; F[Tool Schema]
+    F --&gt; G[Tool Result]
+    G --&gt; H[Agent Loop]
+
+    H --&gt; I[重复请求]
+    I --&gt; J[Cache]
+    J --&gt; K[Model Routing]
+    K --&gt; L[高级压缩]</code></pre>
+<p>推荐优先检查：</p>
+<table>
+<thead>
+<tr>
+<th>优先级</th>
+<th>检查项</th>
+<th>常见问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>History</td>
+<td>无限增长</td>
+</tr>
+<tr>
+<td>2</td>
+<td>System Prompt</td>
+<td>重复规则</td>
+</tr>
+<tr>
+<td>3</td>
+<td>RAG</td>
+<td>Top-K 过大</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Tool Schema</td>
+<td>Tool 数量过多</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Tool Result</td>
+<td>返回完整对象</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Agent Loop</td>
+<td>重复调用</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Cache</td>
+<td>重复请求</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Model Routing</td>
+<td>小任务使用大模型</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Output</td>
+<td>输出过度冗长</td>
+</tr>
+<tr>
+<td>10</td>
+<td>高级压缩</td>
+<td>在前面都解决后再考虑</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="不要为了-Token-而-Token">不要为了 Token 而 Token</h2>
+<p>Token 优化存在一个非常明显的反作用：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">Token 越少</span><br><span class="line">    ↓</span><br><span class="line">上下文越短</span><br><span class="line">    ↓</span><br><span class="line">模型获得的信息越少</span><br><span class="line">    ↓</span><br><span class="line">任务成功率可能下降</span><br></pre></td></tr></table></figure>
+<p>所以：Token 最少，不是正确目标。</p>
+<p>更合理的是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">成本</span><br><span class="line">+</span><br><span class="line">延迟</span><br><span class="line">+</span><br><span class="line">上下文质量</span><br><span class="line">+</span><br><span class="line">任务成功率</span><br><span class="line">+</span><br><span class="line">系统稳定性</span><br></pre></td></tr></table></figure>
+<p>例如：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">方案 A</span><br><span class="line">Input Token = 10000</span><br><span class="line">成功率 = 98%</span><br><span class="line"></span><br><span class="line">方案 B</span><br><span class="line">Input Token = 5000</span><br><span class="line">成功率 = 85%</span><br></pre></td></tr></table></figure>
+<p>不能因为 B 节省了 50% Token，就认为 B 一定更好。</p>
+<p>AI 系统最终还是业务系统。</p>
+<hr>
+<h2 id="一个完整的-Token-优化原则">一个完整的 Token 优化原则</h2>
+<p>可以把整套方法浓缩成下面这张图：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[Token Optimization] --&gt; B[减少重复]
+    A --&gt; C[减少无效上下文]
+    A --&gt; D[减少无效调用]
+    A --&gt; E[匹配模型能力]
+
+    B --&gt; B1[History]
+    B --&gt; B2[Cache]
+    B --&gt; B3[Prompt]
+
+    C --&gt; C1[RAG Filter]
+    C --&gt; C2[Tool DTO]
+    C --&gt; C3[Context Reduction]
+
+    D --&gt; D1[Agent Budget]
+    D --&gt; D2[Duplicate Detection]
+    D --&gt; D3[Code Execution]
+
+    E --&gt; E1[Model Router]
+    E --&gt; E2[Task Classification]</code></pre>
+<p>最终可以把 Token 优化总结成：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">Prompt：</span><br><span class="line">只保留真正影响模型行为的规则。</span><br><span class="line"></span><br><span class="line">History：</span><br><span class="line">保存任务状态，而不是无限保存聊天记录。</span><br><span class="line"></span><br><span class="line">RAG：</span><br><span class="line">检索更多候选，发送更少的有效内容。</span><br><span class="line"></span><br><span class="line">Tool：</span><br><span class="line">返回模型真正需要的数据，而不是数据库完整对象。</span><br><span class="line"></span><br><span class="line">Agent：</span><br><span class="line">限制步骤、Tool 调用次数和总预算。</span><br><span class="line"></span><br><span class="line">Output：</span><br><span class="line">控制无效输出，而不是盲目限制输出长度。</span><br><span class="line"></span><br><span class="line">Cache：</span><br><span class="line">避免重复计算和重复调用。</span><br><span class="line"></span><br><span class="line">Model：</span><br><span class="line">让模型能力匹配任务复杂度。</span><br><span class="line"></span><br><span class="line">Code：</span><br><span class="line">确定性逻辑交给程序处理。</span><br><span class="line"></span><br><span class="line">Metrics：</span><br><span class="line">先找到 Token 消耗在哪里，再决定如何优化。</span><br></pre></td></tr></table></figure>
+<p>Token 优化真正做得比较成熟以后，系统最终会形成一种类似“上下文编译器”的能力：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">原始请求</span><br><span class="line">    ↓</span><br><span class="line">History Reduction</span><br><span class="line">    ↓</span><br><span class="line">State Extraction</span><br><span class="line">    ↓</span><br><span class="line">RAG Retrieval</span><br><span class="line">    ↓</span><br><span class="line">RAG Filtering</span><br><span class="line">    ↓</span><br><span class="line">Tool Selection</span><br><span class="line">    ↓</span><br><span class="line">Tool Result Reduction</span><br><span class="line">    ↓</span><br><span class="line">Context Assembly</span><br><span class="line">    ↓</span><br><span class="line">Token Budget</span><br><span class="line">    ↓</span><br><span class="line">Model Routing</span><br><span class="line">    ↓</span><br><span class="line">LLM</span><br></pre></td></tr></table></figure>
+<p>最终优化的并不是某一个 Prompt。</p>
+<p>优化的是整个链路：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">Request</span><br><span class="line">→ Context</span><br><span class="line">→ Agent</span><br><span class="line">→ Tool</span><br><span class="line">→ Model</span><br><span class="line">→ Output</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>因此，Token 优化的核心不是让模型“少看一点”，而是让模型<strong>只看真正需要的东西</strong>。</p>
+</blockquote>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/09/ai-token-optimization/">https://pengline.cn/2026/09/ai-token-optimization/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/RAG/">RAG</a><a class="post-meta__tags" href="/tags/Token/">Token</a><a class="post-meta__tags" href="/tags/LLM/">LLM</a><a class="post-meta__tags" href="/tags/AI-Agent/">AI Agent</a><a class="post-meta__tags" href="/tags/Prompt/">Prompt</a><a class="post-meta__tags" href="/tags/Token%E6%88%90%E6%9C%AC/">Token成本</a><a class="post-meta__tags" href="/tags/Token%E8%8A%82%E7%BA%A6/">Token节约</a><a class="post-meta__tags" href="/tags/Agent%E6%88%90%E6%9C%AC%E6%8E%A7%E5%88%B6/">Agent成本控制</a><a class="post-meta__tags" href="/tags/Prompt%E5%8E%8B%E7%BC%A9/">Prompt压缩</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small160843rjlZC1759046923.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related full-width" href="/2026/09/549b2ab90a8440aca3cf2db940e5fa0e/" title="PenShot 性能评测：两次真实运行的阶段耗时画像与 LLM 瓶颈拆解"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144020384175514402028.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">PenShot 性能评测：两次真实运行的阶段耗时画像与 LLM 瓶颈拆解</div></div><div class="info-2"><div class="info-item-1">基于本地真实运行产物的 PenShot 性能评测：用产物时间戳还原两次同剧本任务的阶段耗时画像，定位 LLM 阶段瓶颈，对照解析置信度分布与质量分权重核算，盘点记忆与存储资源开销，所有数字均可在落盘文件中复核，并修正 Redis 依赖边界等常见误读。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/09/adead2730786492a8db849a00b754314/" title="PenShot 源码级测评：分镜 Agent 的架构成色、工程短板与演进路线"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746689748174574668963.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-14</div><div class="info-item-2">PenShot 源码级测评：分镜 Agent 的架构成色、工程短板与演进路线</div></div><div class="info-2"><div class="info-item-1">从源码、依赖与部署配置出发，对 PenShot 进行 30 个维度的工程测评：覆盖 Agent 架构、LangGraph 工作流、RAG 与三层记忆、多模型接入、MCP 生态、Docker 安全、测试体系与商业化潜力，逐项给出评分依据、不足清单与演进路线，所有判断均标注源码。</div></div></div></a><a class="pagination-related" href="/2026/05/f6bdb468a82d411c970148a7fd1de52c/" title="PenShot 向量检索考证：手动余弦替代检索器，空结果与重排序的源码真相"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small082829wjhIN1756340909.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-21</div><div class="info-item-2">PenShot 向量检索考证：手动余弦替代检索器，空结果与重排序的源码真相</div></div><div class="info-2"><div class="info-item-1">以源码为准绳考证 PenShot 向量检索：辨析"文本→向量→余弦排序"链路的真实实现，解析 query() 为何用手写余弦相似度替代 LlamaIndex 检索器，"返回 0 条结果"的完整排查复盘与索引损坏自愈机制，以及 BGE 重排序默认关闭、仅停在未接线路由上的真实接线现状与排坑清单。</div></div></div></a><a class="pagination-related" href="/2026/04/b2fdbe6ef0044bbb9e12b2c3ce9b3e06/" title="PenShot 智能分镜智能体架构演进：从 MVP 到导演级分镜的五阶段"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746689748174574668963.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-28</div><div class="info-item-2">PenShot 智能分镜智能体架构演进：从 MVP 到导演级分镜的五阶段</div></div><div class="info-2"><div class="info-item-1">梳理 PenShot 从 v0.1 MVP 到 v5.0 导演级分镜的完整演进路线：从任意格式剧本自动拆分片段并保证角色、场景与动作一致性，逐版本解读质量保障、智能增强、一致性契约、多模型适配、超长剧本与分布式调度等关键技术的真实落地状态，并对照源码核实各版本能力边界与规划差距。</div></div></div></a><a class="pagination-related" href="/2026/02/11d25a42ccc24b84b09bf5f6500b9f9e/" title="PenShot 一致性策略：多片段生成如何压制角色与场景漂移"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small202824LQTsk1760099304.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">PenShot 一致性策略：多片段生成如何压制角色与场景漂移</div></div><div class="info-2"><div class="info-item-1">从全局元数据、连续性注释到六项规则检查与 RAG 检索，逐层考证 PenShot 多片段一致性策略的真实实现与源码依据：哪些链路已接线、哪些是预留未接通、修复参数为何未能回流，以及规划中的色彩、光照、情绪曲线等增强策略方向与适用边界。</div></div></div></a><a class="pagination-related" href="/2025/11/0c17e5dc04ae4994b411db081a7c82d6/" title="大模型只会聊天如何变成会检索能调用工具的业务应用"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634265801642163426580161.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-06</div><div class="info-item-2">大模型只会聊天如何变成会检索能调用工具的业务应用</div></div><div class="info-2"><div class="info-item-1">LangChain 以模块化抽象加流水线编排的方式,把模型接入、提示词、记忆、检索与工具调用拆成标准组件组装,使大模型从只会聊天升级为可查库、会检索、记得住上下文且能自主决策的业务应用。详解模型管理、链式编排、智能决策、LangGraph 状态图与单多智能体实战案例及选型建议。</div></div></div></a><a class="pagination-related" href="/2025/09/92bb519d826e4443936d4cce27ceb524/" title="医疗大模型问答不可信如何用RAG加本地上线免幻觉"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1712590480744171259048056.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-04</div><div class="info-item-2">医疗大模型问答不可信如何用RAG加本地上线免幻觉</div></div><div class="info-2"><div class="info-item-1">大模型直接回答医学问题易产生幻觉,且依赖云端成本高、医疗数据有隐私顾虑。本文基于 LangChain 编排 RAG 检索、网络搜索与症状评估等多工具协作,借助 Ollama 本地推理与 Chroma 向量库构建完全本地化的医疗问答 Agent,给出完整源码、核心链路拆解与部署排坑。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">从 Prompt 压缩到 Agent 成本控制</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%88%E6%90%9E%E6%B8%85%E6%A5%9A-Token-%E5%88%B0%E5%BA%95%E6%B6%88%E8%80%97%E5%9C%A8%E5%93%AA%E9%87%8C"><span class="toc-number">1.1.</span> <span class="toc-text">先搞清楚 Token 到底消耗在哪里</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%88%E5%BB%BA%E7%AB%8B-Token-%E7%BB%9F%E8%AE%A1%E8%83%BD%E5%8A%9B"><span class="toc-number">1.2.</span> <span class="toc-text">先建立 Token 统计能力</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Token-%E4%BC%98%E5%8C%96%E6%8E%A7%E5%88%B6%E7%9A%8418%E7%A7%8D%E6%89%8B%E6%AE%B5"><span class="toc-number">1.3.</span> <span class="toc-text">Token 优化控制的18种手段</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-Prompt-%E4%BC%98%E5%8C%96%EF%BC%9A%E4%BB%8E%E5%AD%97%E7%AC%A6%E4%B8%B2%E6%8B%BC%E6%8E%A5%E5%BC%80%E5%A7%8B"><span class="toc-number">1.3.1.</span> <span class="toc-text">1. Prompt 优化：从字符串拼接开始</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E5%8E%86%E5%8F%B2%E6%B6%88%E6%81%AF%E8%A3%81%E5%89%AA"><span class="toc-number">1.3.2.</span> <span class="toc-text">2. 历史消息裁剪</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E7%94%A8%E7%BB%93%E6%9E%84%E5%8C%96-State-%E6%9B%BF%E4%BB%A3%E5%A4%A7%E9%87%8F%E5%8E%86%E5%8F%B2%E5%AF%B9%E8%AF%9D"><span class="toc-number">1.3.3.</span> <span class="toc-text">3. 用结构化 State 替代大量历史对话</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-RAG%EF%BC%9A%E6%A3%80%E7%B4%A2%E5%92%8C%E6%9C%80%E7%BB%88%E4%B8%8A%E4%B8%8B%E6%96%87%E5%88%86%E7%A6%BB"><span class="toc-number">1.3.4.</span> <span class="toc-text">4. RAG：检索和最终上下文分离</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-RAG-%E6%96%87%E6%A1%A3%E5%86%85%E5%AE%B9%E8%BF%98%E5%BA%94%E8%AF%A5%E7%BB%A7%E7%BB%AD%E8%A3%81%E5%89%AA"><span class="toc-number">1.3.5.</span> <span class="toc-text">5. RAG 文档内容还应该继续裁剪</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-Tool-Calling%EF%BC%9A%E4%B8%8D%E8%A6%81%E6%8A%8A%E6%95%B0%E6%8D%AE%E5%BA%93%E5%AF%B9%E8%B1%A1%E7%9B%B4%E6%8E%A5%E8%BF%94%E5%9B%9E%E7%BB%99-LLM"><span class="toc-number">1.3.6.</span> <span class="toc-text">6. Tool Calling：不要把数据库对象直接返回给 LLM</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-Tool-Result-%E8%BF%9B%E4%B8%80%E6%AD%A5%E5%81%9A%E6%91%98%E8%A6%81"><span class="toc-number">1.3.7.</span> <span class="toc-text">7. Tool Result 进一步做摘要</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#8-Agent-Budget%EF%BC%9A%E7%BB%99-Agent-%E5%BB%BA%E7%AB%8B%E7%A1%AC%E9%A2%84%E7%AE%97"><span class="toc-number">1.3.8.</span> <span class="toc-text">8. Agent Budget：给 Agent 建立硬预算</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#9-%E9%98%B2%E6%AD%A2-Tool-%E9%87%8D%E5%A4%8D%E8%B0%83%E7%94%A8"><span class="toc-number">1.3.9.</span> <span class="toc-text">9. 防止 Tool 重复调用</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#10-%E7%BB%99-Agent-%E8%AE%BE%E7%BD%AE-Token-Budget"><span class="toc-number">1.3.10.</span> <span class="toc-text">10. 给 Agent 设置 Token Budget</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#11-Context-Builder%EF%BC%9A%E6%8A%8A-Token-%E4%BC%98%E5%8C%96%E9%9B%86%E4%B8%AD%E7%AE%A1%E7%90%86"><span class="toc-number">1.3.11.</span> <span class="toc-text">11. Context Builder：把 Token 优化集中管理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#12-Tool-Schema-%E5%8A%A8%E6%80%81%E5%8A%A0%E8%BD%BD"><span class="toc-number">1.3.12.</span> <span class="toc-text">12. Tool Schema 动态加载</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#13-%E6%A8%A1%E5%9E%8B%E8%B7%AF%E7%94%B1"><span class="toc-number">1.3.13.</span> <span class="toc-text">13. 模型路由</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#14-%E8%AF%B7%E6%B1%82%E7%BA%A7%E7%BC%93%E5%AD%98"><span class="toc-number">1.3.14.</span> <span class="toc-text">14. 请求级缓存</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#15-Redis-%E5%AE%9E%E7%8E%B0-Token-%E7%9B%B8%E5%85%B3%E7%BC%93%E5%AD%98"><span class="toc-number">1.3.15.</span> <span class="toc-text">15. Redis 实现 Token 相关缓存</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#16-Prompt-Cache-%E4%B8%8E%E5%BA%94%E7%94%A8%E7%BC%93%E5%AD%98%E4%B8%8D%E6%98%AF%E4%B8%80%E5%9B%9E%E4%BA%8B"><span class="toc-number">1.3.16.</span> <span class="toc-text">16. Prompt Cache 与应用缓存不是一回事</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#17-%E8%BE%93%E5%87%BA%E7%BB%93%E6%9E%84%E5%8C%96"><span class="toc-number">1.3.17.</span> <span class="toc-text">17. 输出结构化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#18-%E7%A1%AE%E5%AE%9A%E6%80%A7%E9%80%BB%E8%BE%91%E4%B8%8D%E8%A6%81%E4%BA%A4%E7%BB%99-LLM"><span class="toc-number">1.3.18.</span> <span class="toc-text">18. 确定性逻辑不要交给 LLM</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E4%B8%AA%E5%AE%8C%E6%95%B4%E7%9A%84-Agent-%E6%89%A7%E8%A1%8C%E5%99%A8"><span class="toc-number">1.4.</span> <span class="toc-text">一个完整的 Agent 执行器</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9C%80%E7%BB%88%E6%8E%A8%E8%8D%90%E7%9A%84-Context-Pipeline"><span class="toc-number">1.5.</span> <span class="toc-text">最终推荐的 Context Pipeline</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E4%B8%AA%E5%8F%AF%E4%BB%A5%E7%9B%B4%E6%8E%A5%E8%90%BD%E5%9C%B0%E7%9A%84%E4%BC%98%E5%8C%96%E9%85%8D%E7%BD%AE"><span class="toc-number">1.6.</span> <span class="toc-text">一个可以直接落地的优化配置</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E5%BB%BA%E8%AE%AE%E5%A2%9E%E5%8A%A0-Token-Dashboard"><span class="toc-number">1.7.</span> <span class="toc-text">生产环境建议增加 Token Dashboard</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Token-%E4%BC%98%E5%8C%96%E7%9A%84%E6%8E%92%E6%9F%A5%E9%A1%BA%E5%BA%8F"><span class="toc-number">1.8.</span> <span class="toc-text">Token 优化的排查顺序</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%8D%E8%A6%81%E4%B8%BA%E4%BA%86-Token-%E8%80%8C-Token"><span class="toc-number">1.9.</span> <span class="toc-text">不要为了 Token 而 Token</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E4%B8%AA%E5%AE%8C%E6%95%B4%E7%9A%84-Token-%E4%BC%98%E5%8C%96%E5%8E%9F%E5%88%99"><span class="toc-number">1.10.</span> <span class="toc-text">一个完整的 Token 优化原则</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" defer></script><script src="/js/custom/auto_dark.js" defer></script><script src="/js/custom/mermaid_zoom.js" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
