@@ -1,0 +1,816 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="缓存集群从三台扩到四台，普通取模会让四分之三的键换位，命中率随之崩塌。本文从公式推演讲清一致性哈希如何把迁移范围压缩到邻近区段，再借虚拟节点治理倾斜，并对比哈希槽、剖析热点与宕机两大线上事故的处理思路。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法">
+<meta property="og:url" content="https://pengline.cn/2026/09/consistent-hashing/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="缓存集群从三台扩到四台，普通取模会让四分之三的键换位，命中率随之崩塌。本文从公式推演讲清一致性哈希如何把迁移范围压缩到邻近区段，再借虚拟节点治理倾斜，并对比哈希槽、剖析热点与宕机两大线上事故的处理思路。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp">
+<meta property="article:published_time" content="2026-09-27T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-28T11:01:09.032Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Ketama">
+<meta property="article:tag" content="Memcached">
+<meta property="article:tag" content="MurmurHash">
+<meta property="article:tag" content="Redis">
+<meta property="article:tag" content="一致性哈希">
+<meta property="article:tag" content="分布式系统">
+<meta property="article:tag" content="哈希槽">
+<meta property="article:tag" content="哈希算法">
+<meta property="article:tag" content="数据分片">
+<meta property="article:tag" content="有界负载">
+<meta property="article:tag" content="架构设计">
+<meta property="article:tag" content="缓存">
+<meta property="article:tag" content="虚拟节点">
+<meta property="article:tag" content="负载均衡">
+<meta property="article:tag" content="高可用">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/09/consistent-hashing/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">88</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">769</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">52</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-09-27T16:00:00.000Z" title="发表于 2026-09-28 00:00:00">2026-09-28</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-28T11:01:09.032Z" title="更新于 2026-09-28 19:01:09">2026-09-28</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E7%AE%97%E6%B3%95/">算法</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>一致性哈希的原理与实现方案</h1>
+<p>凌晨给缓存集群从 3 台 memcached 扩到 4 台，本意是扛住流量增长，结果上线几分钟后数据库 QPS 反而涨了十几倍，接口超时此起彼伏——不是新机器引入了问题，而是普通哈希取模在节点数变化时把大约四分之三的键重新洗了牌，缓存近乎整体失效。本文从这道简单的取模题出发，用公式推演说清&quot;痛&quot;在哪里，再展开一致性哈希为什么能把迁移范围压缩到一段弧，以及虚拟节点、哈希函数选型、有界负载这些工程落地的关键取舍，最后给出一版可运行的 Java 实现和两个真实线上坑的处置思路。</p>
+<h2 id="一、概述：评价一个分片方案的四把尺子">一、概述：评价一个分片方案的四把尺子</h2>
+<p>分布式缓存、分库分表、负载均衡，本质都在回答同一个问题：<strong>如何把一个巨大的键空间均匀地划分到 $N$ 个节点上，并且当 $N$ 发生变化时，这种划分能以最小的代价平滑过渡。</strong> 划分函数选得好不好，平时看不出差别，一旦扩缩容或者节点宕机，差别就是&quot;平滑发布&quot;和&quot;凌晨故障&quot;的区别。</p>
+<p>工程上评价一个分片方案，常用四把尺子：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>均衡性</strong>：键（以及期望负载）在各节点间接近均分，不能出现&quot;一个节点吃掉六成数据&quot;的局面。</p>
+</li>
+<li class="lvl-3">
+<p><strong>单调性</strong>：节点集合变化时，已有键只会<strong>留在原节点</strong>或<strong>迁入新节点</strong>，绝不会在旧节点之间互相搬家。这条性质保证了扩缩容的影响是局部的。</p>
+</li>
+<li class="lvl-3">
+<p><strong>低迁移率</strong>：一次拓扑变化之后，需要搬动或失效的键比例尽量小。对缓存来说，迁移等于失效；对存储来说，迁移等于真实的数据拷贝。</p>
+</li>
+<li class="lvl-3">
+<p><strong>可控性</strong>：运维能否精确干预&quot;哪些数据放在哪个节点&quot;“迁移按什么节奏进行”。自动化省心，但失控时没有抓手。</p>
+</li>
+</ol>
+<p>后面会反复用到这四把尺子：普通取模满足 1 和 4（简单本身就是一种可控），在 2 和 3 上彻底崩塌；一致性哈希天然满足 2 和 3，1 靠虚拟节点补齐，4 是它的天然短板——这也正是 Redis Cluster 选择哈希槽这条不同路线的根本原因。</p>
+<p>一致性哈希（Consistent Hashing）由 Karger 等人在 1997 年的论文《Consistent Hashing and Random Trees》中提出，最初为了解决 Web 缓存的热点问题，后来成为分布式哈希表（Dynamo、Cassandra）、memcached 客户端分片、负载均衡器的基石。它不是什么高深算法，核心只是一次视角转换：<strong>把&quot;节点数&quot;从归属函数里拿掉，用几何位置代替代数取模。</strong></p>
+<p>在展开算法之前，还要明确一个形态问题：分片逻辑放在哪里。实践中有三种放置形态——<strong>客户端分片</strong>（memcached 模式，哈希环跑在每个业务进程里，零中间层，但多端实现漂移的风险最大）、<strong>代理层分片</strong>（twemproxy / Codis 模式，环集中在代理，客户端无感，代价是多一跳延迟与代理自身的可用性问题）、<strong>服务端原生分片</strong>（Redis Cluster 模式，节点自己管数据分布与路由）。一致性哈希在这三种形态里都能用，但形态决定了&quot;实现漂移&quot;的风险有多大、元数据握在谁手里——这是第七节对比 Ketama 与哈希槽时的暗线。</p>
+<h2 id="二、普通哈希取模：节点数一变，全盘洗牌">二、普通哈希取模：节点数一变，全盘洗牌</h2>
+<h3 id="2-1-机制与迁移比例推演">2.1 机制与迁移比例推演</h3>
+<p>普通哈希取模的归属函数只有一行：</p>
+<p>$$\mathrm{node}(k) = h(k) \bmod N$$</p>
+<p>其中 $h$ 是哈希函数，$N$ 是节点数。它的优点无可挑剔：零元数据、$O(1)$ 计算、只要哈希函数均匀，键在槽位上的分布绝对均匀。在<strong>节点集合永远不变</strong>的前提下，它就是最优解。</p>
+<p>问题出在 $N$ 变化的那一瞬间。设节点数从 $N$ 变为 $M$（$M &gt; N$），某个哈希值为 $h$ 的键，新旧归属分别为 $h \bmod N$ 和 $h \bmod M$。键能留守原节点（同一个下标），当且仅当存在 $i \in [0, N)$ 使得：</p>
+<p>$$h \bmod N = h \bmod M = i \iff h \equiv i \pmod{\mathrm{lcm}(N, M)}$$</p>
+<p>在 $\mathrm{lcm}(N, M)$ 个连续取值中，每个 $i$ 恰好对应一个解，共 $N$ 个，于是：</p>
+<p>$$P_{\mathrm{stay}} = \frac{N}{\mathrm{lcm}(N, M)}, \qquad P_{\mathrm{move}} = 1 - P_{\mathrm{stay}}$$</p>
+<p>代入两个最常见的场景：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>$N \to N+1$</strong>（加一台机器，$N$ 与 $N+1$ 互质）：$P_{\mathrm{stay}} = \frac{1}{N+1}$，迁移比例 $P_{\mathrm{move}} = \frac{N}{N+1}$。3 台扩 4 台，迁移 $\frac{3}{4}$，即 75% 的键换节点。</p>
+</li>
+<li class="lvl-2">
+<p><strong>$N \to 2N$</strong>（翻倍扩容）：$P_{\mathrm{stay}} = \frac{N}{2N} = \frac{1}{2}$，迁移一半。</p>
+</li>
+</ul>
+<p>一个最小化的数值例子帮直觉落地，取 $N = 3$、$M = 4$：$h = 10$ 时，旧归属 $10 \bmod 3 = 1$、新归属 $10 \bmod 4 = 2$——键从 1 号节点搬到 2 号，注意这是<strong>旧节点之间的搬家</strong>，单调性在取模方案里根本不成立；$h = 12$ 时，$12 \bmod 3 = 0$、$12 \bmod 4 = 0$——留守；$h = 7$ 时，$7 \bmod 3 = 1$、$7 \bmod 4 = 3$——被新加的 3 号节点吸走。三个键三种命运，&quot;洗牌&quot;二字具象化了。</p>
+<p>注意一个反直觉的事实：迁移比例不随集群规模衰减。100 台的集群里加 1 台，照样洗掉 99% 的键。因为归属函数把 $N$ 当成了参数，$N$ 一变，<strong>全体键的归属函数被整体替换</strong>——这才是取模之痛的根源，不是哈希函数不好，而是函数签名里带着一个不该出现的变量。</p>
+<h3 id="2-2-命中率与回源放大的量化">2.2 命中率与回源放大的量化</h3>
+<p>迁移比例落到缓存场景，就是命中率崩塌。做一次推演：设集群稳态命中率为 $h_0$，扩容瞬间键按上面的比例重映射，迁走的键在新节点上没有任何缓存副本，请求必然未命中；留下的键照常命中。于是扩容瞬间的新命中率近似为：</p>
+<p>$$h’ \approx h_0 \cdot P_{\mathrm{stay}}$$</p>
+<p>数据库回源流量的放大倍数为：</p>
+<p>$$\text{放大倍数} = \frac{1 - h’}{1 - h_0}$$</p>
+<p>取 $h_0 = 0.95$、3 台扩 4 台（$P_{\mathrm{stay}} = 0.25$）：新命中率 $h’ \approx 0.2375$，回源放大 $\frac{0.7625}{0.05} = 15.25$ 倍。原本数据库只需要扛 5% 的穿透流量，扩容瞬间要扛 76%——这就是开头&quot;扩容扩出了故障&quot;的数学解释。</p>
+<p>两点诚实的补充说明：其一，这是<strong>瞬时值</strong>，迁走的键回源后会在新节点逐渐重建缓存，命中率会爬回去；其二，击穿恰恰发生在爬回去之前——回源风暴是秒级事件，而缓存重建是分钟级过程，数据库能不能活到爬回去，决定了这次扩容是&quot;有惊无险&quot;还是&quot;复盘报告&quot;。这也是为什么扩容要放在低峰期、为什么大规模缓存集群扩容前要做预热。</p>
+<h2 id="三、一致性哈希环：把节点数从归属函数里拿掉">三、一致性哈希环：把节点数从归属函数里拿掉</h2>
+<h3 id="3-1-环、顺时针寻址与归属区段">3.1 环、顺时针寻址与归属区段</h3>
+<p>一致性哈希的核心思想只有两步：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>键和节点用同一个哈希函数，映射到同一个固定大小的值域</strong>，通常是 32 位整数空间 $[0, 2^{32})$。节点（IP:Port）和键平起平坐，都是这个空间里的一个点。</p>
+</li>
+<li class="lvl-3">
+<p><strong>值域首尾相接构成一个环</strong>。键归属到环上顺时针方向的第一个节点。</p>
+</li>
+</ol>
+<pre><code class="highlight mermaid">flowchart LR
+    A[&quot;节点 A&lt;br&gt;hash(A) = 0x1A2B&quot;] --&gt; B[&quot;节点 B&lt;br&gt;hash(B) = 0x5C6D&quot;]
+    B --&gt; C[&quot;节点 C&lt;br&gt;hash(C) = 0x9EAF&quot;]
+    C --&gt; A
+    K1[&quot;key1 = 0x2C00&quot;] -. 顺时针第一个节点 .-&gt; B
+    K2[&quot;key2 = 0x7F00&quot;] -. 顺时针第一个节点 .-&gt; C
+    K3[&quot;key3 = 0xE100&quot;] -. 顺时针第一个节点 .-&gt; A
+    style A fill:#bbf
+    style B fill:#bfb
+    style C fill:#fbb</code></pre>
+<p>在环的视角下，每个节点负责的区段是&quot;从逆时针方向的上一个节点，到它自己&quot;的那段弧。顺时针只是约定俗成（逆时针在数学上完全等价），关键是这层归属关系同时满足<strong>确定性</strong>（任何客户端对同一键、同一节点集合，必然算出同一归属）和<strong>单调性</strong>（节点增减只改变局部映射）。</p>
+<p>一个隐藏的 trade-off 值得指出：取模寻址是 $O(1)$ 的算术运算，环寻址需要在有序结构上二分查找，$O(\log N)$（TreeMap 或有序数组）。对几台到几百台节点来说这个开销可以忽略，但它说明一致性哈希不是&quot;免费&quot;的——它是用一点查找成本和一份环结构，换来了拓扑稳定性。</p>
+<h3 id="3-2-增减节点只动一段弧：迁移比例的量化">3.2 增减节点只动一段弧：迁移比例的量化</h3>
+<p>现在看最关键的问题：向 $N$ 个节点的环里插入新节点 $X$，会发生什么？</p>
+<p>$X$ 落在环上某个位置后，只接管&quot;从它的逆时针前驱到它自己&quot;的那段弧。这段弧上的键，原先归 $X$ 的顺时针后继所有，现在改归 $X$；<strong>环上其余所有键一动不动</strong>。这就是单调性的几何来源：键的归属由&quot;环上的位置关系&quot;决定，插入一个点只改变一个局部区段。</p>
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph S1[&quot;扩容前：3 个节点各管一段弧&quot;]
+        a1[&quot;节点 A&quot;] --&gt; b1[&quot;节点 B&quot;] --&gt; c1[&quot;节点 C&quot;] --&gt; a1
+    end
+    subgraph S2[&quot;扩容后：节点 D 插入 A 与 B 之间&quot;]
+        a2[&quot;节点 A&quot;] --&gt;|&quot;这段弧的键改挂 D&quot;| d2[&quot;节点 D（新增）&quot;]
+        d2 --&gt; b2[&quot;节点 B&quot;] --&gt; c2[&quot;节点 C&quot;] --&gt; a2
+    end
+    style d2 fill:#ffd</code></pre>
+<p>迁移比例能精确量化。设环上已有 $N$ 个均匀随机落点，它们把环切成 $N$ 段弧，弧长向量服从参数为 $(1, \dots, 1)$ 的 Dirichlet 分布，单段弧长 $G_i \sim \mathrm{Beta}(1, N-1)$，其二阶矩为 $\mathbb{E}[G_i^2] = \frac{2}{N(N+1)}$。新节点等概率落在弧上任意位置，接管的是&quot;落点与前驱之间&quot;的半段，且落点选中某段弧的概率正比于弧长，于是期望迁移比例：</p>
+<p>$$\mathbb{E}[R_{\mathrm{move}}] = \sum_{i=1}^{N} \mathbb{E}!\left[G_i \cdot \frac{G_i}{2}\right] = \frac{N}{2} \cdot \frac{2}{N(N+1)} = \frac{1}{N+1}$$</p>
+<p><strong>增加一个节点，期望只迁移 $\frac{1}{N+1}$ 的键</strong>；摘除一个节点，它的全部键顺延到顺时针后继，迁移量恰为其自身份额约 $\frac{1}{N}$，其余键不动。统称&quot;一次拓扑变化迁移约 $1/N$&quot;。对比取模的 $\frac{N}{N+1}$：同样是 3 台扩 4 台，迁移比例从 75% 压到 25%，命中率从 $0.95 \times 0.25 = 23.75%$ 抬到 $0.95 \times 0.75 = 71.25%$，回源放大从 15.25 倍降到 5.75 倍。</p>
+<p>两点必须诚实指出的边界：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>$\frac{1}{N+1}$ 是<strong>统计期望</strong>。单次落点有方差，$N$ 很小时波动明显——同样的 3 扩 4，这次可能迁 8%，下次可能迁 35%。方差的来源和治理正是下一节的主题。</p>
+</li>
+<li class="lvl-2">
+<p>一致性哈希只解决&quot;映射关系稳定&quot;，<strong>迁走的键在新节点上依然是冷的</strong>，该回源的一次都不会少。它把受影响的键从 $\frac{3}{4}$ 压到 $\frac{1}{4}$，但每一把迁走的键都还是要由数据库教一遍。映射稳定是必要条件，不是充分条件。</p>
+</li>
+</ul>
+<h3 id="3-3-工程节奏：扩容先预热，缩容先摘流量">3.3 工程节奏：扩容先预热，缩容先摘流量</h3>
+<p>一致性哈希把&quot;谁受影响&quot;压到了局部，但受影响的那部分键依然要经历一轮 miss。工程上有一套与算法配合的节奏，让这轮 miss 变得不痛：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>扩容：先加入、后生效</strong>。新节点先以极小权重（少量虚拟节点）进环，用真实键回源填充或从数据库拉热键预热，等命中率爬稳后再放大权重到目标值。客户端分片没有现成预热机制时，常见做法是迁移窗口内&quot;双读&quot;：读新环未命中时回源并回写新旧两处，让缓存自然长齐。</p>
+</li>
+<li class="lvl-2">
+<p><strong>缩容：先摘流量、后停进程</strong>。把待下线节点的权重逐步降为零，等它的键被顺延、新归属节点命中率稳定后再真正停掉服务。直接 kill 等价于制造一次 9.2 节描述的击穿。</p>
+</li>
+<li class="lvl-2">
+<p><strong>变更窗口</strong>：拓扑变更尽量安排在低峰期，并提前把回源保护（singleflight、熔断）逐项检查。算法降低的是影响面，运维节奏降低的是影响烈度，两者是乘法关系。</p>
+</li>
+</ul>
+<p>顺带回答一个自然的疑问：既然环查找要 $O(\log N)$、还要维护有序结构，有没有更朴素的替代？有——<strong>Rendezvous 哈希</strong>（最高随机权重，HRW）：对每个节点计算 $\mathrm{score}_i = h(\mathrm{node}_i ,|, key)$，键归给得分最高的节点。它同样满足单调性（新节点只接管自己得分最高的那些键，其余不动）、无需环结构、五行代码就能写完。代价是每次寻址要遍历全部节点算 $N$ 次哈希，$O(N)$ 的查找成本在几十台节点时无感，在千级节点的环上就是热路径灾难。取舍很清晰：小集群图省事可以用 HRW，规模一大就回到环加二分。</p>
+<h2 id="四、数据倾斜与虚拟节点">四、数据倾斜与虚拟节点</h2>
+<h3 id="4-1-少节点时代，倾斜从哪里来">4.1 少节点时代，倾斜从哪里来</h3>
+<p>一致性哈希的均衡性证明有个隐含前提：环上落点足够多。每个节点只有<strong>一个</strong>落点时，$N$ 个点切出的 $N$ 段弧长服从 $\mathrm{Beta}(1, N-1)$ 分布，均值 $\frac{1}{N}$，标准差与均值同量级——相对波动接近 100%。这意味着有的节点拿到两三倍于均值的负载，有的只拿到零头。</p>
+<p>用概率论里一个经典结论感受一下严重程度：$n$ 个均匀随机点切环，期望最大的那段弧占全环的比例为 $H_n / n$（$H_n$ 为调和数）。代入 $n = 3$：</p>
+<p>$$\frac{H_3}{3} = \frac{1 + 1/2 + 1/3}{3} \approx 0.611$$</p>
+<p><strong>三个节点、无虚拟节点时，&quot;运气最差的那次部署&quot;里最大的一段弧期望占全环 61%</strong>——六成的键压在一台机器上，均衡性直接退化成玄学。节点越少越严重，而实践中恰恰是小集群（3~10 台）最常需要扩缩容。</p>
+<h3 id="4-2-虚拟节点：用-M-个点买均匀">4.2 虚拟节点：用 M 个点买均匀</h3>
+<p>解法朴素而有效：<strong>让每个物理节点在环上占 M 个位置</strong>。为物理节点 $A$ 生成 $M$ 个虚拟节点（VNode），每个 VNode 用独立字符串（如 <code>A#VN#7</code>）哈希后落环；键顺时针命中某个 VNode 后，再反查出它背后的物理节点。</p>
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph P[&quot;物理节点（每个映射多个虚拟点）&quot;]
+        PA[&quot;物理节点 A&lt;br&gt;权重 1 → vnode ×150&quot;]
+        PB[&quot;物理节点 B&lt;br&gt;权重 1 → vnode ×150&quot;]
+        PC[&quot;物理节点 C&lt;br&gt;权重 2 → vnode ×300&quot;]
+    end
+    subgraph R[&quot;环上落点示意（截取一小段）&quot;]
+        v1[&quot;A-7&quot;] --&gt; v2[&quot;B-23&quot;] --&gt; v3[&quot;C-41&quot;] --&gt; v4[&quot;A-88&quot;] --&gt; v5[&quot;C-92&quot;] --&gt; v6[&quot;B-101&quot;] --&gt; v7[&quot;C-150&quot;] --&gt; v8[&quot;B-998&quot;] --&gt; v1
+    end
+    PA -. 映射 .-&gt; v1
+    PA -. 映射 .-&gt; v4
+    PB -. 映射 .-&gt; v2
+    PB -. 映射 .-&gt; v6
+    PB -. 映射 .-&gt; v8
+    PC -. 映射 .-&gt; v3
+    PC -. 映射 .-&gt; v5
+    PC -. 映射 .-&gt; v7
+    style v1 fill:#bbf
+    style v4 fill:#bbf
+    style v2 fill:#bfb
+    style v6 fill:#bfb
+    style v8 fill:#bfb
+    style v3 fill:#fbb
+    style v5 fill:#fbb
+    style v7 fill:#fbb</code></pre>
+<p>均匀性的改善可以量化。环上共 $MN$ 个落点，每段弧长期望 $\frac{1}{MN}$；某物理节点的负载等于它 $M$ 段弧长之和，期望仍是 $\frac{1}{N}$ 不变，但方差做了 $M$ 次平均。把弧长近似看作独立同分布（量级正确，严格值略有出入），可得节点负载的<strong>相对标准差</strong>：</p>
+<p>$$\frac{\sigma}{\mu} \approx \frac{1}{\sqrt{M}}$$</p>
+<p>注意这个式子<strong>与集群规模 $N$ 无关</strong>——这正是虚拟节点的精髓：它把&quot;环上够不够密&quot;的问题从 $N$ 转移到了 $M$，而 $M$ 是我们随便定的。$M = 150$ 时相对波动约 8%，$M = 400$ 时约 5%。三个节点的小集群也能做到均匀，不再依赖运气。</p>
+<p>虚拟节点还有一个经常被忽略的<strong>故障摊薄收益</strong>：无虚拟节点时，一台节点宕机，它的全部键砸给<strong>唯一的</strong>顺时针后继，该节点负载瞬间从 $\frac{1}{N}$ 翻到 $\frac{2}{N}$；有虚拟节点时，宕机节点的 $M$ 段弧散布全环，它的键会流向 $M$ 个不同的后继节点，冲击被摊薄。扩容同理——新节点从多个前驱手里各接管一点，而不是从一个倒霉蛋手里整体接管。</p>
+<p>权重也就水到渠成：给权重 2 的机器分配 $2M$ 个虚拟节点，权重比即虚拟节点数比，异构机器混部（4C8G 与 8C32G 同池）时这是最常用的表达方式。</p>
+<h3 id="4-3-M-怎么选：成本与收益的权衡">4.3 M 怎么选：成本与收益的权衡</h3>
+<p>虚拟节点数 $M$ 是用资源换均匀性的旋钮，两边都要算清楚：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>收益递减</strong>：相对波动 $\frac{1}{\sqrt{M}}$，$M$ 从 100 加到 400 只把 10% 压到 5%，再往上翻四倍才到 2.5%。平滑改善，但边际越来越贵。</p>
+</li>
+<li class="lvl-2">
+<p><strong>成本线性</strong>：环上落点数 $MN$，内存占用、二分查找深度 $\log_2(MN)$、节点增减时环结构的重建开销都随 $M$ 线性或近似线性增长。算一笔小账：3 节点 × 150 vnode = 450 个落点，TreeMap 也就几 KB 内存、查找深度 9 层，小集群完全可以忽略；万级节点 × $M = 1000$ 就是千万级落点，环的构建与传播成本才开始需要精打细算。</p>
+</li>
+<li class="lvl-2">
+<p><strong>业界取值</strong>：Ketama 默认每物理节点 160 个落点（后文详述），早期 Cassandra 默认每节点 256 个 token（新版本减少 token 数并引入感知副本因子的智能分配，说明大 $M$ 并非越新越好）。</p>
+</li>
+</ul>
+<p>经验法则：把相对波动压到 10% 以内后，继续加大 $M$ 的意义就不大了，<strong>100~200 是常见的甜点区间</strong>；剩下的不均匀往往不是 $M$ 不够，而是别的问题（比如下面要讲的热点）。</p>
+<h2 id="五、哈希函数的选择：均匀性与性能的取舍">五、哈希函数的选择：均匀性与性能的取舍</h2>
+<p>一致性哈希的一切结论都建立在&quot;哈希输出近似均匀随机&quot;之上，哈希函数一旦有偏，环上的&quot;均匀落点&quot;就是伪命题。选型有三条硬要求：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>分布均匀</strong>：输出在值域上均匀，输入的微小变化引起输出近似独立的变化（雪崩效应）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>确定且跨进程一致</strong>：同一输入在任何客户端、任何语言里算出同一坐标。分片逻辑跑在客户端时（memcached 模式），这条是生命线——两端哈希不一致，同一键会被写到不同节点，读的时候就是脏读。</p>
+</li>
+<li class="lvl-3">
+<p><strong>够快</strong>：每次读写都要至少算一次哈希，热路径上的开销会被放大到整个集群。</p>
+</li>
+</ol>
+<p>第 1 条值得多说一句。真实键空间常有结构：订单键以 <code>order:</code> 开头、用户键以 <code>uid:</code> 开头，变化集中在尾部的自增数字上。这对加密级质量的哈希（MD5/Murmur）无所谓——雪崩效应保证输入差 1、输出面目全非；对弱哈希则是致命的：乘 31 的 hashCode 在&quot;同前缀 + 小范围尾部数字&quot;这类输入下，低位分布会有明显结构，落到环上就是一片聚集。所以&quot;分布均匀&quot;不是看哈希函数对随机输入的表现，而是看它对你的<strong>真实键形态</strong>的表现。</p>
+<p>几个常见选项的对比：</p>
+<table>
+<thead>
+<tr>
+<th>函数</th>
+<th>输出位宽</th>
+<th>速度</th>
+<th>分布质量</th>
+<th>跨语言共识</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MD5</td>
+<td>128</td>
+<td>数百 MB/s 量级</td>
+<td>优</td>
+<td>高（Ketama 事实标准）</td>
+<td>加密级散列用于分片属&quot;重炮打蚊子&quot;，但换来兼容性</td>
+</tr>
+<tr>
+<td>MurmurHash3</td>
+<td>32/128</td>
+<td>GB/s 量级</td>
+<td>优</td>
+<td>中（各语言实现齐全）</td>
+<td>Cassandra 分区器的现役选择</td>
+</tr>
+<tr>
+<td>xxHash</td>
+<td>32/64</td>
+<td>极快</td>
+<td>优</td>
+<td>中</td>
+<td>追求吞吐时的热门选项</td>
+</tr>
+<tr>
+<td>Java String.hashCode</td>
+<td>32</td>
+<td>极快</td>
+<td>弱（乘 31 有结构性碰撞）</td>
+<td>无（各语言各自实现）</td>
+<td>质量无保证且跨语言必然分裂，勿用</td>
+</tr>
+<tr>
+<td>CRC32</td>
+<td>32</td>
+<td>快</td>
+<td>低位有线性结构</td>
+<td>实现细节有分歧</td>
+<td>为差错检测设计，勿用于分片</td>
+</tr>
+</tbody>
+</table>
+<p>两个方向性的实例：Dynamo 论文给键和节点都用的 MD5；Cassandra 早期分区器基于 MD5，后来整体切换到 MurmurHash3——哈希质量一旦&quot;够用&quot;，生态就会向性能迁移。</p>
+<p>一个容易踩的反面细节：<strong>带密钥的哈希不能用于分片</strong>。SipHash 之类带密钥的函数是为防哈希碰撞 DoS 设计的，但不同进程密钥不同，用它在客户端分片，每个客户端实例的&quot;环&quot;都不一样，视图直接分裂。分片要的是所有人共享的确定性，不是保密性。</p>
+<p>工程结论：需要多语言客户端读写同一集群（跨生态兼容优先），用 MD5 + Ketama 约定；单一技术栈自研分片，MurmurHash3 或 xxHash 即可，性能余量大得多。</p>
+<p>最后一个与哈希相关、却常被误归咎于哈希函数的问题是<strong>分片键的选择</strong>——拿什么作为哈希的输入。用 user_id 做输入，同一用户的键必然聚在同一节点（业务亲和：批量拉取快、本地性好），代价是用户间数据量悬殊时天然倾斜；用 order_id 做输入，数据最均匀，代价是&quot;拉一个用户的全部订单&quot;要打满全集群。Redis 的 hash tag（<code>{user1000}.follow</code>）就是在这两端之间开的手动阀门：把需要同槽的键显式圈在一起。记住分片键决定&quot;谁和谁聚在一起&quot;，哈希函数只决定&quot;聚在一起之后散得多开&quot;——两层问题，别混着诊断。</p>
+<h2 id="六、进阶：有界负载一致性哈希（Bounded-Loads）">六、进阶：有界负载一致性哈希（Bounded Loads）</h2>
+<p>虚拟节点治理的是&quot;键数量&quot;的期望均衡，但均衡性还有另一层含义：<strong>请求负载</strong>。当访问分布长尾严重（Zipf 律下 top 0.1% 的键可以贡献两位数百分比的请求）、或者 value 大小悬殊时，键数量均匀的环照样出现实际负载失衡——每个节点分到的键一样多，但有的键是&quot;常旅客&quot;，有的键一年被访问一次。</p>
+<p>有界负载一致性哈希（Consistent Hashing with Bounded Loads，Google 2017 年论文，arXiv:1608.01350）在环上补了一条硬约束：给每个节点设容量上限</p>
+<p>$$c = (1 + \varepsilon) \cdot \frac{\text{总负载}}{N}$$</p>
+<p>寻址时沿环顺时针查找，<strong>若目标节点已满，跳过它继续探测下一个未满节点</strong>：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    K[&quot;请求 key x&quot;] --&gt; H[&quot;顺时针定位到节点 N2&quot;]
+    H --&gt; F&#123;&quot;N2 负载 &lt; 上限？&lt;br&gt;上限 = (1+ε) × 均值&quot;&#125;
+    F --&gt;|未满| OK[&quot;请求落在 N2&quot;]
+    F --&gt;|已满| N3[&quot;顺时针探测 N3&quot;]
+    N3 --&gt; F2&#123;&quot;N3 未满？&quot;&#125;
+    F2 --&gt;|未满| OK2[&quot;请求落在 N3&quot;]
+    F2 --&gt;|已满| N4[&quot;继续顺时针探测下一个节点&quot;]
+    style OK fill:#bfb
+    style OK2 fill:#bfb</code></pre>
+<p>它的性质与代价是一组成对出现的 trade-off：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>负载上界</strong>：任何时刻单节点负载不超过 $(1+\varepsilon)$ 倍均值，倾斜被硬性封顶。</p>
+</li>
+<li class="lvl-2">
+<p><strong>一致性保留</strong>：节点集合不变时，绝大多数键仍落在一致性哈希的原归属上，只有超限节点附近的键会外溢；论文证明负载接近上限时迁移率只温和上升。$\varepsilon$ 越小，均衡越硬，但探测距离越远、对&quot;计数&quot;的精度要求越高——$\varepsilon$ 通常取 1.25 左右这种量级，而不是压到 1.01。</p>
+</li>
+<li class="lvl-2">
+<p><strong>计数的现实性</strong>：容量判断依赖每节点的实时负载计数。负载均衡场景按并发请求数计数（请求结束递减），存储场景按 key 数计数；分布式环境下计数本身就是近似值，这也是实践中它叫&quot;有界&quot;而不是&quot;精确等于&quot;的原因。</p>
+</li>
+</ul>
+<p>落地方面，Google 在内部系统验证了该算法，Cloudflare 把同样的思路用进了负载均衡体系。适用场景很清晰：<strong>请求量型倾斜明显</strong>的代理层与 LB（节点间请求 QPS 差异大，但单键 QPS 不至于爆炸）。它救不了另一种热点——某个单键自身就有数万 QPS：一个键只能归属一个节点，除非引入多副本，否则任何分片算法都无计可施，这是第九节的话题。</p>
+<p>顺带一提另一个流派的方案：Google 2014 年的 Jump Hash（Lamping &amp; Veach）。它零内存、$O(\ln N)$，迁移率同样最优（约 $\frac{1}{N+1}$），但只接受&quot;编号 $0…N{-}1$ 的槽&quot;，节点中途摘除需要重新编号，也不支持权重与任意节点身份。它适合&quot;槽固定、槽到机器另做映射&quot;的两层架构，而不适合节点自由增减的环——工程上要知道它的存在，但别拿它直接替代一致性哈希。</p>
+<h2 id="七、真实世界的两种答案：Ketama-与-Redis-哈希槽">七、真实世界的两种答案：Ketama 与 Redis 哈希槽</h2>
+<h3 id="7-1-Memcached-客户端分片的-Ketama">7.1 Memcached 客户端分片的 Ketama</h3>
+<p>memcached 服务端是&quot;无元数据&quot;的——它不知道自己属于哪个集群，分片逻辑全部在客户端。这带来一个尖锐的问题：PHP、Java、Python、C 多种客户端同时读写同一个集群，&quot;键落在哪个节点&quot;必须是<strong>所有端逐字节一致</strong>的约定，任何一端实现漂移，后果就是写进 A 读自 B 的脏读。</p>
+<p>2007 年 <a target="_blank" rel="external nofollow noopener noreferrer" href="http://Last.fm">Last.fm</a> 开源的 Ketama 把这些细节钉死成了事实标准：MD5 哈希；节点串格式固定为 <code>ip:port</code>；每物理节点默认 160 个落点（40 轮 MD5、每轮从 16 字节摘要中产出 4 个 32 位落点）；权重按落点数量比例折算。160 个虚拟节点对应约 8% 的相对波动，配合 MD5 的分布质量，均衡性足够。</p>
+<p>Ketama 的价值不在算法新颖——它就是一致性哈希加虚拟节点的朴素实现——而在于它证明了一件事：<strong>客户端分片方案最大的工程风险不是算法，是&quot;实现漂移&quot;</strong>。把哈希函数、节点串格式、落点数量、权重折算全部写死成规范，各语言实现照抄，这才撑起了 memcached 生态十几年的客户端分片。</p>
+<h3 id="7-2-Redis-Cluster-为什么不用一致性哈希">7.2 Redis Cluster 为什么不用一致性哈希</h3>
+<p>Redis Cluster 走了另一条路：固定 <strong>16384 个哈希槽</strong>，$\mathrm{slot} = \mathrm{CRC16}(key) \bmod 16384$，槽到节点的映射是集群<strong>显式维护</strong>的元数据（通过 gossip 总线传播，客户端缓存槽表后直连数据节点）。可用 hash tag（如 <code>{user1000}.follow</code>）强制多个键进同一槽。</p>
+<p>为什么弃用一致性哈希？四个理由，每条都对应一致性哈希的真实短板：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>可控性</strong>。一致性哈希的数据归属由&quot;哈希函数 + 当前节点集合&quot;隐式决定，运维想把某段数据挪走、想控制迁移节奏，没有抓手——环只告诉你&quot;这次会迁多少&quot;，不让你选&quot;迁哪些&quot;。槽是显式单元：reshard 时指定&quot;把哪些槽迁到哪个节点&quot;，逐键 MIGRATE 搬数据，迁移中的槽用 ASK/MOVED 重定向，可暂停、可观察、可回滚。整个流程是一台显式状态机：先把目标槽标记为 MIGRATING，随后逐键搬迁（期间该槽的请求按键是否已搬走，分别收到 ASK 或正常响应），搬完更新槽表并广播全集群——进度以槽为粒度可见，出问题可以停在半途，这在一致性哈希的&quot;隐式归属&quot;里根本无从谈起。</p>
+</li>
+<li class="lvl-3">
+<p><strong>解耦与故障转移语义</strong>。键到槽的映射与节点数无关，槽到节点才是元数据。主从切换时，槽整体跟随主节点转移给新主，语义干净；一致性哈希下节点身份直接参与运算，故障转移的映射变化散落在全环，没有&quot;整体转移&quot;这个概念。</p>
+</li>
+<li class="lvl-3">
+<p><strong>均衡不需要虚拟节点</strong>。槽的粒度天然均分（每槽键数量期望相同），16384 个槽对千级节点绰绰有余，倾斜只可能来自大 key / 热 key，与分片算法无关。</p>
+</li>
+<li class="lvl-3">
+<p><strong>心跳开销的折中</strong>。gossip 心跳包携带槽位图，16384 位即 2KB；若用 65536 槽就是 8KB，在官方建议的约 1000 节点集群规模上限下，这个常驻开销不值得。16384 是&quot;槽位够细 + 心跳别太肥&quot;的平衡点。</p>
+</li>
+</ol>
+<p>代价也要摆上台面：扩缩容必须显式搬数据（redis-cli 工具半自动化），不像客户端分片&quot;把新节点加进列表就完事&quot;；智能客户端要维护槽表、处理重定向，复杂度更高。两者的本质区别一句话就能说清：<strong>一致性哈希把元数据藏进了函数——谁都不用存，但谁也改不了；哈希槽把元数据摆上了台面——要维护，但想怎么搬都行。</strong></p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>取模</th>
+<th>一致性哈希 + 虚拟节点</th>
+<th>Redis 哈希槽</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单调性 / 迁移率</td>
+<td>全盘洗牌</td>
+<td>只动一段弧（约 $1/N$）</td>
+<td>显式 reshard，按槽迁移</td>
+</tr>
+<tr>
+<td>元数据持有方</td>
+<td>无</td>
+<td>无（藏于哈希函数）</td>
+<td>服务端 + 客户端槽表</td>
+</tr>
+<tr>
+<td>均衡手段</td>
+<td>槽位天然均匀</td>
+<td>虚拟节点</td>
+<td>槽粒度天然均匀</td>
+</tr>
+<tr>
+<td>故障转移</td>
+<td>重建映射 + 全量回源</td>
+<td>摘点后键顺延</td>
+<td>主从切换，槽整体转移</td>
+</tr>
+<tr>
+<td>运维可控性</td>
+<td>低</td>
+<td>低（自动但黑盒）</td>
+<td>高（指定槽、控制节奏）</td>
+</tr>
+<tr>
+<td>适用</td>
+<td>节点集合固定</td>
+<td>memcached 类无中心分片、LB</td>
+<td>有管控面的存储系统</td>
+</tr>
+</tbody>
+</table>
+<p>至于 Dynamo、Cassandra 这类无主 DHT 系统，选择一致性哈希（含虚拟节点）则是必然：它们没有中心管控面，节点对等、成员关系动态变化，&quot;藏进函数的元数据&quot;恰好是唯一所有人都拿得到的那份。</p>
+<h2 id="八、示例代码：Java-实现哈希环与虚拟节点">八、示例代码：Java 实现哈希环与虚拟节点</h2>
+<p>下面是一份<strong>示例代码</strong>（约 90 行，零依赖），覆盖环构建、虚拟节点、顺时针寻址、扩缩容迁移统计四个核心点。生产环境请把 MD5 换成 MurmurHash3/xxHash，并用不可变环快照处理并发修改，这里为了可读性从简。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> java.nio.charset.StandardCharsets;</span><br><span class="line"><span class="keyword">import</span> java.security.MessageDigest;</span><br><span class="line"><span class="keyword">import</span> java.util.HashMap;</span><br><span class="line"><span class="keyword">import</span> java.util.HashSet;</span><br><span class="line"><span class="keyword">import</span> java.util.Map;</span><br><span class="line"><span class="keyword">import</span> java.util.SortedMap;</span><br><span class="line"><span class="keyword">import</span> java.util.TreeMap;</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * 一致性哈希简化实现（示例代码）：哈希环 + 虚拟节点 + 顺时针寻址。</span></span><br><span class="line"><span class="comment"> * 生产建议：哈希函数换 MurmurHash3/xxHash；环改为不可变快照以支持并发。</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">ConsistentHashRouter</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> TreeMap&lt;Long, String&gt; ring = <span class="keyword">new</span> <span class="title class_">TreeMap</span>&lt;&gt;();  <span class="comment">// 哈希点 -&gt; 物理节点</span></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">final</span> <span class="type">int</span> vnodeCount;                                 <span class="comment">// 每物理节点的虚拟节点数</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">ConsistentHashRouter</span><span class="params">(<span class="type">int</span> vnodeCount)</span> &#123;</span><br><span class="line">        <span class="built_in">this</span>.vnodeCount = vnodeCount;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/** 哈希函数：MD5 取前 8 字节折叠为 long，并去掉符号位映射到 [0, 2^63) */</span></span><br><span class="line">    <span class="keyword">private</span> <span class="type">long</span> <span class="title function_">hash</span><span class="params">(String data)</span> &#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            <span class="type">MessageDigest</span> <span class="variable">md5</span> <span class="operator">=</span> MessageDigest.getInstance(<span class="string">&quot;MD5&quot;</span>);</span><br><span class="line">            <span class="type">byte</span>[] d = md5.digest(data.getBytes(StandardCharsets.UTF_8));</span><br><span class="line">            <span class="type">long</span> <span class="variable">h</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; <span class="number">8</span>; i++) &#123;</span><br><span class="line">                h = (h &lt;&lt; <span class="number">8</span>) | (d[i] &amp; <span class="number">0xFF</span>);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">return</span> h &amp; Long.MAX_VALUE;</span><br><span class="line">        &#125; <span class="keyword">catch</span> (Exception e) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalStateException</span>(<span class="string">&quot;MD5 unavailable&quot;</span>, e);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/** 添加物理节点：在环上撒 vnodeCount 个虚拟点 */</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">addNode</span><span class="params">(String node)</span> &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; vnodeCount; i++) &#123;</span><br><span class="line">            ring.put(hash(node + <span class="string">&quot;#VN#&quot;</span> + i), node);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/** 摘除物理节点：回收它的全部虚拟点 */</span></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">removeNode</span><span class="params">(String node)</span> &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; vnodeCount; i++) &#123;</span><br><span class="line">            ring.remove(hash(node + <span class="string">&quot;#VN#&quot;</span> + i));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/** 寻址：沿环顺时针找 key 之后的第一个哈希点，返回其物理节点 */</span></span><br><span class="line">    <span class="keyword">public</span> String <span class="title function_">getNode</span><span class="params">(String key)</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (ring.isEmpty()) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalStateException</span>(<span class="string">&quot;no node in ring&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="type">long</span> <span class="variable">h</span> <span class="operator">=</span> hash(key);</span><br><span class="line">        SortedMap&lt;Long, String&gt; tail = ring.tailMap(h);           <span class="comment">// h 之后的所有点</span></span><br><span class="line">        <span class="type">Long</span> <span class="variable">first</span> <span class="operator">=</span> tail.isEmpty() ? ring.firstKey() : tail.firstKey(); <span class="comment">// 绕回 0 点</span></span><br><span class="line">        <span class="keyword">return</span> ring.get(first);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> &#123;</span><br><span class="line">        <span class="type">int</span> <span class="variable">total</span> <span class="operator">=</span> <span class="number">100_000</span>;</span><br><span class="line">        <span class="type">int</span> <span class="variable">vnodeCount</span> <span class="operator">=</span> <span class="number">150</span>;</span><br><span class="line">        <span class="type">ConsistentHashRouter</span> <span class="variable">router</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">ConsistentHashRouter</span>(vnodeCount);</span><br><span class="line">        router.addNode(<span class="string">&quot;cache-1&quot;</span>);</span><br><span class="line">        router.addNode(<span class="string">&quot;cache-2&quot;</span>);</span><br><span class="line">        router.addNode(<span class="string">&quot;cache-3&quot;</span>);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 1) 观察初始分布</span></span><br><span class="line">        Map&lt;String, String&gt; before = <span class="keyword">new</span> <span class="title class_">HashMap</span>&lt;&gt;();</span><br><span class="line">        Map&lt;String, Integer&gt; stat = <span class="keyword">new</span> <span class="title class_">HashMap</span>&lt;&gt;();</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; total; i++) &#123;</span><br><span class="line">            <span class="type">String</span> <span class="variable">key</span> <span class="operator">=</span> <span class="string">&quot;order:&quot;</span> + i;</span><br><span class="line">            <span class="type">String</span> <span class="variable">node</span> <span class="operator">=</span> router.getNode(key);</span><br><span class="line">            before.put(key, node);</span><br><span class="line">            stat.merge(node, <span class="number">1</span>, Integer::sum);</span><br><span class="line">        &#125;</span><br><span class="line">        System.out.println(<span class="string">&quot;3 节点分布: &quot;</span> + stat);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 2) 扩容：加 cache-4，统计迁移比例</span></span><br><span class="line">        router.addNode(<span class="string">&quot;cache-4&quot;</span>);</span><br><span class="line">        <span class="type">int</span> <span class="variable">migrated</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">        Map&lt;String, Integer&gt; statAfter = <span class="keyword">new</span> <span class="title class_">HashMap</span>&lt;&gt;();</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; total; i++) &#123;</span><br><span class="line">            <span class="type">String</span> <span class="variable">key</span> <span class="operator">=</span> <span class="string">&quot;order:&quot;</span> + i;</span><br><span class="line">            <span class="type">String</span> <span class="variable">node</span> <span class="operator">=</span> router.getNode(key);</span><br><span class="line">            <span class="keyword">if</span> (!node.equals(before.get(key))) migrated++;</span><br><span class="line">            statAfter.merge(node, <span class="number">1</span>, Integer::sum);</span><br><span class="line">        &#125;</span><br><span class="line">        System.out.println(<span class="string">&quot;4 节点分布: &quot;</span> + statAfter);</span><br><span class="line">        System.out.printf(<span class="string">&quot;扩容迁移比例: %.2f%%（理论期望 1/(3+1) = 25%%）%n&quot;</span>,</span><br><span class="line">                migrated * <span class="number">100.0</span> / total);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 3) 摘除 cache-2：只有它的键会顺延到各自的下一个节点</span></span><br><span class="line">        Map&lt;String, String&gt; snapshot = <span class="keyword">new</span> <span class="title class_">HashMap</span>&lt;&gt;();</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; total; i++) snapshot.put(<span class="string">&quot;order:&quot;</span> + i, router.getNode(<span class="string">&quot;order:&quot;</span> + i));</span><br><span class="line">        router.removeNode(<span class="string">&quot;cache-2&quot;</span>);</span><br><span class="line">        <span class="type">int</span> <span class="variable">moved</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; total; i++) &#123;</span><br><span class="line">            <span class="keyword">if</span> (!router.getNode(<span class="string">&quot;order:&quot;</span> + i).equals(snapshot.get(<span class="string">&quot;order:&quot;</span> + i))) moved++;</span><br><span class="line">        &#125;</span><br><span class="line">        System.out.printf(<span class="string">&quot;摘除迁移比例: %.2f%%（应约等于 cache-2 自身份额，约 25%%）%n&quot;</span>,</span><br><span class="line">                moved * <span class="number">100.0</span> / total);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行后可以观察到三件事，每件都对应正文的一个推导：其一，3 节点时各节点键数落在 3.3 万附近，围绕均值的波动约 $\pm\frac{1}{\sqrt{150}} \approx 8%$（虚拟节点一节的 $\frac{1}{\sqrt{M}}$）；其二，加入第 4 个节点后，迁移比例围绕 25% 上下浮动（单次落点有方差，$\frac{1}{N+1}$ 是期望）；其三，摘除 cache-2 时，迁走的键恰好等于它自己的份额，其余三个节点的键纹丝不动（单调性）。数值每次运行都会略有不同——这恰恰是哈希随机性的直观体现。</p>
+<h2 id="九、两个线上坑：热点-key-与宕机击穿">九、两个线上坑：热点 key 与宕机击穿</h2>
+<p>一致性哈希的定理都在讲&quot;键的分布&quot;，但事故从不发生在键的分布上，而发生在请求的分布和故障的时间窗上。两个最常见的坑，按&quot;发生什么 → 为什么 → 如何处理&quot;拆开。</p>
+<h3 id="9-1-热点-key-集中单节点">9.1 热点 key 集中单节点</h3>
+<p><strong>发生什么</strong>。大促秒杀某个爆款 SKU，或者某个明星话题的讨论页引爆流量。几分钟后，集群里某台缓存节点 CPU、网卡、连接数全部打满，请求超时蔓延；监控一看，其余节点风平浪静，流量像被吸尘器吸走了一样集中在一台机器上。更糟的是超时会拖垮调用方线程池，故障从这一台缓存放大到整个应用层。</p>
+<p><strong>为什么</strong>。这不是哈希函数的问题，而是所有哈希分片的<strong>结构性边界</strong>：分片哈希只对&quot;键空间均匀&quot;负责，不对&quot;访问频率均匀&quot;负责。每个键有且只有一个归属节点，这个设计保证了读写的确定性（同一键总能找到同一份数据），代价就是键级热点无处可逃。一致性哈希、虚拟节点、bounded loads 都建立在&quot;键被均匀访问&quot;的假设上，Zipf 型访问分布直接击穿这个假设——top 0.1% 的键贡献两位数百分比的请求时，键数量均衡毫无意义。</p>
+<p><strong>如何处理</strong>。按热度成因分层拆解：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>键级打散（分桶多副本）</strong>：把热 key 拆成 <code>key#0</code> 到 <code>key#M-1</code> 共 $M$ 份副本散到环上，写入时全量写 $M$ 份，读取时随机选一份。代价是写放大 $M$ 倍、以及一致性弱化——失效时必须打掉全部 $M$ 个桶，否则读到陈旧数据。</p>
+</li>
+<li class="lvl-3">
+<p><strong>有界负载</strong>：能挡&quot;数量型&quot;倾斜（多键挤一台机器），挡不住&quot;单键型&quot;热点，但它和分桶组合起来覆盖了大部分倾斜场景。</p>
+</li>
+<li class="lvl-3">
+<p><strong>本地缓存兜底</strong>：应用层对已知热点加秒级 TTL 的本地缓存，把量在最外层挡掉，缓存集群只承接穿透部分。</p>
+</li>
+<li class="lvl-3">
+<p><strong>热点探测与预案</strong>：网关侧持续统计 top-k 访问键，发现苗头先手动加副本、再等自动机制。热点是可预测的（大促名单提前就有），预案比算法重要。</p>
+</li>
+</ol>
+<p>一条边界必须提醒：<strong>需要强一致串行的键不能简单打散</strong>。比如库存扣减，把 <code>stock:sku1</code> 拆成 10 个桶并发扣减，超卖就来了——这类键要么维持单点串行、在应用层限流保护它，要么把业务模型改成可合并的计数上报。打散是读多写少场景的解法，不是万能解法。</p>
+<h3 id="9-2-节点宕机瞬间的缓存击穿">9.2 节点宕机瞬间的缓存击穿</h3>
+<p><strong>发生什么</strong>。一台缓存节点 OOM 或网络抖动挂掉。它负责的 $\frac{1}{N}$ 键全部瞬间未命中，这些请求齐刷刷回源数据库；同时客户端还不知道节点死了，请求在超时队列里堆积，占用满连接池和线程池，殃及本来健康的其他 $\frac{N-1}{N}$ 键的请求。如果宕机节点恰好承载着一片热点区间，数据库在几秒内被打爆，引发连锁雪崩。</p>
+<p><strong>为什么</strong>。三个因素叠加，缺一不可：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>副本不存在</strong>。一致性哈希迁移的只是&quot;映射关系&quot;，不是&quot;数据&quot;——宕机节点的键在新归属节点上没有任何副本，必须全量回源。这一点与 Redis Cluster 的主从复制形成鲜明对比：后者故障转移时槽里的数据是真被复制过去的。</p>
+</li>
+<li class="lvl-3">
+<p><strong>摘除窗口的延迟</strong>。从节点死亡到客户端把它移出环（心跳超时、连接报错），存在秒级到十秒级的窗口。窗口内每次请求都要先吃一个超时，而缓存请求的超时堆积会迅速耗尽客户端资源。</p>
+</li>
+<li class="lvl-3">
+<p><strong>回源风暴与 TTL 扎堆</strong>。$\frac{1}{N}$ 的键同时 miss，若其中相当一部分原本 TTL 相近（往往因为批量写入时统一设置了 TTL），回源流量就不是平滑的 $\frac{1}{N}$，而是一个脉冲。</p>
+</li>
+</ol>
+<p><strong>如何处理</strong>。一致性哈希已经把受影响的键从 $\frac{3}{4}$ 压到了 $\frac{1}{N}$，剩下的是为这 $\frac{1}{N}$ 的必然 miss 兜底：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>回源保护（singleflight / 互斥重建）</strong>：同一键只有一个请求允许回源，其余等待结果。把&quot;每秒 1 万次 miss 回源&quot;压成&quot;每秒 1 次回源 + 9999 次等待&quot;，这是击穿防线里收益最大的一招。</p>
+</li>
+<li class="lvl-3">
+<p><strong>TTL 随机抖动</strong>：基础 TTL 上叠加 ±20% 的随机量，从源头打散过期时间，防扎堆。</p>
+</li>
+<li class="lvl-3">
+<p><strong>熔断限流</strong>：在回源路径上对数据库设并发上限，宁可让部分请求快速失败，也不让数据库躺下——快速失败可重试，数据库躺下是全站故障。</p>
+</li>
+<li class="lvl-3">
+<p><strong>客户端快速失败</strong>：把缓存操作超时调短（如 50ms 级），并对疑似死亡节点立即摘除或临时 failover 到顺时针后继（数据短暂双份，接受秒级不一致），不让超时堆积拖垮线程池。</p>
+</li>
+<li class="lvl-3">
+<p><strong>重启回环要预热</strong>：节点修复后重新加入环，它名下的键又是一轮全量 miss。生产上采用灰度进环——先以小比例虚拟节点进环承接少量流量，边回源边预热，逐步放大权重；或者干脆等业务低峰再回环。</p>
+</li>
+</ol>
+<p>这组事故的本质值得记住：<strong>一致性哈希把故障的影响面从&quot;全量&quot;压到&quot;局部&quot;，但把恢复成本集中到一次 miss 上</strong>。影响面小是算法给的，兜底是工程给的，两者缺一都会在同一个凌晨出事。</p>
+<p>兜底做得好不好，不能靠事后祈祷来验证：把节点摘除做进混沌演练——低峰期主动 kill 一台缓存节点，观察回源峰值是否被 singleflight 削平、熔断阈值是否在数据库安全线以内、客户端摘除耗时是否落在预期窗口。演练里见过的故障，凌晨再来一次时只是重放。</p>
+<h2 id="十、总结与建议：适用边界">十、总结与建议：适用边界</h2>
+<p>把全文的方案放回第一章的四把尺子上，一张图看懂取舍：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>普通取模</strong>：均衡性满分、零元数据，但单调性和迁移率彻底失败。只要节点集合永远不变（很多场景真的不变），它仍是首选——简单本身就是在消灭故障面。</p>
+</li>
+<li class="lvl-2">
+<p><strong>一致性哈希 + 虚拟节点</strong>：单调性、低迁移率满分，均衡性靠 $M$ 个虚拟点买到（$\frac{1}{\sqrt{M}}$ 波动），可控性是短板。适合无中心、客户端分片、节点动态增减的世界：memcached 集群、负载均衡器、DHT 系统。</p>
+</li>
+<li class="lvl-2">
+<p><strong>有界负载</strong>：在前者之上封顶负载，治请求量型倾斜，$\varepsilon$ 是均衡与探测成本的旋钮；治不了单键热点。</p>
+</li>
+<li class="lvl-2">
+<p><strong>哈希槽</strong>：用&quot;维护一份显式元数据&quot;换来精确可控的迁移与故障转移，Redis Cluster 是范本。有管控面的存储系统，优先选这条路而不是一致性哈希。</p>
+</li>
+</ul>
+<p>三个反直觉的提醒，作为阅读本文的检验标准：</p>
+<ol>
+<li class="lvl-3">
+<p>一致性哈希的收益来自<strong>环这个几何结构</strong>，不是来自&quot;更牛的哈希函数&quot;——哈希函数只负责均匀，单调性是环给的。</p>
+</li>
+<li class="lvl-3">
+<p>虚拟节点治<strong>空间倾斜</strong>，不治<strong>访问热点</strong>——$\frac{1}{\sqrt{M}}$ 再小，一个被一万 QPS 访问的键照样压垮它的归属节点。</p>
+</li>
+<li class="lvl-3">
+<p>迁移率低不等于事故免疫——$\frac{1}{N}$ 的键里若含着热点，宕机击穿照样发生，singleflight 和 TTL 抖动永远要有。</p>
+</li>
+</ol>
+<p>最后回到适用边界：需要范围查询、前缀扫描或跨键事务的场景，任何哈希分片（取模、环、槽）都不合适，请用范围分区；而只要哈希分片，就请按&quot;节点集合是否变化、是否有管控面、热点是否显著&quot;三个问题对号入座。分布式系统没有免费午餐，每种方案只是在&quot;自动化程度、可控性、实现复杂度&quot;三个滑块之间选了一个位置——选型之前先想清楚，哪个滑块对你是命门。</p>
+<h2 id="工程结论">工程结论</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>取模之痛的根源是归属函数把节点数当参数</strong>：$N \to N{+}1$ 迁移 $\frac{N}{N{+}1}$（3 扩 4 即 75%），瞬时命中率跌到原来的 $\frac{1}{N{+}1}$，$h_0 = 95%$ 时回源放大 15 倍。节点集合会变的场景，第一行代码就该绕开它。</p>
+</li>
+<li class="lvl-2">
+<p><strong>一致性哈希用环结构买单调性</strong>：键与节点同空间哈希、顺时针寻址，增删节点只动一段弧，期望迁移 $\frac{1}{N{+}1}$；代价是 $O(\log N)$ 查找与环结构维护。它稳定的是映射，不是数据——迁走的键照样回源。</p>
+</li>
+<li class="lvl-2">
+<p><strong>虚拟节点是均衡性的旋钮</strong>：每节点 $M$ 个落点把相对波动压到约 $\frac{1}{\sqrt{M}}$ 且与集群规模无关，100~200 是甜点区；副产品是权重表达与故障冲击摊薄。$M$ 从 200 加到 2000，收益递减，别堆。</p>
+</li>
+<li class="lvl-2">
+<p><strong>哈希函数决定环上分布的成色</strong>：跨生态用 MD5 + Ketama 约定（160 落点、节点串格式钉死），单栈自用选 MurmurHash3/xxHash；带密钥哈希和 String.hashCode 是两个经典的视图分裂源。</p>
+</li>
+<li class="lvl-2">
+<p><strong>算法只管映射，工程兜底事故</strong>：单键热点靠分桶多副本 + 本地缓存 + 热点预案，宕机击穿靠 singleflight + TTL 抖动 + 熔断 + 灰度回环。有运维管控面就选哈槽类方案，可控性在故障时刻比自动化值钱。</p>
+</li>
+</ul>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2025/08/eaa2e8c201164ab5bdb705ebd84ee89d/">后端压力不均时随机加权轮询如何调度才最均衡</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/09/redis-cluster-hash-slot/">Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/12/993e8895ae2e46ca8c4d744b312d1491/">Elasticsearch 文档如何落到分片？Routing 原理、路由键与数据倾斜</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/09/consistent-hashing/">https://pengline.cn/2026/09/consistent-hashing/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Redis/">Redis</a><a class="post-meta__tags" href="/tags/%E7%BC%93%E5%AD%98/">缓存</a><a class="post-meta__tags" href="/tags/%E5%93%88%E5%B8%8C%E6%A7%BD/">哈希槽</a><a class="post-meta__tags" href="/tags/%E6%95%B0%E6%8D%AE%E5%88%86%E7%89%87/">数据分片</a><a class="post-meta__tags" href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7%E5%93%88%E5%B8%8C/">一致性哈希</a><a class="post-meta__tags" href="/tags/%E9%AB%98%E5%8F%AF%E7%94%A8/">高可用</a><a class="post-meta__tags" href="/tags/%E8%B4%9F%E8%BD%BD%E5%9D%87%E8%A1%A1/">负载均衡</a><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E8%AE%BE%E8%AE%A1/">架构设计</a><a class="post-meta__tags" href="/tags/%E5%93%88%E5%B8%8C%E7%AE%97%E6%B3%95/">哈希算法</a><a class="post-meta__tags" href="/tags/%E8%99%9A%E6%8B%9F%E8%8A%82%E7%82%B9/">虚拟节点</a><a class="post-meta__tags" href="/tags/Memcached/">Memcached</a><a class="post-meta__tags" href="/tags/Ketama/">Ketama</a><a class="post-meta__tags" href="/tags/MurmurHash/">MurmurHash</a><a class="post-meta__tags" href="/tags/%E6%9C%89%E7%95%8C%E8%B4%9F%E8%BD%BD/">有界负载</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E7%B3%BB%E7%BB%9F/">分布式系统</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/09/snowflake-id/" title="分布式系统为什么需要雪花 ID？时钟回拨与位分配的工程取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">分布式系统为什么需要雪花 ID？时钟回拨与位分配的工程取舍</div></div><div class="info-2"><div class="info-item-1">解析雪花算法 64 位结构的位分配与容量推导，对比 UUID、号段与 Redis 自增等分布式 ID 方案的取舍，分析时钟回拨的根因与处理策略、workerId 分配的工程难题，以及位数定制与典型故障场景的应对建议。</div></div></div></a><a class="pagination-related" href="/2026/09/rabbitmq-message-reliability/" title="RabbitMQ 消息会丢在哪一环？从发送到确认的三段防丢链路"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1730166918792173016691849.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">RabbitMQ 消息会丢在哪一环？从发送到确认的三段防丢链路</div></div><div class="info-2"><div class="info-item-1">消息从生产者到消费者要经过发送、存储、确认三段链路，每一段都存在独立的丢失窗口。本文逐段拆解 confirm 与事务的取舍、持久化与 page cache 刷盘窗口、autoAck 风险与手动确认语义，并给出本地消息表重发与消费端幂等方案。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/09/redis-cluster-hash-slot/" title="Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-28</div><div class="info-item-2">Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制</div></div><div class="info-2"><div class="info-item-1">单机 Redis 撑不住内存和写压力时，官方集群用 16384 个哈希槽把数据摊到多个主节点。本文拆解槽位计算、MOVED 与 ASK 重定向、gossip 通信、槽迁移全流程和自动故障转移，并复盘迁移风暴、数据倾斜等典型故障的处理与恢复。</div></div></div></a><a class="pagination-related" href="/2026/09/5c9e72b1d8a64f30b1e7c4a29f6d8352/" title="耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860420693163886042042.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-23</div><div class="info-item-2">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</div></div><div class="info-2"><div class="info-item-1">耗时任务排队传统方案要引入 Celery 加 Redis/RabbitMQ 中间件，运维成本高。NeoTask 用纯 Python 异步任务池把调度内嵌进应用：即时、延时、Cron 定时、四级优先级、自动重试开箱即用，内存、SQLite、Redis 三种持久化按需切换。</div></div></div></a><a class="pagination-related" href="/2026/05/267dcaf0a2ca44208590349933d198ff/" title="如何从零构建高可用任务调度池：分层的教程式构建指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-11</div><div class="info-item-2">如何从零构建高可用任务调度池：分层的教程式构建指南</div></div><div class="info-2"><div class="info-item-1">逐层拆解任务调度池：状态机、队列与调度内核、执行保护、故障检测与回收、可观测性，每一层对照 NeoTask v1.0.2 真实源码给出实现选择与取舍理由（DelayedQueue 堆与 Redis ZSET 延时、出队原子与执行锁分离、时间轮、死信队列与回收闭环）。</div></div></div></a><a class="pagination-related" href="/2026/06/953f2840dfda42ce90f73e5701f4f479/" title="基于 OpenIM 的即时消息通知系统怎么落地？回调与 seq 同步机制详解"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small213646O4a2y1754228206.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-06-20</div><div class="info-item-2">基于 OpenIM 的即时消息通知系统怎么落地？回调与 seq 同步机制详解</div></div><div class="info-2"><div class="info-item-1">本文基于 OpenIM 梳理即时消息通知系统的落地架构与完整消息投递链路，解析 seq 保序、增量同步与 Webhook 事前事后回调机制，讨论单机与集群部署的取舍，并结合回调超时、重复消费、离线触达失败等真实故障场景给出排查与恢复思路。</div></div></div></a><a class="pagination-related" href="/2025/12/fb61cae088544f86a4209a47b2ca6a3d/" title="Redis 数据类型背后是什么？从 Type、Encoding 到底层数据结构"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-07</div><div class="info-item-2">Redis 数据类型背后是什么？从 Type、Encoding 到底层数据结构</div></div><div class="info-2"><div class="info-item-1">剖析 Redis 的类型-编码-数据结构三层对象模型，SDS、压缩列表、快速列表、字典与渐进式 rehash、跳表、整数集合等底层结构的原理与适用规模，String/Hash/Set/ZSet/List 在何种规模下触发编码切换并因此节省内存，以及依据访问模式与数据规模做数据结构选型的工程结论与常见内存问题规避。</div></div></div></a><a class="pagination-related" href="/2025/10/d76bb55725a449d6bdd400ff4f058f00/" title="Redis 重启后数据为什么会丢？RDB、AOF 与混合持久化的取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-10-20</div><div class="info-item-2">Redis 重启后数据为什么会丢？RDB、AOF 与混合持久化的取舍</div></div><div class="info-2"><div class="info-item-1">详解 Redis 持久化的三种方案——RDB 快照借助 fork 与写时复制实现，fork 阻塞时长与内存翻倍的代价，AOF 命令追加、fsync 三种同步策略与重写采用的双缓冲机制，混合持久化“RDB 头 + AOF 尾”的文件结构如何兼得快速恢复与最少丢数据，并给出按数据安全等级选型组合方案的工程结论。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">一致性哈希的原理与实现方案</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E6%A6%82%E8%BF%B0%EF%BC%9A%E8%AF%84%E4%BB%B7%E4%B8%80%E4%B8%AA%E5%88%86%E7%89%87%E6%96%B9%E6%A1%88%E7%9A%84%E5%9B%9B%E6%8A%8A%E5%B0%BA%E5%AD%90"><span class="toc-number">1.1.</span> <span class="toc-text">一、概述：评价一个分片方案的四把尺子</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E6%99%AE%E9%80%9A%E5%93%88%E5%B8%8C%E5%8F%96%E6%A8%A1%EF%BC%9A%E8%8A%82%E7%82%B9%E6%95%B0%E4%B8%80%E5%8F%98%EF%BC%8C%E5%85%A8%E7%9B%98%E6%B4%97%E7%89%8C"><span class="toc-number">1.2.</span> <span class="toc-text">二、普通哈希取模：节点数一变，全盘洗牌</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-%E6%9C%BA%E5%88%B6%E4%B8%8E%E8%BF%81%E7%A7%BB%E6%AF%94%E4%BE%8B%E6%8E%A8%E6%BC%94"><span class="toc-number">1.2.1.</span> <span class="toc-text">2.1 机制与迁移比例推演</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E5%91%BD%E4%B8%AD%E7%8E%87%E4%B8%8E%E5%9B%9E%E6%BA%90%E6%94%BE%E5%A4%A7%E7%9A%84%E9%87%8F%E5%8C%96"><span class="toc-number">1.2.2.</span> <span class="toc-text">2.2 命中率与回源放大的量化</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E4%B8%80%E8%87%B4%E6%80%A7%E5%93%88%E5%B8%8C%E7%8E%AF%EF%BC%9A%E6%8A%8A%E8%8A%82%E7%82%B9%E6%95%B0%E4%BB%8E%E5%BD%92%E5%B1%9E%E5%87%BD%E6%95%B0%E9%87%8C%E6%8B%BF%E6%8E%89"><span class="toc-number">1.3.</span> <span class="toc-text">三、一致性哈希环：把节点数从归属函数里拿掉</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-%E7%8E%AF%E3%80%81%E9%A1%BA%E6%97%B6%E9%92%88%E5%AF%BB%E5%9D%80%E4%B8%8E%E5%BD%92%E5%B1%9E%E5%8C%BA%E6%AE%B5"><span class="toc-number">1.3.1.</span> <span class="toc-text">3.1 环、顺时针寻址与归属区段</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-%E5%A2%9E%E5%87%8F%E8%8A%82%E7%82%B9%E5%8F%AA%E5%8A%A8%E4%B8%80%E6%AE%B5%E5%BC%A7%EF%BC%9A%E8%BF%81%E7%A7%BB%E6%AF%94%E4%BE%8B%E7%9A%84%E9%87%8F%E5%8C%96"><span class="toc-number">1.3.2.</span> <span class="toc-text">3.2 增减节点只动一段弧：迁移比例的量化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-%E5%B7%A5%E7%A8%8B%E8%8A%82%E5%A5%8F%EF%BC%9A%E6%89%A9%E5%AE%B9%E5%85%88%E9%A2%84%E7%83%AD%EF%BC%8C%E7%BC%A9%E5%AE%B9%E5%85%88%E6%91%98%E6%B5%81%E9%87%8F"><span class="toc-number">1.3.3.</span> <span class="toc-text">3.3 工程节奏：扩容先预热，缩容先摘流量</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E6%95%B0%E6%8D%AE%E5%80%BE%E6%96%9C%E4%B8%8E%E8%99%9A%E6%8B%9F%E8%8A%82%E7%82%B9"><span class="toc-number">1.4.</span> <span class="toc-text">四、数据倾斜与虚拟节点</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E5%B0%91%E8%8A%82%E7%82%B9%E6%97%B6%E4%BB%A3%EF%BC%8C%E5%80%BE%E6%96%9C%E4%BB%8E%E5%93%AA%E9%87%8C%E6%9D%A5"><span class="toc-number">1.4.1.</span> <span class="toc-text">4.1 少节点时代，倾斜从哪里来</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-%E8%99%9A%E6%8B%9F%E8%8A%82%E7%82%B9%EF%BC%9A%E7%94%A8-M-%E4%B8%AA%E7%82%B9%E4%B9%B0%E5%9D%87%E5%8C%80"><span class="toc-number">1.4.2.</span> <span class="toc-text">4.2 虚拟节点：用 M 个点买均匀</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-M-%E6%80%8E%E4%B9%88%E9%80%89%EF%BC%9A%E6%88%90%E6%9C%AC%E4%B8%8E%E6%94%B6%E7%9B%8A%E7%9A%84%E6%9D%83%E8%A1%A1"><span class="toc-number">1.4.3.</span> <span class="toc-text">4.3 M 怎么选：成本与收益的权衡</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E5%93%88%E5%B8%8C%E5%87%BD%E6%95%B0%E7%9A%84%E9%80%89%E6%8B%A9%EF%BC%9A%E5%9D%87%E5%8C%80%E6%80%A7%E4%B8%8E%E6%80%A7%E8%83%BD%E7%9A%84%E5%8F%96%E8%88%8D"><span class="toc-number">1.5.</span> <span class="toc-text">五、哈希函数的选择：均匀性与性能的取舍</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E8%BF%9B%E9%98%B6%EF%BC%9A%E6%9C%89%E7%95%8C%E8%B4%9F%E8%BD%BD%E4%B8%80%E8%87%B4%E6%80%A7%E5%93%88%E5%B8%8C%EF%BC%88Bounded-Loads%EF%BC%89"><span class="toc-number">1.6.</span> <span class="toc-text">六、进阶：有界负载一致性哈希（Bounded Loads）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81%E7%9C%9F%E5%AE%9E%E4%B8%96%E7%95%8C%E7%9A%84%E4%B8%A4%E7%A7%8D%E7%AD%94%E6%A1%88%EF%BC%9AKetama-%E4%B8%8E-Redis-%E5%93%88%E5%B8%8C%E6%A7%BD"><span class="toc-number">1.7.</span> <span class="toc-text">七、真实世界的两种答案：Ketama 与 Redis 哈希槽</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#7-1-Memcached-%E5%AE%A2%E6%88%B7%E7%AB%AF%E5%88%86%E7%89%87%E7%9A%84-Ketama"><span class="toc-number">1.7.1.</span> <span class="toc-text">7.1 Memcached 客户端分片的 Ketama</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-2-Redis-Cluster-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E7%94%A8%E4%B8%80%E8%87%B4%E6%80%A7%E5%93%88%E5%B8%8C"><span class="toc-number">1.7.2.</span> <span class="toc-text">7.2 Redis Cluster 为什么不用一致性哈希</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81%E7%A4%BA%E4%BE%8B%E4%BB%A3%E7%A0%81%EF%BC%9AJava-%E5%AE%9E%E7%8E%B0%E5%93%88%E5%B8%8C%E7%8E%AF%E4%B8%8E%E8%99%9A%E6%8B%9F%E8%8A%82%E7%82%B9"><span class="toc-number">1.8.</span> <span class="toc-text">八、示例代码：Java 实现哈希环与虚拟节点</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B9%9D%E3%80%81%E4%B8%A4%E4%B8%AA%E7%BA%BF%E4%B8%8A%E5%9D%91%EF%BC%9A%E7%83%AD%E7%82%B9-key-%E4%B8%8E%E5%AE%95%E6%9C%BA%E5%87%BB%E7%A9%BF"><span class="toc-number">1.9.</span> <span class="toc-text">九、两个线上坑：热点 key 与宕机击穿</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#9-1-%E7%83%AD%E7%82%B9-key-%E9%9B%86%E4%B8%AD%E5%8D%95%E8%8A%82%E7%82%B9"><span class="toc-number">1.9.1.</span> <span class="toc-text">9.1 热点 key 集中单节点</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#9-2-%E8%8A%82%E7%82%B9%E5%AE%95%E6%9C%BA%E7%9E%AC%E9%97%B4%E7%9A%84%E7%BC%93%E5%AD%98%E5%87%BB%E7%A9%BF"><span class="toc-number">1.9.2.</span> <span class="toc-text">9.2 节点宕机瞬间的缓存击穿</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8D%81%E3%80%81%E6%80%BB%E7%BB%93%E4%B8%8E%E5%BB%BA%E8%AE%AE%EF%BC%9A%E9%80%82%E7%94%A8%E8%BE%B9%E7%95%8C"><span class="toc-number">1.10.</span> <span class="toc-text">十、总结与建议：适用边界</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E7%BB%93%E8%AE%BA"><span class="toc-number">1.11.</span> <span class="toc-text">工程结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">1.12.</span> <span class="toc-text">相关阅读</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js" defer></script><script src="/js/custom/auto_dark.js" defer></script><script src="/js/custom/mermaid_zoom.js" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

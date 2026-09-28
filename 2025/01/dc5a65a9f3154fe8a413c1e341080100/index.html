@@ -1,23 +1,36 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Redis ZSET 深度分页为何变慢？从排名定位到 Score 游标分页 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="剖析 Redis ZSET 深度分页变慢的根因——跳表按 Score 定位是 O(logN)、按排名定位却是 O(N) 的代价模型，以及 ZRANGE 大偏移量带来的线性 CPU 开销；讲解基于 BYSCORE 的游标分页改造、复合 Score 化解同分漏数据问题，并给出深浅分页切换阈值与随机跳页限制的架构选型建议。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Redis ZSET 深度分页真的越翻越慢吗？跳表 span 定位与 Score 游标的工程取舍 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="Redis ZSET 深度分页越翻越慢吗？本文考证跳表 span 定位的源码机制，澄清按排名定位实为对数复杂度的误解，指出深分页真实代价在于并发写入下的排名漂移与分页偏移的隐藏线性路径，给出 Score 游标分页、复合分数化解同分与浮点精度红线的工程方案。">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Redis ZSET 深度分页为何变慢？从排名定位到 Score 游标分页">
+<meta property="og:title" content="Redis ZSET 深度分页真的越翻越慢吗？跳表 span 定位与 Score 游标的工程取舍">
 <meta property="og:url" content="https://pengline.cn/2025/01/dc5a65a9f3154fe8a413c1e341080100/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="剖析 Redis ZSET 深度分页变慢的根因——跳表按 Score 定位是 O(logN)、按排名定位却是 O(N) 的代价模型，以及 ZRANGE 大偏移量带来的线性 CPU 开销；讲解基于 BYSCORE 的游标分页改造、复合 Score 化解同分漏数据问题，并给出深浅分页切换阈值与随机跳页限制的架构选型建议。">
+<meta property="og:description" content="Redis ZSET 深度分页越翻越慢吗？本文考证跳表 span 定位的源码机制，澄清按排名定位实为对数复杂度的误解，指出深分页真实代价在于并发写入下的排名漂移与分页偏移的隐藏线性路径，给出 Score 游标分页、复合分数化解同分与浮点精度红线的工程方案。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp">
 <meta property="article:published_time" content="2025-01-10T16:00:00.000Z">
-<meta property="article:modified_time" content="2026-09-19T03:23:06.000Z">
+<meta property="article:modified_time" content="2026-09-23T16:08:10.035Z">
 <meta property="article:author" content="余一叶知秋尽">
 <meta property="article:tag" content="Redis">
 <meta property="article:tag" content="Score">
+<meta property="article:tag" content="SkipList">
 <meta property="article:tag" content="ZRANGE">
+<meta property="article:tag" content="ZRANGEBYSCORE">
+<meta property="article:tag" content="ZRANK">
+<meta property="article:tag" content="ZREVRANGE">
 <meta property="article:tag" content="ZSET">
+<meta property="article:tag" content="span">
+<meta property="article:tag" content="复合分数">
+<meta property="article:tag" content="工程实践">
+<meta property="article:tag" content="并发写入">
 <meta property="article:tag" content="排行榜">
+<meta property="article:tag" content="故障复盘">
+<meta property="article:tag" content="数据一致性">
+<meta property="article:tag" content="方案对比">
+<meta property="article:tag" content="浮点精度">
 <meta property="article:tag" content="深度分页">
 <meta property="article:tag" content="游标分页">
+<meta property="article:tag" content="跳表">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/01/dc5a65a9f3154fe8a413c1e341080100/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/01/dc5a65a9f3154fe8a413c1e341080100/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -164,7 +177,7 @@
   },
   autoDarkmode: true
 }</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
-  title: 'Redis ZSET 深度分页为何变慢？从排名定位到 Score 游标分页',
+  title: 'Redis ZSET 深度分页真的越翻越慢吗？跳表 span 定位与 Score 游标的工程取舍',
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
@@ -173,23 +186,56 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">117</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">797</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">52</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Redis ZSET 深度分页为何变慢？从排名定位到 Score 游标分页</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Redis ZSET 深度分页为何变慢？从排名定位到 Score 游标分页</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-01-10T16:00:00.000Z" title="发表于 2025-01-11 00:00:00">2025-01-11</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-19T03:23:06.000Z" title="更新于 2026-09-19 11:23:06">2026-09-19</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/Redis/">Redis</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>Redis ZSET 的深度分页解决方案</h1>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">88</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">769</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">52</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Redis ZSET 深度分页真的越翻越慢吗？跳表 span 定位与 Score 游标的工程取舍</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Redis ZSET 深度分页真的越翻越慢吗？跳表 span 定位与 Score 游标的工程取舍</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-01-10T16:00:00.000Z" title="发表于 2025-01-11 00:00:00">2025-01-11</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-23T16:08:10.035Z" title="更新于 2026-09-24 00:08:10">2026-09-24</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/Redis/">Redis</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>Redis ZSET 的深度分页解决方案</h1>
 <blockquote>
-<p><strong>本文定位</strong>：这不是参数清单，而是围绕一个工程问题解释“为什么这样设计、什么时候会失效、应该如何验证”。文中的示例代码用于说明机制；涉及版本、默认值和性能的数据，请在你的目标版本与真实数据集上复测。</p>
+<p><strong>本文定位</strong>：这不是参数清单，而是围绕一个工程问题解释&quot;为什么这样设计、什么时候会失效、应该如何验证&quot;。文中引用的 Redis 源码均为<strong>源码简化版</strong>（用于说明机制，以你实际版本的 <code>src/t_zset.c</code> 为准）；示例代码用于说明流程；所有性能论述均区分<strong>官方复杂度声明 / 源码理论分析 / 经验量级判断</strong>，不提供虚构的实测数字，文末给出在你自己环境里复测的命令配方。</p>
 </blockquote>
-<h2 id="先给结论">先给结论</h2>
-<p>ZSET 很适合做排行榜，但“支持按排名读取”并不意味着可以无限深度分页。本文重点区分两种完全不同的需求：<strong>按 rank 随机跳页</strong>与<strong>按 score 连续向后遍历</strong>。前者天然需要定位排名，后者可以利用 score 游标逐步读取。真正的优化不是把 <code>ZRANGE</code> 调得更大，而是重新定义分页接口。</p>
-<p>在 Redis 中，<strong>ZSET（有序集合）</strong> 的分页实现与 MySQL 完全不同，因为它是一个<strong>内存数据结构</strong>，不存在“回表”和“磁盘 I/O”问题。然而，这并不意味着 ZSET 可以无限制地进行深度分页。</p>
-<p>当偏移量（Offset）极大时，Redis 需要遍历跳表中的大量节点才能定位到目标位置，这会导致服务端 CPU 开销激增和响应延迟显著上升。本文将深入剖析其底层原理，并给出可落地的工程方案。</p>
+<h2 id="一、先给结论：三个反直觉的事实">一、先给结论：三个反直觉的事实</h2>
+<p>ZSET 很适合做排行榜，但围绕它流传着一个错误很广的结论：“ZSET 按排名定位是 O(N)，深分页越翻越慢”。把源码和官方文档对照之后，真实的结论是三个反直觉的事实：</p>
+<ol>
+<li class="lvl-3">
+<p><strong><code>ZREVRANGE key 500000 500009</code> 这种&quot;跳到第 5 万页&quot;的操作，在百万级元素的 ZSET 上并不慢</strong>。官方文档对 <code>ZRANGE</code>/<code>ZREVRANGE</code> 声明的复杂度是 $O(\log N + M)$（N 为集合元素总数，M 为返回条数）。Redis 的跳表在每一层前进指针上维护了 <strong>span（跨度）</strong> 字段，使得&quot;按排名定位&quot;与&quot;按分数定位&quot;一样都是 $O(\log N)$，而不是朴素跳表的逐节点计数 $O(N)$。</p>
+</li>
+<li class="lvl-3">
+<p><strong>ZSET 深分页真正的代价不在单次查询的 CPU，而在语义</strong>：rank 是&quot;位置&quot;而不是&quot;身份&quot;，两次翻页之间只要有人加分、删号，排名整体平移，按 rank 翻页就会重复/漏读；而 MySQL 那套&quot;深分页必须游标化&quot;的性能直觉，直接搬到 Redis 上会得出错误的优化理由。</p>
+</li>
+<li class="lvl-3">
+<p><strong>真正会线性恶化的隐藏路径确实存在，但不在你以为的地方</strong>：<code>ZRANGEBYSCORE</code>/<code>ZREVRANGEBYSCORE</code> 的 <code>LIMIT offset count</code> 中，大 offset 在 Redis ≤7.2 上是逐节点跳过（官方文档明说 “up to O(N)”，7.4 起才引入 span 跳跃优化）；此外还有全量拉取、超大 payload 等真正危险的模式。</p>
+</li>
+</ol>
+<p>所以正确的方案仍然是 <strong>Score 游标分页 + 复合分数化解同分</strong>——但理由与很多文章写的不一样：不是为了省那点定位 CPU，而是为了<strong>翻页语义的稳定性</strong>、<strong>接口的一致性</strong>，以及<strong>避开 <code>LIMIT offset</code> 这类版本相关的线性陷阱</strong>。</p>
 <hr>
-<h2 id="ZSET-的核心分页命令">ZSET 的核心分页命令</h2>
-<p>Redis 提供了两个原生命令用于正序和倒序的分页查询：</p>
+<h2 id="二、问题定义">二、问题定义</h2>
+<h3 id="2-1-ZSET-的底层结构：字典-跳表">2.1 ZSET 的底层结构：字典 + 跳表</h3>
+<p>Redis ZSET（有序集合）同时维护两个结构（<code>t_zset.c</code> 文件头注释的意译）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>字典（dict）</strong>：member → score 的映射，支撑 $O(1)$ 的 <code>ZSCORE</code> 单点查询；</p>
+</li>
+<li class="lvl-2">
+<p><strong>跳表（skiplist）</strong>：按 (score, member) 有序组织，支撑范围查询与排名操作。</p>
+</li>
+</ul>
+<p>两者共享同一份 member 字符串。当元素较少时（Redis 7.0 起 <code>zset-max-listpack-entries</code> 默认 128 个、单元素 64 字节以内，旧版本对应 <code>zset-max-ziplist-*</code> 配置），ZSET 会使用 <strong>listpack</strong> 紧凑编码——此时的范围操作是线性扫描，但 N ≤ 128，不构成深分页问题；<strong>深分页的讨论都针对 skiplist 编码</strong>。</p>
+<p>与 MySQL 不同，ZSET 是纯内存结构，不存在&quot;回表&quot;和磁盘随机 I/O，代价模型完全不同。这也意味着：<strong>把 MySQL 深分页的性能结论直接套到 Redis 上，会得出似是而非的优化方案</strong>——这正是本文要纠正的核心。</p>
+<h3 id="2-2-两种完全不同的分页需求">2.2 两种完全不同的分页需求</h3>
+<p>排行榜/时间线场景里，&quot;分页&quot;其实是两种需求，接口设计与优化手段完全不同：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>随机跳页</strong>：“帮我取第 300 页”——后台管理、审核列表。本质是&quot;按 rank 定位&quot;。</p>
+</li>
+<li class="lvl-2">
+<p><strong>连续下滑</strong>：“加载更多”——C 端无限滚动流。本质是&quot;按 Score 范围续读&quot;，上一页的末尾是下一页的起点。</p>
+</li>
+</ul>
+<p>需求不同，方案不同。先看最常用的按 rank 分页命令。</p>
+<h3 id="2-3-核心-rank-分页命令">2.3 核心 rank 分页命令</h3>
 <table>
 <thead>
 <tr>
 <th style="text-align:left">命令</th>
 <th style="text-align:left">作用</th>
-<th style="text-align:left">时间复杂度</th>
+<th style="text-align:left">官方复杂度</th>
 </tr>
 </thead>
 <tbody>
@@ -200,7 +246,7 @@
 </tr>
 <tr>
 <td style="text-align:left"><strong><code>ZREVRANGE key start stop</code></strong></td>
-<td style="text-align:left">按 <strong>Score 降序</strong> 返回指定索引范围内的元素（排行榜常用）</td>
+<td style="text-align:left">按 <strong>Score 降序</strong> 返回（排行榜常用；6.2 起可由 <code>ZRANGE ... REV</code> 替代）</td>
 <td style="text-align:left">O(log(N) + M)</td>
 </tr>
 </tbody>
@@ -208,7 +254,7 @@
 <blockquote>
 <p><strong>关键点</strong>：<code>start</code> 和 <code>stop</code> 是<strong>基于 0 的索引</strong>，且是<strong>闭区间</strong>。</p>
 <ul class="lvl-1">
-<li class="lvl-2"><strong>分页公式</strong>（假设每页 10 条，查第 3 页）：
+<li class="lvl-2"><strong>分页公式</strong>（每页 10 条，查第 3 页）：
 <ul class="lvl-3">
 <li class="lvl-4"><code>start = (page - 1) * 10 = 20</code></li>
 <li class="lvl-4"><code>stop = page * 10 - 1 = 29</code></li>
@@ -217,264 +263,524 @@
 <li class="lvl-2"><strong>执行命令</strong>：<code>ZREVRANGE my_rank 20 29 WITHSCORES</code></li>
 </ul>
 </blockquote>
-<p><strong>优点</strong>：极快，百万级数据返回 10 条仅需几十微秒。<br>
-<strong>缺点</strong>：和 MySQL 的 <code>OFFSET</code> 一样，<strong>越往后翻越慢</strong>，因为 Redis 需要内部跳过前 N 个元素（跳表遍历）。</p>
-<p><strong>时间复杂度全景</strong>：</p>
+<p><strong>优点</strong>：实现最简单，单次查询快——百万级数据返回 10 条的耗时是微秒量级（这是官方复杂度模型下的数量级判断，不是实测结论，请按 3.4 节自测）。</p>
+<p><strong>缺点</strong>：rank 是位置而不是身份，翻页间隔内的写入会造成重复与漏读（第 4 节展开）；且页码语义要求调用方用 <code>ZCARD</code> 计算总页数，而这个&quot;总数&quot;在并发写入下是漂移的。</p>
+<hr>
+<h2 id="三、原理考证：按排名定位到底是-O-N-还是-O-log-N-？">三、原理考证：按排名定位到底是 O(N) 还是 O(log N)？</h2>
+<p>这是全文最重要的一节，也是网上大量文章（包括本文旧版）出错的地方。</p>
+<h3 id="3-1-跳表为什么快：不只靠-多层索引-，还靠-span">3.1 跳表为什么快：不只靠&quot;多层索引&quot;，还靠 span</h3>
+<p>朴素的跳表只有&quot;多层前进指针&quot;，查找元素时自顶向下逐层扫描，期望 $O(\log N)$。但<strong>朴素的跳表没有&quot;这条指针跳过了多少个节点&quot;的记忆</strong>——如果 ZSET 用的是这种结构，<code>ZREVRANGE key 500000 500009</code> 就真的只能从尾部沿链表逐个数 50 万个节点，复杂度 $O(\text{offset})$。</p>
+<p>Redis 的跳表在 Pugh 论文的基础上做了关键增强：<strong>每条前进指针都带一个 span 字段，记录&quot;沿着这条指针走到下一个节点，一共跨过了多少个节点&quot;</strong>。插入与删除时（<code>zslInsert</code>/<code>zslDeleteNode</code>）同步维护 span。来看源码简化版：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* —— Redis 源码简化版（结构参考 src/t_zset.c，常量参考 src/server.h）—— */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistNode</span> &#123;</span></span><br><span class="line">    sds ele;                          <span class="comment">/* 成员（与 dict 共享同一份 sds） */</span></span><br><span class="line">    <span class="type">double</span> score;                     <span class="comment">/* 分数：IEEE-754 double */</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistNode</span> *<span class="title">backward</span>;</span>   <span class="comment">/* 后退指针：仅第 1 层有 */</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistLevel</span> &#123;</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">zskiplistNode</span> *<span class="title">forward</span>;</span></span><br><span class="line">        <span class="type">unsigned</span> <span class="type">long</span> span;           <span class="comment">/* 跨度：该指针跨越的节点数 */</span></span><br><span class="line">    &#125; level[];</span><br><span class="line">&#125; zskiplistNode;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> ZSKIPLIST_MAXLEVEL 32      <span class="comment">/* 足够容纳 2^64 个元素 */</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> ZSKIPLIST_P        0.25    <span class="comment">/* 每层晋升概率 1/4 */</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* 按排名定位：沿 span 逐层累加，期望 O(log N) */</span></span><br><span class="line">zskiplistNode *<span class="title function_">zslGetElementByRank</span><span class="params">(zskiplist *zsl, <span class="type">unsigned</span> <span class="type">long</span> rank)</span> &#123;</span><br><span class="line">    zskiplistNode *x = zsl-&gt;header;</span><br><span class="line">    <span class="type">unsigned</span> <span class="type">long</span> traversed = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> i = zsl-&gt;level - <span class="number">1</span>; i &gt;= <span class="number">0</span>; i--) &#123;</span><br><span class="line">        <span class="comment">/* 若跨过这条指针仍未到达 rank，则整段跳过 */</span></span><br><span class="line">        <span class="keyword">while</span> (x-&gt;level[i].forward &amp;&amp;</span><br><span class="line">               (traversed + x-&gt;level[i].span) &lt;= rank) &#123;</span><br><span class="line">            traversed += x-&gt;level[i].span;</span><br><span class="line">            x = x-&gt;level[i].forward;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (traversed == rank) <span class="keyword">return</span> x;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>ZRANK</code>/<code>ZREVRANK</code>（官方复杂度 $O(\log N)$）与 <code>ZRANGE</code> 家族按排名的定位走的就是这条路径：实现里只要 <code>start &gt; 0</code>（正向用 <code>start+1</code>、反向用 <code>llen-start</code> 换算成 1-based rank），就用 <code>zslGetElementByRank</code> 直接跳到目标节点，再沿第 1 层顺序取 M 个。<strong>定位的成本与偏移量深浅基本无关</strong>。</p>
+<h3 id="3-2-一次-rank-定位的完整走位">3.2 一次 rank 定位的完整走位</h3>
+<p>下图是一个 6 元素、两层的跳表（L2 只含 A、E），演示&quot;取第 5 名&quot;如何只走 2 步：</p>
+<pre><code class="highlight mermaid">graph TD
+    H[&quot;Head 头节点（源码常量最多 32 层，图中画 2 层）&quot;]
+    H --&gt;|&quot;L2 span=1&quot;| A2[&quot;A rank=1&quot;]
+    A2 --&gt;|&quot;L2 span=4&quot;| E2[&quot;E rank=5&quot;]
+    H --&gt;|&quot;L1 span=1&quot;| A1[&quot;A&quot;]
+    A1 --&gt;|&quot;L1 span=1&quot;| B1[&quot;B&quot;]
+    B1 --&gt;|&quot;L1 span=1&quot;| C1[&quot;C&quot;]
+    C1 --&gt;|&quot;L1 span=1&quot;| D1[&quot;D&quot;]
+    D1 --&gt;|&quot;L1 span=1&quot;| E1[&quot;E&quot;]
+    E1 --&gt;|&quot;L1 span=1&quot;| F1[&quot;F&quot;]
+    N1[&quot;定位 rank=5：Head 在 L2 走 1 步到 A 累计 1；A 的 L2 指针 span=4，1+4=5 正好命中 E。只走 2 步，而不是逐个数 5 个节点&quot;]
+    N1 -.-&gt; H
+    style E2 fill:#f96,stroke:#333,stroke-width:2px
+    style F1 fill:#f96,stroke:#333,stroke-width:2px</code></pre>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>取 rank=5：Head→A（累计 1）→ A 沿 L2 的 span=4 直达 E（1+4=5，命中），<strong>2 步</strong>。</p>
+</li>
+<li class="lvl-2">
+<p>取 rank=6（F）：Head→A→E（L2 到头）→ 降至 L1 → E→F，<strong>3 步</strong>。</p>
+</li>
+<li class="lvl-2">
+<p>一般地，期望跳转次数约为 $\log_{1/p} N = \log_4 N$（p=0.25）：百万级元素约 10 次，千万级约 12 次（理论期望值）——<strong>与起点深浅基本无关</strong>。</p>
+</li>
+</ul>
+</blockquote>
+<p>这就是&quot;为什么取第 5 万页不会比取第 1 页慢多少&quot;的机制解释：<strong>按 Score 定位与按 Rank 定位走的是同一套 span 累计路径</strong>，都是 $O(\log N)$：</p>
+<pre><code class="highlight mermaid">graph LR
+    subgraph S1[&quot;按 Score 定位：O(log N)&quot;]
+        A1[&quot;ZREVRANGEBYSCORE 带开区间游标&quot;] --&gt; A2[&quot;沿 span 跳到分数边界再取 M 个&quot;]
+    end
+    subgraph S2[&quot;按 Rank 定位：O(log N)&quot;]
+        B1[&quot;ZREVRANGE key 500000 500009&quot;] --&gt; B2[&quot;zslGetElementByRank 沿 span 累计排名&quot;] --&gt; B3[&quot;百万级元素约 10 余次指针跳转&quot;]
+    end
+    style A1 fill:#c8e6c9
+    style B1 fill:#c8e6c9</code></pre>
+<h3 id="3-3-复杂度全景（修正版）">3.3 复杂度全景（修正版）</h3>
 <table>
 <thead>
 <tr>
 <th style="text-align:left">场景</th>
-<th style="text-align:left">命令</th>
-<th style="text-align:left">复杂度</th>
-<th style="text-align:left">100 万元素中取第 10 页</th>
-<th style="text-align:left">100 万元素中取第 5 万页</th>
+<th style="text-align:left">命令写法</th>
+<th style="text-align:left">服务端复杂度</th>
+<th style="text-align:left">深度敏感？</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align:left">前几页（浅分页）</td>
+<td style="text-align:left">浅分页</td>
 <td style="text-align:left"><code>ZREVRANGE key 90 99</code></td>
-<td style="text-align:left">O(N + M)</td>
-<td style="text-align:left">微秒级</td>
-<td style="text-align:left">不可用（偏移量 50 万）</td>
+<td style="text-align:left">$O(\log N + M)$</td>
+<td style="text-align:left">否</td>
 </tr>
 <tr>
-<td style="text-align:left">深分页</td>
+<td style="text-align:left">深分页（第 5 万页）</td>
 <td style="text-align:left"><code>ZREVRANGE key 500000 500009</code></td>
-<td style="text-align:left">O(N + M)</td>
-<td style="text-align:left">-</td>
-<td style="text-align:left"><strong>数十毫秒级，且随深度线性恶化</strong></td>
+<td style="text-align:left">$O(\log N + M)$</td>
+<td style="text-align:left"><strong>否（span 定位）</strong></td>
 </tr>
 <tr>
-<td style="text-align:left">按分数范围</td>
-<td style="text-align:left"><code>ZREVRANGEBYSCORE key (last -inf</code></td>
-<td style="text-align:left">O(log N + M)</td>
-<td style="text-align:left">恒定微秒级</td>
-<td style="text-align:left">恒定微秒级</td>
+<td style="text-align:left">Score 游标</td>
+<td style="text-align:left"><code>ZREVRANGEBYSCORE key (980 -inf LIMIT 0 10</code></td>
+<td style="text-align:left">$O(\log N + M)$</td>
+<td style="text-align:left">否</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>Score 游标写错（带 offset）</strong></td>
+<td style="text-align:left"><code>ZREVRANGEBYSCORE key +inf -inf LIMIT 500000 10</code></td>
+<td style="text-align:left">$O(\text{offset} + M)$（≤7.2 逐节点跳；≥7.4 大 offset 走 span 跳跃）</td>
+<td style="text-align:left"><strong>是，随 offset 线性恶化</strong></td>
+</tr>
+<tr>
+<td style="text-align:left">全量拉取</td>
+<td style="text-align:left"><code>ZRANGE key 0 -1 WITHSCORES</code></td>
+<td style="text-align:left">$O(N)$ + 巨大回包</td>
+<td style="text-align:left">是</td>
+</tr>
+<tr>
+<td style="text-align:left">listpack 编码</td>
+<td style="text-align:left">任意范围命令</td>
+<td style="text-align:left">$O(N)$，但 N ≤ 128</td>
+<td style="text-align:left">集合小，无影响</td>
 </tr>
 </tbody>
 </table>
 <blockquote>
-<p>M 为返回条数（10 条），是可控的；<strong>真正失控的是 N —— 偏移量本身</strong>。只要偏移量不超过 1 万，<code>ZRANGE</code> 家族性能都很好；超过 1 万后应立刻切换游标方案。</p>
+<p>上表复杂度均来自官方文档声明与源码结构分析，属于<strong>理论分析</strong>；&quot;在你的版本上是否可感知&quot;请按 3.4 节实测。<br>
+M（返回条数）是业务可控的；真正需要警惕的是后三行的 N 项。M 为 10 时（如每页 10 条），<code>ZRANGE</code> 家族在深浅偏移下的耗时差异可以忽略——<strong>&quot;偏移量超过 1 万就性能崩坏&quot;的说法没有源码依据</strong>。</p>
 </blockquote>
+<h3 id="3-4-如何在自己的环境里验证">3.4 如何在自己的环境里验证</h3>
+<p>不要相信任何人的结论（包括本文），用命令验证：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 1. 造一个 100 万元素的 ZSET（示例脚本，可重跑）</span></span><br><span class="line"><span class="keyword">for</span> i <span class="keyword">in</span> $(<span class="built_in">seq</span> 1 1000000); <span class="keyword">do</span> <span class="built_in">echo</span> <span class="string">&quot;ZADD bench 1000000 <span class="variable">$i</span>&quot;</span>; <span class="keyword">done</span> | redis-cli -p 6379 --pipe</span><br><span class="line"></span><br><span class="line"><span class="comment"># 2. 分别执行浅分页、深分页、带 offset 的 BYSCORE 各 1000 次（Lua 保证串行执行）</span></span><br><span class="line">redis-cli EVAL <span class="string">&quot;for i=1,1000 do redis.call(&#x27;ZREVRANGE&#x27;,KEYS[1],90,99) end&quot;</span> 1 bench</span><br><span class="line">redis-cli EVAL <span class="string">&quot;for i=1,1000 do redis.call(&#x27;ZREVRANGE&#x27;,KEYS[1],500000,500009) end&quot;</span> 1 bench</span><br><span class="line">redis-cli EVAL <span class="string">&quot;for i=1,1000 do redis.call(&#x27;ZREVRANGEBYSCORE&#x27;,KEYS[1],&#x27;+inf&#x27;,&#x27;-inf&#x27;,&#x27;LIMIT&#x27;,500000,10) end&quot;</span> 1 bench</span><br><span class="line"></span><br><span class="line"><span class="comment"># 3. 读取服务端统计的单命令平均耗时（微秒）</span></span><br><span class="line">redis-cli INFO commandstats | grep -E <span class="string">&#x27;zrevrange|zrevrangebyscore&#x27;</span></span><br></pre></td></tr></table></figure>
+<p>对比 <code>usec_per_call</code> 就能得到你那个版本、你那个数据规模下的真实结论。这也是排查线上&quot;深翻变慢&quot;问题的标准姿势：<strong>先看 commandstats 的单命令平均耗时，再谈优化</strong>。</p>
 <hr>
-<h2 id="为什么-ZRANGE-深度分页会变慢？">为什么 <code>ZRANGE</code> 深度分页会变慢？</h2>
-<h3 id="跳表（Skip-List）的结构特性">跳表（Skip List）的结构特性</h3>
-<p>Redis ZSET 底层使用<strong>跳表 + 哈希表</strong>的组合。哈希表负责 O(1) 的 single 查询，而跳表负责范围查询和排序。</p>
-<p>跳表是一种多层级的链表结构。在查找某个<strong>元素</strong>时，可以通过层级索引跳跃实现 O(log N) 的查找。但是，<code>ZRANGE</code> 命令需要返回<strong>按排名（Rank）排序的元素</strong>。</p>
-<blockquote>
-<p><strong>核心瓶颈</strong>：跳表虽然查找元素快，但<strong>按排名（下标）访问</strong>需要从最顶层的头节点开始，逐级向下遍历并累加节点数量，直到到达目标 Rank。这个过程的平均复杂度为 <strong>O(N)</strong>，其中 N 是偏移量的大小。</p>
-</blockquote>
-<h3 id="原理示意图">原理示意图</h3>
-<p>下图展示了 Redis 跳表的结构以及深度分页的遍历路径：</p>
-<pre><code class="highlight mermaid">graph TD
-    subgraph 跳表层结构
-        Head[Head 头节点 L3] --&gt; L3_1[节点A L3] --&gt; L3_2[节点F L3] --&gt; Null
-        Head --&gt; L2_1[节点A L2] --&gt; L2_2[节点C L2] --&gt; L2_3[节点F L2] --&gt; Null
-        Head --&gt; L1_1[节点A L1] --&gt; L1_2[节点B L1] --&gt; L1_3[节点C L1] --&gt; L1_4[节点D L1] --&gt; L1_5[节点E L1] --&gt; L1_6[节点F L1] --&gt; Null
-    end
-
-    style Head fill:#f9f,stroke:#333,stroke-width:2px
-    style L3_2 fill:#f96,stroke:#333,stroke-width:2px
-    style L2_3 fill:#f96,stroke:#333,stroke-width:2px
-    style L1_6 fill:#f96,stroke:#333,stroke-width:2px
-
-    Note[执行 ZRANGE key 10000 10010 时： / 1. 从 Head 开始遍历 L1 指针 / 2. 必须经过前 10000 个节点 / 3. 到达目标位置后才开始取数]
-    Note -.-&gt; L1_1</code></pre>
-<blockquote>
-<p>当执行 <code>ZRANGE key 10000 10010</code> 时，Redis 无法直接“跳”到第 10000 个节点。</p>
-<p>它必须从跳表的底层链表（L1）的头节点开始，沿着 <code>后退指针</code> 或 <code>前进指针</code>，逐个节点地数过去，直到数到第 10000 个节点。</p>
-<p><strong>这意味着：</strong> 偏移量越大，Redis 需要遍历的节点就越多，CPU 消耗呈线性增长，这是深度分页变慢的根本原因。</p>
-</blockquote>
-<h3 id="为什么跳表定位元素是-O-log-N-，定位排名却是-O-N-？">为什么跳表定位元素是 O(log N)，定位排名却是 O(N)？</h3>
-<p>这是理解 ZSET 分页瓶颈的关键，两种操作面对的“索引”完全不同：</p>
+<h2 id="四、深分页真正的三条代价路径">四、深分页真正的三条代价路径</h2>
+<h3 id="4-1-排名不稳定：并发写入下的重复与漏页（最主要的正确性问题）">4.1 排名不稳定：并发写入下的重复与漏页（最主要的正确性问题）</h3>
+<p>rank 是&quot;位置&quot;，不是&quot;身份&quot;。两次翻页请求之间，只要有任何一个 member 的 score 发生变化（<code>ZINCRBY</code>、<code>ZADD</code>），位于变更点之后的所有排名都会整体平移：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>按 Score 定位元素</strong>：跳表从顶层开始，通过各层“跨度（span）”指针快速跳过区间——每层能越过成百上千个节点，复杂度 O(log N)，这也是 <code>ZSCORE</code>、<code>ZRANGEBYSCORE</code> 快的原因；</p>
+<p>有人加分挤进前面 → 后面所有元素排名 +1 → <strong>下一页会把上一页末尾的元素再给你一次（重复）</strong>，同时把本应出现在下一页末尾的元素挤出去（漏读）；</p>
 </li>
 <li class="lvl-2">
-<p><strong>按 Rank（排名）定位元素</strong>：<code>ZRANGE key start stop</code> 的 <code>start</code> 是<strong>第几个</strong>，而不是“哪个分数”。跳表的跨层级指针只记录“跳过的节点数量”，因此 Redis 必须从 <code>Header</code> 出发，沿着底层（L1）前进指针<strong>逐节点累加计数</strong>，直到累计数等于 <code>start</code>——复杂度退化为 O(start)。</p>
+<p>有元素被删除 → 后面排名 -1 → <strong>下一页跳过一个元素</strong>。</p>
 </li>
 </ul>
-<pre><code class="highlight mermaid">graph LR
-    subgraph 按Score查找 OlogN
-        A1[zrangebyscore key 900 +inf / 从顶层索引直接跳跃] --&gt; A2[毫秒级定位到分数边界]
-    end
-    subgraph 按Rank查找 ON
-        B1[zrange key 1000000 -1 / 从底层链表头开始] --&gt; B2[逐个节点计数 100 万次] --&gt; B3[CPU 消耗随偏移量线性增长]
-    end
+<p>时序图演示&quot;重复&quot;是怎么发生的：</p>
+<pre><code class="highlight mermaid">sequenceDiagram
+    participant U as 用户
+    participant S as 服务端
+    participant R as Redis
 
-    style A1 fill:#c8e6c9
-    style B1 fill:#ffcdd2
-    style B3 fill:#ffcdd2</code></pre>
-<blockquote>
-<p>同理，<code>ZREVRANGE</code> 的倒序深翻需要从尾部（Tail）沿后退指针逐个计数，代价完全相同。因此<strong>排行榜第 1000 名之后的翻页</strong>在数据量百万级时已经能感知到延迟，千万级时不可接受。</p>
-</blockquote>
-<h2 id="基于-Score-的游标分页（Cursor-based）">基于 Score 的游标分页（Cursor-based）</h2>
-<p>要彻底解决深度分页问题，必须放弃 <code>OFFSET</code> 思维，利用 ZSET 天生的<strong>范围查询</strong>能力，将“按偏移量查”转变为“按分数范围查”。</p>
-<blockquote>
-<p><strong>核心命令</strong>：<code>ZREVRANGEBYSCORE</code> (降序) 或 <code>ZRANGEBYSCORE</code> (升序)。</p>
-</blockquote>
-<h3 id="标准实现流程（无限滚动加载）">标准实现流程（无限滚动加载）</h3>
-<p>假设我们有一个游戏排行榜，需要按分数从高到低拉取数据，且支持“加载更多”。</p>
+    Note over U,R: t0：第 11 名是甲（score=88）
+    U-&gt;&gt;S: 第 1 页：ZREVRANGE rank 0 9
+    S-&gt;&gt;R: ZREVRANGE rank 0 9
+    R--&gt;&gt;S: 返回第 1~10 名
+    Note over R: t1：乙加分挤进第 5 名，甲滑到第 12 名
+    U-&gt;&gt;S: 第 2 页：ZREVRANGE rank 10 19
+    S-&gt;&gt;R: ZREVRANGE rank 10 19
+    R--&gt;&gt;S: 返回此刻的第 11~20 名
+    Note over S: 甲再次出现在第 2 页（重复）；&lt;br/&gt;原第 20 名被挤到第 21 名（漏读）</code></pre>
+<p>注意：<strong>这不是 ZSET 的缺陷，而是&quot;位置分页&quot;这类接口的固有语义</strong>。MySQL 的 <code>LIMIT/OFFSET</code>、Elasticsearch 的 <code>from/size</code> 有完全相同的问题（站内另一篇<a href="/2025/09/b35492bf2a96482e86fe1e77b2bc7812/">《海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案》</a>对此有展开）。区别只在于：Redis 的 rank 翻页<strong>单次查询并不慢</strong>，所以这个问题更容易被忽略——它不报错、不超时，只是数据悄悄错位，等产品与用户发现时往往已经积累了一段时间。</p>
+<p><strong>游标方案把&quot;锚点&quot;从位置换成数据本身</strong>：下一页的起点是&quot;上一页最后一个 member 的 score&quot;。只要锚点不变，翻页期间插入多少高分新数据都不影响后续翻页的相对顺序——已见过的高分新数据，本来也不该再出现在下滑流里。</p>
+<h3 id="4-2-隐藏的线性路径：BYSCORE-命令的-LIMIT-offset">4.2 隐藏的线性路径：BYSCORE 命令的 LIMIT offset</h3>
+<p>游标分页的标准写法是 <code>LIMIT 0 count</code>，但很多实现会把 offset 语义带进 BYSCORE 命令，比如想跳过前 50 万条直接取后面的数据：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ZREVRANGEBYSCORE rank +inf -inf LIMIT 500000 10   # 危险写法</span><br></pre></td></tr></table></figure>
+<p>官方文档对这条路径有明确警告：<strong>“if <code>offset</code> is large, the sorted set needs to be traversed for <code>offset</code> elements before getting to the elements to return, which can add up to O(N) time complexity.”</strong> 源码层面，Redis ≤7.2 的实现就是在找到分数边界后沿第 1 层逐节点跳过 offset 次（源码简化版）：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* ZRANGEBYSCORE/ZREVRANGEBYSCORE 的 LIMIT 处理（源码简化版，Redis ≤7.2） */</span></span><br><span class="line">ln = reverse ? zslLastInRange(zsl, &amp;range) : zslFirstInRange(zsl, &amp;range);</span><br><span class="line"><span class="keyword">while</span> (ln &amp;&amp; offset--) &#123;                    <span class="comment">/* 逐节点跳过：O(offset) */</span></span><br><span class="line">    ln = reverse ? ln-&gt;backward : ln-&gt;level[<span class="number">0</span>].forward;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><strong>Redis 7.4 起引入 <code>zslNthInRange</code></strong>：offset 小于源码常量 <code>ZSKIPLIST_MAX_SEARCH</code>（值为 10）时仍逐节点跳；超过则利用 span 做排名换算，从顶层节点直达目标，恢复为 $O(\log N)$。也就是说：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>第一页请求</strong>：获取分数最高的前 10 名。</p>
-<p><code>ZREVRANGEBYSCORE rank +inf -inf LIMIT 0 10 WITHSCORES</code></p>
-<p>返回结果：</p>
+<p><strong>≤7.2</strong>：<code>LIMIT</code> 大 offset 是货真价实的 O(N) 陷阱，一条命令能把单线程的 Redis 拖出长尾；</p>
+</li>
+<li class="lvl-2">
+<p><strong>≥7.4</strong>：这个陷阱在源码层面被修复，但官方文档至今仍保留 O(N) 警告（保守表述，兼顾旧版本）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>无论什么版本</strong>，<code>LIMIT 0 count</code> + 游标续读都是跨版本安全、语义最清晰的写法。</p>
+</li>
+</ul>
+<p>这也是游标方案&quot;性能上不吃亏&quot;的另一半理由：它天然不踩这条路径。</p>
+<h3 id="4-3-其他真实代价：大-M、全量拉取与-payload">4.3 其他真实代价：大 M、全量拉取与 payload</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>返回条数 M 才是单次命令的线性项</strong>：<code>ZRANGE key 0 -1 WITHSCORES</code> 在百万元素的 key 上会构造上百 MB 的回包——这是真正会拖垮 Redis 主线程（输出缓冲区暴涨、网络打满）的操作，属于典型大 Key 反模式，详见站内<a href="/2025/01/4c3bfb375d2e49448ccc3898e4bf57ac/">《Redis 大 Key 为什么危险？》</a>。</p>
+</li>
+<li class="lvl-2">
+<p><strong>payload 放大</strong>：member 里塞长 JSON（昵称、头像、简介全放进去）会让同样的 M 放大几倍到几十倍。正确做法是 ZSET 里只放 ID，详情用 Pipeline 批量查 Hash。</p>
+</li>
+<li class="lvl-2">
+<p><strong>&quot;总数 + 页码&quot;接口的隐性语义成本</strong>：<code>ZCARD</code> 本身 $O(1)$ 不贵，但它返回的是&quot;此刻&quot;的总数；每次翻页都重算总数并配合 rank 定位，页码对应的内容会在并发写入下漂移（第 6 节展开）。</p>
+</li>
+</ul>
+<hr>
+<h2 id="五、方案：基于-Score-的游标分页">五、方案：基于 Score 的游标分页</h2>
+<h3 id="5-1-标准实现（无限滚动加载）">5.1 标准实现（无限滚动加载）</h3>
+<p>以游戏排行榜为例，按分数从高到低、&quot;加载更多&quot;式翻页。游标就是<strong>上一页最后一个 member 的 score</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>第一页</strong>：取分数最高的前 10 名。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ZREVRANGEBYSCORE rank +inf -inf LIMIT 0 10 WITHSCORES</span><br></pre></td></tr></table></figure>
+<p>返回结果（示意）：</p>
 <blockquote>
 <ol>
 <li class="lvl-3">
-<p>“player_A”  -&gt; “1000”</p>
+<p>“player_A” → “1000”</p>
 </li>
 <li class="lvl-3">
-<p>“player_B”  -&gt; “995”</p>
+<p>“player_B” → “995”<br>
+……</p>
 </li>
 <li class="lvl-3">
-<p>…</p>
-</li>
-<li class="lvl-3">
-<p>“player_J”  -&gt; “980”</p>
+<p>“player_J” → “980”</p>
 </li>
 </ol>
 </blockquote>
-<p><strong>记录游标</strong>：记录下当前页<strong>最后一名</strong>的 Score 值，即 <code>980</code>。</p>
+<p><strong>记录游标</strong>：当前页最后一名的 Score 值 <code>980</code>。</p>
 </li>
 <li class="lvl-2">
-<p><strong>第二页请求</strong>（查询分数小于 980 的数据）：</p>
-<p><code>ZREVRANGEBYSCORE rank 979 -inf LIMIT 0 10 WITHSCORES</code></p>
-<p><strong>注意</strong>：这里使用 <code>979</code> 而不是 <code>980</code>，是为了<strong>排除边界值</strong>，防止上一页最后一个玩家在下一页重复出现（即开区间 <code>(980</code>）。</p>
+<p><strong>下一页</strong>：查&quot;分数严格小于 980&quot;的前 10 名。边界有两种写法：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"># 写法一：开区间（推荐，语义明确）</span><br><span class="line">ZREVRANGEBYSCORE rank (980 -inf LIMIT 0 10 WITHSCORES</span><br><span class="line"></span><br><span class="line"># 写法二：整数分数手工 -1（仅在分数为整数且最小刻度 ≥ 1 时成立）</span><br><span class="line">ZREVRANGEBYSCORE rank 979 -inf LIMIT 0 10 WITHSCORES</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><strong>注意</strong>：<code>(</code> 前缀表示开区间（exclusive），是 <code>ZRANGEBYSCORE</code>/<code>ZREVRANGEBYSCORE</code> 官方支持的语法，浮点分数也能用；手工 <code>-1</code> 是旧代码里常见的写法，它隐含&quot;分数是连续整数&quot;的假设——一旦分数出现小数，或分数刻度变小（如改成 0.5 步进），边界就会错位。<strong>优先用 <code>(</code></strong>。</p>
+<p><strong>LIMIT 必须是 <code>0 count</code></strong>：原因见 4.2 节，BYSCORE 命令的 offset 在旧版本上是逐节点跳过的线性路径。</p>
+</blockquote>
+</li>
+<li class="lvl-2">
+<p><strong>现代写法（Redis ≥ 6.2）</strong>：<code>ZRANGE</code> 已统一取代 RANGE 家族命令（旧命令标记为 deprecated，仍可用）：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"># 与上面等价：REV 时第一个分数参数是最大边界，第二个是最小边界</span><br><span class="line">ZRANGE rank +inf (980 BYSCORE REV LIMIT 0 10 WITHSCORES</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-2">
+<p><strong>游标回传</strong>：响应里必须带 <code>WITHSCORES</code>（或服务端额外记录），下一页请求把 <code>last_score</code>（5.3 节之后还需 <code>last_member</code>）作为游标传回。游标建议做成不透明字符串（如 <code>base64(score|member)</code>），避免客户端解析内部格式、也便于未来升级游标结构。</p>
+</li>
+<li class="lvl-2">
+<p><strong>越界行为</strong>：游标比全库最小分数还小时返回空列表，即&quot;没有更多了&quot;；对空 key、过期 key 同样返回空。客户端把&quot;空页&quot;作为终止条件即可，不需要额外的探测命令。</p>
 </li>
 </ul>
-<h3 id="遭遇“同分”问题（Score-重复）">遭遇“同分”问题（Score 重复）</h3>
-<p>如果上例中，<code>player_J</code> 的 Score 是 980，但还有 <code>player_K</code> 也是 980 分。如果直接用 <code>979</code> 作为游标，<code>player_K</code> 会被漏掉，因为它排在 <code>player_J</code> 之后，但分数相同。</p>
+<h3 id="5-2-同分问题：游标只带-Score-会漏数据">5.2 同分问题：游标只带 Score 会漏数据</h3>
+<p>如果 <code>player_J</code> 是 980 分，而 <code>player_K</code> 也是 980 分且按次序排在 J 之后。用 <code>(980</code> 开区间翻下一页时，K 会被整段跳过——开区间把&quot;所有 980 分&quot;都排除了，包括还没展示过的：</p>
 <pre><code class="highlight mermaid">sequenceDiagram
     participant C as 客户端
     participant R as Redis
-
+    Note over C,R: 集合中有 A:980, J:980, K:980, L:970&lt;br/&gt;（同分按 member 字典序排列：A → J → K）
     Note over C,R: 第一页：ZREVRANGEBYSCORE rank +inf -inf LIMIT 0 2 WITHSCORES
-    R--&gt;&gt;C: 返回 [A:980, J:980]，游标记录为 979
-    Note over C,R: 第二页：ZREVRANGEBYSCORE rank 979 -inf LIMIT 0 2
-    R--&gt;&gt;C: 返回 [K:970, L:960] / K 的分数是 970 被返回 / 而实际上 K 在 J 之后应为第二页第一名（漏数据）
-    Note over C,R: 根源：游标只带了 Score，丢失了同分时的相对次序</code></pre>
-<p><strong>解决方案：组合排序（Score + 唯一二级排序）</strong></p>
-<p>我们需要确保 ZSET 的排序是<strong>全局唯一且确定的</strong>。常用的技巧是<strong>将 Score 设计为复合数值</strong>。</p>
-<p><strong>设计公式</strong>：$Final_Score = (原分数 * 10^N) + (最大唯一ID - 当前唯一ID)$</p>
+    R--&gt;&gt;C: 返回 [A:980, J:980]，游标 = 980
+    Note over C,R: 第二页：ZREVRANGEBYSCORE rank (980 -inf LIMIT 0 2
+    R--&gt;&gt;C: 返回 [L:970]——K:980 被开区间整段跳过（漏数据）
+    Note over C,R: 根源：游标只携带 Score，同分内部还有一层&quot;次序&quot;，&lt;br/&gt;而 Score 无法表达这层次序</code></pre>
+<p>先明确一个事实：<strong>ZSET 对同分 member 并非乱序</strong>。官方文档明确：分数相同时按 member 的<strong>字典序</strong>（二进制字节序比较）排列。所以同分顺序是确定、可复现的，只是这个顺序是 member 字符串序，往往不是业务想要的（比如纯数字 ID 不补零时，“9999” 会排在 “10000” 前面）。</p>
+<p>问题的本质是：<strong>Redis 没有提供按 (score, member) 二元组定位的命令</strong>——你无法用一条命令表达&quot;取 score &lt; 980 的，或 score = 980 且 member 次序在 J 之后的&quot;。所以要么两步查询，要么让 Score 本身承载次序。三种做法对比：</p>
+<p><strong>方案 A：复合 Score（推荐，一条命令搞定）</strong></p>
+<p>把 tie-breaker 编进分数，让合成后的 Score 全局唯一：</p>
+<p>$$S_{final} = S \times 10^{N} + (10^{N} - ID)$$</p>
 <blockquote>
-<p><code>N</code> 必须足够大，足以容纳 ID 的最大值（例如 ID 最大为 1 亿，则 $10^8$）。这样，Score 的整数部分代表实际分数，小数部分代表 ID 的降序。</p>
+<p>$10^N$ 必须大于 ID 的最大取值（ID 上限 1 亿，则取 $N = 8$）。这样整数部分是业务分数，低位是 ID 的反序。</p>
 </blockquote>
-<p><strong>示例</strong>：</p>
+<p>示例（$N=6$，ID 上限 $10^6$）：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p>玩家 A：Score = 1000，ID = 100 → 存储值 = $1000 * 10^6 + (10^6 - 100) = 1000999900$</p>
+<p>玩家 A：S=1000，ID=100 → $1000 \times 10^6 + (10^6 - 100) = 1000999900$</p>
 </li>
 <li class="lvl-2">
-<p>玩家 B：Score = 1000，ID = 200 → 存储值 = $1000 * 10^6 + (10^6 - 200) = 1000999800$</p>
-</li>
-<li class="lvl-2">
-<p>由于 ID 越大，减去的值越小，因此最终 Score 越大，实现了“同分按 ID 降序”的效果。</p>
+<p>玩家 B：S=1000，ID=200 → $1000 \times 10^6 + (10^6 - 200) = 1000999800$</p>
 </li>
 </ul>
-<blockquote>
-<p><strong>此时的游标传递</strong>：上一页最后一条数据不仅需要传回 <code>Score</code>，还需要传回 <code>Member</code>（或唯一 ID）。下一页查询时，使用 <code>ZREVRANGEBYSCORE</code> 的 <code>(score</code> 开区间条件，或者加上 <code>BYLEX</code> 辅助，但最简单的方式是继续使用 <code>(score</code> 开区间，因为 Score 已经是全局唯一的。</p>
-</blockquote>
+<p><strong>方向性注意</strong>：公式 $(10^N - ID)$ 的实际效果是 <strong>ID 越大、减去越多、合成分数越小、排名越靠后</strong>，即&quot;同分按 ID 升序&quot;（先到先得）——上面 A（ID=100）排在 B（ID=200）前面。本文旧版把这句写成了&quot;ID 越大减去的值越小&quot;，方向说反了。如果业务要&quot;新用户靠前&quot;，把低位改成 $(ID - ID_{min})$ 即可。方向是工程决策，不是定式，但必须写进文档。</p>
+<p>由于合成 Score 全局唯一，同分漏数据问题随之消失，游标退化为普通的开区间续读：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ZREVRANGEBYSCORE rank (1000999800 -inf LIMIT 0 10 WITHSCORES</span><br></pre></td></tr></table></figure>
+<p><strong>方案 B：两段查询（不改存量数据，但复杂）</strong></p>
+<p>游标携带 (score, member) 二元组，每页发两条命令：<code>score &lt; s</code> 的一段 + <code>score = s</code> 的一段（后者取回后客户端按 member 字典序过滤出排在 last_member 之后的、拼进本页）。省去了数据迁移，但多一次 RTT，且&quot;同分块&quot;可能很大，边界拼接逻辑容易写错。除非存量数据不可动，否则不推荐。</p>
+<p><strong>方案 C：接受 member 字典序（零成本，顺序不可控）</strong></p>
+<p>业务对同分顺序无要求时，直接用 <code>(score</code> 开区间，并在接口文档写明&quot;同分按 member 字典序展示&quot;。但要意识到：<strong>漏读问题在&quot;同分块超过页大小&quot;时依然存在</strong>——上一页同分块没展示完就翻页，剩余同分 member 会被跳过。所以方案 C 只适用于&quot;同分概率极低&quot;或&quot;同分整块一起展示&quot;的场景，不能当作同分问题的通用解。</p>
+<h3 id="5-3-复合分数的精度红线：-2-53">5.3 复合分数的精度红线：$2^{53}$</h3>
+<p>复合分数方案最大的坑不在设计而在<strong>数值表示</strong>：<strong>ZSET 的 score 是 IEEE-754 双精度浮点数（double），有效精度只有 53 位尾数</strong>。所有绝对值不超过 $2^{53}$ 的整数才能被 double 精确表示：</p>
+<p>$$2^{53} = 9{,}007{,}199{,}254{,}740{,}992 \approx 9.007 \times 10^{15}$$</p>
+<p>因此合成分数必须满足预算约束（理论推导）：</p>
+<p>$$\underbrace{(S_{max} + 1) \times 10^{N}}<em>{\text{合成值上界}} \le 2^{53} \quad\Longrightarrow\quad N \le 15.95 - \log</em>{10}(S_{max}+1)$$</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>原文示例（S 上限千级、N=6）：合成值上界约 $10^9$，安全余量极大 ✓；</p>
+</li>
+<li class="lvl-2">
+<p><strong>反例</strong>：分数上限 $10^9$（积分、金额分很常见）却取 $N=7$（想要 $10^7$ 的 ID 空间）：合成值上界 $10^{16} &gt; 2^{53}$，低三位被舍入——<strong>同分玩家的 tie-break 被整块抹平，多人共享同一个 double 值</strong>，排序退化回 member 字典序且行为随数值漂移，属于&quot;上线数周后才发现、极难排查&quot;的错误。</p>
+</li>
+</ul>
+<p>三条工程纪律：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>上线前算预算</strong>：把 $(S_{max}+1) \times 10^N \le 2^{53}$ 写成单测断言；任何&quot;调大分数上限&quot;的需求单必须触发重新评估；</p>
+</li>
+<li class="lvl-3">
+<p><strong>小数分数先整数化</strong>：分数保留 2 位小数时先乘 $10^2$，确保缩放后的业务分数是整数，且<strong>相邻两档分数的间距（换算到合成刻度后）≥ tie-break 空间</strong>，否则同分处理会跨档串味；</p>
+</li>
+<li class="lvl-3">
+<p><strong>客户端全程当字符串处理</strong>：<code>ZSCORE</code> 返回的是字符串；JS 前端的 <code>Number</code> 同样只有 53 位精度，<code>JSON.parse</code> 大整数会静默丢精度；Java 侧不要把 score 塞进 <code>double</code> 参与运算，统一用字符串或 <code>BigDecimal</code> 透传。</p>
+</li>
+</ol>
+<p>（负分数场景下公式依然保序：相邻档位间距仍是 $10^N$，tie-break 落在 $[0, 10^N)$ 内不会跨档。）</p>
+<h3 id="5-4-游标失效与数据变更的边界">5.4 游标失效与数据变更的边界</h3>
+<p>游标方案并非对写入完全免疫，它只是把&quot;全局漂移&quot;缩小成&quot;锚点附近&quot;的局部效应。与 rank 分页逐项对比：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">并发变更</th>
+<th style="text-align:left">rank 分页</th>
+<th style="text-align:left">Score 游标分页</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">锚点之后插入新数据</td>
+<td style="text-align:left">全部错位（重复+漏读）</td>
+<td style="text-align:left">无影响（新数据分数高于游标，本就不该再出现）</td>
+</tr>
+<tr>
+<td style="text-align:left">锚点 member 被删除</td>
+<td style="text-align:left">错位</td>
+<td style="text-align:left"><strong>无影响</strong>（该 member 本就不该再出现）</td>
+</tr>
+<tr>
+<td style="text-align:left">已读 member 被降分（降到游标以下）</td>
+<td style="text-align:left">错位</td>
+<td style="text-align:left"><strong>会在后续页重复出现一次</strong></td>
+</tr>
+<tr>
+<td style="text-align:left">已读 member 被加分（升到游标以上）</td>
+<td style="text-align:left">错位</td>
+<td style="text-align:left"><strong>从后续页&quot;消失&quot;</strong>（刷新后回到前面的页）</td>
+</tr>
+<tr>
+<td style="text-align:left">key 被淘汰/过期</td>
+<td style="text-align:left">整体失效</td>
+<td style="text-align:left">整体失效，返回空页</td>
+</tr>
+</tbody>
+</table>
+<p>后两行是游标方案的理论极限——任何不复制快照的分页都无法同时做到&quot;实时&quot;与&quot;不变&quot;。工程上通常靠产品策略消化：对&quot;已读内容重复&quot;容忍（信息流常态），对&quot;降分重复&quot;敏感的场景在客户端按 member 去重；需要<strong>严格一致视图</strong>的场合（B 端对账、导出、发奖），用快照 key（见第六节）。</p>
 <hr>
-<h2 id="支持“随机跳页”（局限性讨论）">支持“随机跳页”（局限性讨论）</h2>
-<p>在后台管理系统中，用户可能希望直接点击“第 100 页”。这种场景下，游标分页（仅支持上一页/下一页）无法满足需求。</p>
-<p><strong>应对策略：</strong></p>
+<h2 id="六、支持-随机跳页-的取舍">六、支持&quot;随机跳页&quot;的取舍</h2>
+<p>后台管理系统里用户就是要点&quot;第 100 页&quot;，纯游标（只有上一页/下一页）无法满足。基于本文前面的考证，各策略的真实代价与适用边界如下：</p>
 <table>
 <thead>
 <tr>
 <th style="text-align:left">策略</th>
 <th style="text-align:left">实现方式</th>
-<th style="text-align:left">适用场景</th>
+<th style="text-align:left">真实代价与适用场景</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align:left"><strong>限制最大偏移量</strong></td>
-<td style="text-align:left">前端只允许查询前 5000 条（即前 500 页），超出时提示“数据过多，请精确搜索”。</td>
-<td style="text-align:left">绝大多数 C 端排行榜场景，用户只关心 Top 100。</td>
+<td style="text-align:left"><strong>限制最大偏移</strong></td>
+<td style="text-align:left">前端/服务端硬限制可翻范围（如只允许前 5000 条），超出提示&quot;请精确搜索&quot;</td>
+<td style="text-align:left"><strong>要限制的不是定位 CPU（span 定位不贵），而是语义</strong>：深处的页码在并发写入下没有意义，且超大 M 的恶意请求需要兜底。绝大多数 C 端排行榜用户只关心 Top 100</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>分段分页（分桶）</strong></td>
-<td style="text-align:left">将 ZSET 按分数区间拆分成多个小 ZSET（例如每 100 分一段），先定位段，再在段内做 <code>ZRANGE</code> 小范围查询。</td>
-<td style="text-align:left">分数分布均匀且已知的场景（如 0-1000 分）。</td>
+<td style="text-align:left"><strong>rank 随机跳页（接受漂移）</strong></td>
+<td style="text-align:left">直接 <code>ZREVRANGE key off off+9</code></td>
+<td style="text-align:left">单次 $O(\log N + M)$，<strong>服务端开销可接受</strong>；代价是页内容在写入下漂移。适合&quot;看个大概&quot;的 B 端报表</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>替换数据结构</strong></td>
-<td style="text-align:left">如果排序不依赖 Score，只按插入时间排序，考虑使用 <strong>Redis List</strong> (<code>LRANGE</code> 分页，O(1) 定位)。</td>
-<td style="text-align:left">消息队列、通知列表。</td>
+<td style="text-align:left"><strong>快照 key</strong></td>
+<td style="text-align:left">需要严格一致时用 <code>COPY rank rank:snapshot:20260923</code>（Redis 6.2+）或 <code>ZUNIONSTORE</code> 生成周期快照，翻页全部走快照</td>
+<td style="text-align:left">一致性最强，支持随机跳页；代价是额外内存（按快照周期 × 集合大小估算）与生成开销。适合对账、导出、发奖</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>分桶（按分数段拆 ZSET）</strong></td>
+<td style="text-align:left">每 100 分一个子 ZSET，先定位段再段内翻页</td>
+<td style="text-align:left">旧经验。现在看<strong>多数场景不再必要</strong>（深翻本身不贵），还引入&quot;分数跨段迁移&quot;的一致性维护成本。仅当单 key 大到需要拆分内存/热点时才考虑</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>换 List</strong></td>
+<td style="text-align:left"><code>LRANGE</code> 分页</td>
+<td style="text-align:left"><strong>本文旧版此处有误</strong>：<code>LRANGE</code> 的复杂度是 $O(S+N)$（S 为 start 偏移量），List 并没有&quot;O(1) 按下标定位&quot;能力，深翻一样劣化，还失去了按 Score 排序能力。仅当数据天然按插入序、只需线性回放时才选 List</td>
 </tr>
 </tbody>
 </table>
-<hr>
-<h2 id="最佳实践总结">最佳实践总结</h2>
 <blockquote>
-<p><strong>原则：能用范围查询（BYSCORE）绝不用索引偏移（RANGE），能限制页数就限制页数，绝不依赖 Redis 进行超过 10000 偏移量的随机跳页。</strong></p>
+<p>结论：随机跳页真正的成本不在&quot;定位第 N 个元素&quot;，而在&quot;第 N 个&quot;这个概念在动态数据上是否还有意义。<strong>先和产品确认要不要精确页码，再谈实现。</strong></p>
 </blockquote>
-<ol>
-<li class="lvl-3">
-<p><strong>C 端（用户端）场景</strong>：<strong>必须</strong>使用 <code>ZREVRANGEBYSCORE</code> + 游标，配合复合 Score 处理同分问题，性能恒定 O(log N)。</p>
-</li>
-<li class="lvl-3">
-<p><strong>B 端（管理后台）场景</strong>：允许使用 <code>ZREVRANGE</code>，但<strong>必须在代码层面硬限制</strong> <code>start + stop &lt;= 5000</code>，防止恶意请求拖垮 Redis。</p>
-</li>
-<li class="lvl-3">
-<p><strong>内存优化</strong>：如果只展示排行榜昵称，可以 <code>ZRANGE</code> 只返回 Member，再通过 Pipeline 批量查 Hash 获取用户详情，避免一次性返回过大 Payload。</p>
-</li>
-<li class="lvl-3">
-<p><strong>监控告警</strong>：对 Redis 的 <code>slowlog</code> 进行监控，任何超过 10ms 的 <code>ZRANGE</code> 或 <code>ZREVRANGEBYSCORE</code> 都需要人工 Review。</p>
-</li>
-</ol>
 <hr>
-<h2 id="Redis-与-MySQL-的深度分页对比">Redis 与 MySQL 的深度分页对比</h2>
+<h2 id="七、方案对比：Redis-MySQL-Elasticsearch">七、方案对比：Redis / MySQL / Elasticsearch</h2>
+<p>把三种存储的深分页放在一起看，会发现&quot;offset 贵不贵&quot;的答案完全相反：</p>
 <table>
 <thead>
 <tr>
-<th style="text-align:left">对比维度</th>
-<th style="text-align:left">MySQL 深度分页</th>
-<th style="text-align:left">Redis ZSET 深度分页</th>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">MySQL <code>LIMIT/OFFSET</code></th>
+<th style="text-align:left">MySQL 游标 <code>WHERE id &gt; ?</code></th>
+<th style="text-align:left">ES <code>from/size</code></th>
+<th style="text-align:left">ES <code>search_after</code> + PIT</th>
+<th style="text-align:left">Redis <code>ZRANGE</code> offset</th>
+<th style="text-align:left">Redis Score 游标</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align:left"><strong>存储介质</strong></td>
-<td style="text-align:left">磁盘（HDD/SSD）</td>
-<td style="text-align:left">内存</td>
+<td style="text-align:left">定位成本</td>
+<td style="text-align:left">$O(\text{offset}+M)$ 扫描行（二级索引还有回表放大）</td>
+<td style="text-align:left">$O(\log N + M)$ B+树定位</td>
+<td style="text-align:left">协调节点归并 from+size × 分片数，<code>max_result_window</code> 默认 1 万</td>
+<td style="text-align:left">$O(M)$</td>
+<td style="text-align:left"><strong>$O(\log N + M)$（span 定位）</strong></td>
+<td style="text-align:left">$O(\log N + M)$</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>性能瓶颈</strong></td>
-<td style="text-align:left">磁盘随机 I/O 与回表（随机读）</td>
-<td style="text-align:left">CPU 计算（跳表遍历）与网络传输</td>
+<td style="text-align:left">并发写入语义</td>
+<td style="text-align:left">重复/漏读</td>
+<td style="text-align:left">锚点附近重复/漏读</td>
+<td style="text-align:left">重复/漏读</td>
+<td style="text-align:left">快照一致性（PIT）</td>
+<td style="text-align:left">重复/漏读</td>
+<td style="text-align:left">锚点附近重复/漏读</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>索引结构</strong></td>
-<td style="text-align:left">B+ 树（叶子节点双向链表）</td>
-<td style="text-align:left">跳表（多层级链表）</td>
+<td style="text-align:left">随机跳页</td>
+<td style="text-align:left">支持</td>
+<td style="text-align:left">不支持</td>
+<td style="text-align:left">支持</td>
+<td style="text-align:left">不支持</td>
+<td style="text-align:left">支持</td>
+<td style="text-align:left">不支持</td>
 </tr>
 <tr>
-<td style="text-align:left"><strong>按 Rank 定位</strong></td>
-<td style="text-align:left">需扫描叶子节点并回表，成本极高</td>
-<td style="text-align:left">需遍历底层链表节点，成本线性增长</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>游标优化</strong></td>
-<td style="text-align:left"><code>WHERE id &gt; last_id</code> 利用聚簇索引直接定位</td>
-<td style="text-align:left"><code>ZREVRANGEBYSCORE (last_score</code> 直接定位跳表节点</td>
-</tr>
-<tr>
-<td style="text-align:left"><strong>最终选型</strong></td>
-<td style="text-align:left">适合复杂条件筛选与随机跳页</td>
-<td style="text-align:left">适合高性能 TopN 与时间线滚动流</td>
+<td style="text-align:left">典型风险</td>
+<td style="text-align:left">深翻拖垮 I/O 与 CPU</td>
+<td style="text-align:left">需要有序唯一游标</td>
+<td style="text-align:left">深翻被 window 上限拒绝</td>
+<td style="text-align:left">快照生命周期管理</td>
+<td style="text-align:left"><strong>误用 <code>LIMIT offset</code> 线性路径</strong></td>
+<td style="text-align:left">同分漏读、$2^{53}$</td>
 </tr>
 </tbody>
 </table>
-<p>Redis ZSET 的深度分页并不是一个无法解决的难题，关键在于<strong>转变思维方式</strong>。从“我要第 N 条数据”转变为“我要 Score 小于 X 的数据”，利用 B+ 树/跳表的天然范围查找能力，让性能不受数据总量增长的影响。</p>
-<p>在业务层做合理的分页限制和降级策略，往往比单纯的技术优化更加重要。</p>
-<h2 id="工程实践：排行榜通常更适合“窗口”而不是“页码”">工程实践：排行榜通常更适合“窗口”而不是“页码”</h2>
-<p>如果产品只需要“加载更多”，优先设计 cursor；如果必须显示第 N 页，就需要接受随机跳页的成本，或者通过业务侧预计算/缓存降低定位压力。</p>
-<p>另外，同分问题必须明确。Redis Sorted Set 对相同 score 的 member 有确定的字典序规则，因此业务如果要求自定义稳定顺序，应把 tie-breaker 纳入设计，而不是只依赖 score。</p>
+<p>两个关键洞察：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>Redis 是其中唯一&quot;offset 定位本身就不贵&quot;的存储</strong>（感谢 span）。所以&quot;Redis 深分页必须游标化&quot;的性能论证是错的；游标在 Redis 上的价值是<strong>语义稳定 + 接口统一 + 规避版本相关的 <code>LIMIT offset</code> 陷阱</strong>。</p>
+</li>
+<li class="lvl-3">
+<p><strong>MySQL/ES 的深分页优化经验不能横移</strong>：在 MySQL 上&quot;必须游标化&quot;是性能救命（站内<a href="/2025/09/b35492bf2a96482e86fe1e77b2bc7812/">《海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案》</a>与<a href="/2025/12/d37bd4a145d34befa210169209870a38/">《Elasticsearch 深度分页为何越来越慢？从 from/size 到 search_after + PIT》</a>分别展开）；在 Redis 上同样的写法动机不成立，反而要警惕把 SQL 的 <code>LIMIT offset,count</code> 习惯带进 <code>ZREVRANGEBYSCORE</code>——那才是 Redis 上的真陷阱。</p>
+</li>
+</ol>
+<hr>
+<h2 id="八、故障实战复盘">八、故障实战复盘</h2>
+<p>以下三个场景是&quot;典型故障模式&quot;的复盘式分析（场景组合自社区高频问题与源码可证行为，非特定公司事故记录），按&quot;发生什么 → 为什么 → 系统如何表现 → 如何定位与恢复&quot;展开。</p>
+<h3 id="场景一：同分玩家-集体消失">场景一：同分玩家&quot;集体消失&quot;</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>发生什么</strong>：运营反馈某个分数段的玩家在排行榜第二页之后看不到了，但 <code>ZCARD</code> 显示人数正常；没有报错、没有慢查询。</p>
+</li>
+<li class="lvl-2">
+<p><strong>为什么</strong>：游标实现用了&quot;整数步进&quot;写法（<code>last_score - 1</code> 或 <code>-0.0001</code>），而该分数段恰逢活动结算、出现大量同分。开区间把整个同分块跳过——5.2 节里被漏掉的 K 不是一个人，是一批人。</p>
+</li>
+<li class="lvl-2">
+<p><strong>系统如何表现</strong>：数据缺失但不报错，监控全绿；只有玩家投诉或运营抽查才能发现，属于&quot;沉默型&quot;数据缺陷。</p>
+</li>
+<li class="lvl-2">
+<p><strong>如何定位</strong>：抽一个&quot;消失&quot;的 member，<code>ZSCORE</code> 查分数；用 <code>ZREVRANGEBYSCORE key (该分数 -inf LIMIT 0 10</code> 复现翻页路径，确认该分数整块被跳过；再用 <code>ZRANGEBYSCORE key 分数 分数</code> 量一下同分块的大小。</p>
+</li>
+<li class="lvl-2">
+<p><strong>如何恢复</strong>：短期用 <code>ZRANGEBYSCORE key s s</code> 把同分块补齐展示；根治是上复合 Score——但需要全量迁移（读全量 member → 计算合成分 → <code>ZADD</code> 原子覆盖），迁移期间旧接口读旧分数、新接口读新分数，用双 key 或灰度切换过渡；完成后下线&quot;整数步进游标&quot;代码路径。</p>
+</li>
+</ul>
+<h3 id="场景二：一条-跳到最后一页-的请求拖出-Redis-长尾">场景二：一条&quot;跳到最后一页&quot;的请求拖出 Redis 长尾</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>发生什么</strong>：管理后台上线&quot;跳转最后一页&quot;功能后，Redis 的 P99 从亚毫秒飙到几十毫秒，<code>slowlog</code> 里堆满 <code>zrevrangebyscore</code>，其他业务请求一起变慢。</p>
+</li>
+<li class="lvl-2">
+<p><strong>为什么</strong>：实现用了 <code>ZREVRANGEBYSCORE key +inf -inf LIMIT 999990 10</code>——BYSCORE 命令的大 offset 在 ≤7.2 上是逐节点跳过（4.2 节），一条命令扫描近百万个节点；又因为 Redis 单线程执行命令，长命令会把队列里所有请求一起拖慢。讽刺的是，同样的数据用 <code>ZREVRANGE key 990 999</code>（先 <code>ZCARD</code> 算出末页 offset，再按 rank 定位）是 $O(\log N + M)$，毫秒以内。</p>
+</li>
+<li class="lvl-2">
+<p><strong>系统如何表现</strong>：slowlog 告警、<code>INFO commandstats</code> 中 <code>cmdstat_zrevrangebyscore</code> 的 <code>usec_per_call</code> 随业务增长抬升；其他无关业务的 P99 同步恶化——单线程排队效应会让故障&quot;看起来像全站问题&quot;。</p>
+</li>
+<li class="lvl-2">
+<p><strong>如何定位</strong>：<code>SLOWLOG GET</code> 看慢命令形态；<code>INFO commandstats</code> 对比该命令平均耗时的历史曲线；确认 Redis 版本是否 ≥7.4。</p>
+</li>
+<li class="lvl-2">
+<p><strong>如何恢复</strong>：代码层禁止 BYSCORE 命令携带非零 offset（封装层硬编码 <code>LIMIT 0</code>）；&quot;跳最后一页&quot;改用 rank 定位或提供&quot;查看尾部 Top N&quot;的独立入口；有条件时升级到 ≥7.4 获得 <code>zslNthInRange</code> 修复——但不要把升级当治愈，旧版本兼容性仍是硬约束。</p>
+</li>
+</ul>
+<h3 id="场景三：复合分数超-2-53-，同分名次-随机跳变">场景三：复合分数超 $2^{53}$，同分名次&quot;随机跳变&quot;</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>发生什么</strong>：排行榜改版后分数上限从十万级提到十亿级（积分加倍活动），随后用户投诉&quot;同分玩家的先后名次每隔几分钟变一次&quot;，不同页面读到的同一人名次还不一致。</p>
+</li>
+<li class="lvl-2">
+<p><strong>为什么</strong>：复合分数公式没随分数上限重新评估——$10^9 \times 10^7$ 量级的合成值超过 $2^{53} \approx 9.007 \times 10^{15}$，double 舍入把低位 tie-break 整段抹掉，同分玩家的合成分数坍缩成同一个值，展示顺序退化回 member 字典序；再叠加客户端浮点解析误差（JS <code>Number</code> 同样只有 53 位精度），对外表现为&quot;名次随机跳变&quot;。</p>
+</li>
+<li class="lvl-2">
+<p><strong>系统如何表现</strong>：Redis 本身没有任何异常——它只是忠实地存了两个物理上相同的 double；错误发生在&quot;业务语义 → 数值表示&quot;的映射层，所以监控、慢查、错误日志全都安静。</p>
+</li>
+<li class="lvl-2">
+<p><strong>如何定位</strong>：取两个&quot;业务同分、ID 不同&quot;的 member，<code>ZSCORE</code> 对比——合成值完全相同即坐实；检查合成值的十进制位数是否逼近 16 位。若 5.3 节的单测断言存在，这类问题在 CI 阶段就会被拦住。</p>
+</li>
+<li class="lvl-2">
+<p><strong>如何恢复</strong>：重算全量合成分数（缩紧 N，或改用 5.2 节方案 B 的 member tie-break），<code>ZADD</code> 原子覆盖迁移；迁移期间写入走&quot;新分数 + 旧分数&quot;双 key 过渡；对外先冻结名次展示。<strong>恢复的难点不在技术而在信任</strong>：名次类数据出错后需要运营公告与补偿预案，这是选型时就该写进评审文档的回滚成本。</p>
+</li>
+</ul>
+<hr>
+<h2 id="九、注意事项与排坑清单">九、注意事项与排坑清单</h2>
+<ol>
+<li class="lvl-3">
+<p><strong>BYSCORE 命令永远 <code>LIMIT 0 count</code></strong>：offset 的成本跨版本不一致（≤7.2 为 O(N)，≥7.4 才修复），这是线上最常见的&quot;Redis 深翻变慢&quot;真凶。在封装层禁止 offset 参数透传。</p>
+</li>
+<li class="lvl-3">
+<p><strong>游标边界用 <code>(</code> 开区间，不要手工 ±1</strong>：浮点分数没有&quot;最小步长&quot;，<code>-0.0001</code> 这类手工步进在分数刻度变化后必然出错；同分问题必须用复合 Score 或两段查询显式解决，纯开区间会整块跳过同分 member。</p>
+</li>
+<li class="lvl-3">
+<p><strong>复合分数先算 $2^{53}$ 预算再上线</strong>：$(S_{max}+1) \times 10^N \le 2^{53}$ 写成单测断言；分数上限变更必须重新评估；客户端全链路字符串透传，禁止过 JS <code>Number</code>。</p>
+</li>
+<li class="lvl-3">
+<p><strong>限制单页 M 与总 payload</strong>：单页建议 ≤100 条；member 只存 ID，详情用 Pipeline 批量查 Hash；封禁 <code>ZRANGE key 0 -1</code> 式全量拉取，把大 Key 巡检纳入日常。</p>
+</li>
+<li class="lvl-3">
+<p><strong>监控对准&quot;单命令耗时&quot;而非&quot;接口耗时&quot;</strong>：<code>slowlog-log-slower-than</code> 建议收紧到毫秒级观察 ZSET 命令；<code>INFO commandstats</code> 的 <code>usec_per_call</code> 按 cmd 维度跟踪趋势——rank 定位本身不该成为慢源，谁慢谁可疑。</p>
+</li>
+<li class="lvl-3">
+<p><strong>&quot;共 X 页&quot;的展示要么放弃，要么接受漂移</strong>：<code>ZCARD</code> 是 $O(1)$，但它返回的是&quot;此刻&quot;的总数，与用户当前页码没有一致性保证；展示&quot;已超过 99% 的玩家&quot;这类模糊口径通常更稳妥。</p>
+</li>
+</ol>
+<hr>
+<h2 id="十、最佳实践总结">十、最佳实践总结</h2>
+<blockquote>
+<p><strong>原则：能按数据续读（BYSCORE 游标）就不按位置翻页（rank offset）；必须按位置翻页时，清楚自己在用&quot;会漂移的排名&quot;；永远不要把 offset 塞进 BYSCORE 命令的 LIMIT。</strong></p>
+</blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>C 端（无限滚动）</strong>：<code>ZRANGE ... BYSCORE REV LIMIT 0 10</code>（或 <code>ZREVRANGEBYSCORE ... LIMIT 0 10</code>）+ 复合 Score 处理同分，性能恒定 $O(\log N + M)$，并发写入下语义最稳。</p>
+</li>
+<li class="lvl-3">
+<p><strong>B 端（随机跳页）</strong>：<code>ZREVRANGE</code> 按 rank 翻页是可接受的（span 定位 $O(\log N)$），但必须硬限制单页大小与可翻范围——防的是 payload 与滥用，不是定位成本；需要严格一致视图时用快照 key。</p>
+</li>
+<li class="lvl-3">
+<p><strong>接口设计</strong>：游标做成不透明字符串；响应必带 score；空页即终止；不要把 Redis 内部的 rank 直接暴露给前端当业务概念。</p>
+</li>
+<li class="lvl-3">
+<p><strong>数据设计</strong>：复合 Score 的精度预算进单测；小数分数先整数化；member 不放大 payload。</p>
+</li>
+<li class="lvl-3">
+<p><strong>可观测性</strong>：slowlog 与 commandstats 双看板；ZSET 命令单次耗时异常即告警，优先排查 <code>LIMIT offset</code> 与全量拉取两种模式。</p>
+</li>
+</ol>
+<hr>
+<h2 id="十一、回到最初的问题">十一、回到最初的问题</h2>
+<p>&quot;Redis ZSET 深度分页为什么慢&quot;这个问题本身就问错了一半：<strong>rank 定位不慢（$O(\log N)$），慢的是把&quot;位置&quot;当成&quot;身份&quot;的翻页语义，以及藏在 <code>LIMIT offset</code> 里的线性路径</strong>。把 MySQL 深分页的教训平移到 Redis，会得到正确的方案（游标化）和错误的理由（定位成本）——而理由错了，方案迟早会在某次&quot;简化重构&quot;中被改回去。理解 span 这个细节不是为了炫技，而是为了知道<strong>哪些优化是必要的，哪些只是仪式</strong>。</p>
 <h2 id="参考资料">参考资料</h2>
 <ul class="lvl-0">
 <li class="lvl-2">
@@ -483,8 +789,39 @@
 <li class="lvl-2">
 <p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://redis.io/docs/latest/commands/zrange/">https://redis.io/docs/latest/commands/zrange/</a></p>
 </li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://redis.io/docs/latest/commands/zrangebyscore/">https://redis.io/docs/latest/commands/zrangebyscore/</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://redis.io/docs/latest/commands/zadd/">https://redis.io/docs/latest/commands/zadd/</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/redis/redis/blob/unstable/src/t_zset.c">https://github.com/redis/redis/blob/unstable/src/t_zset.c</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/redis/redis/blob/unstable/src/server.h">https://github.com/redis/redis/blob/unstable/src/server.h</a></p>
+</li>
 </ul>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/01/dc5a65a9f3154fe8a413c1e341080100/">https://pengline.cn/2025/01/dc5a65a9f3154fe8a413c1e341080100/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5/">深度分页</a><a class="post-meta__tags" href="/tags/%E6%B8%B8%E6%A0%87%E5%88%86%E9%A1%B5/">游标分页</a><a class="post-meta__tags" href="/tags/Redis/">Redis</a><a class="post-meta__tags" href="/tags/ZSET/">ZSET</a><a class="post-meta__tags" href="/tags/ZRANGE/">ZRANGE</a><a class="post-meta__tags" href="/tags/%E6%8E%92%E8%A1%8C%E6%A6%9C/">排行榜</a><a class="post-meta__tags" href="/tags/Score/">Score</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/08/b1cb29e686e347279ef8bd70ec59e09b/" title="一台电脑同时配置 Github 与 Gitee 的 SSH 免密为何要靠主机别名隔离"><img class="cover" src="/img/%E4%B9%A1%E9%97%B4%E5%B0%8F%E8%B7%AF-%E4%BA%91%E6%9C%B5%E6%9C%88%E4%BA%AE.png" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">一台电脑同时配置 Github 与 Gitee 的 SSH 免密为何要靠主机别名隔离</div></div><div class="info-2"><div class="info-item-1">GitHub 与 Gitee 并存时，简单放同一把公钥往往因主机名认证冲突而免密失效。文章先讲公钥认证与私钥签名原理，再演示如何用主机别名与配置文件区分多组密钥与多平台账号，覆盖常用端口改道、多账号隔离与权限设置等生产细节。</div></div></div></a><a class="pagination-related" href="/2025/01/4c3bfb375d2e49448ccc3898e4bf57ac/" title="Redis 大 Key 为什么危险？从主线程阻塞到检测治理闭环"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1712590388795171259038894.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">Redis 大 Key 为什么危险？从主线程阻塞到检测治理闭环</div></div><div class="info-2"><div class="info-item-1">剖析 Redis 大 Key 的判定标准与四大危害根因——单线程模型下 DEL、过期删除与全量返回如何阻塞主线程，并引发内存数据倾斜、网络拥堵与 COW 持久化内存翻倍风险；讲解 --bigkeys、MEMORY USAGE 与自定义 SCAN 三种检测手段，以及拆分压缩、UNLINK 异步删除、渐进式删除等治理方案与预防最佳实践。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/12/d37bd4a145d34befa210169209870a38/" title="Elasticsearch 深度分页为何越来越慢？从 from&#x2F;size 到 search_after + PIT"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753762079722175376207982.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-22</div><div class="info-item-2">Elasticsearch 深度分页为何越来越慢？从 from&#x2F;size 到 search_after + PIT</div></div><div class="info-2"><div class="info-item-1">厘清 Elasticsearch 深度分页的核心陷阱——from/size 实质是“取出前 N+M 条再丢弃”而非跳过，偏移量越大协调节点的全局排序与内存开销线性增长直至 OOM；对比 Scroll 快照与 search_after 游标的原理差异，讲解用排序值代替偏移量并配合 PIT 保证翻页一致性的最优实践，给出不同跳页场景的选型建议。</div></div></div></a><a class="pagination-related" href="/2025/09/b35492bf2a96482e86fe1e77b2bc7812/" title="海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-05</div><div class="info-item-2">海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案</div></div><div class="info-2"><div class="info-item-1">剖析海量数据下 LIMIT offset 深分页越翻越慢的根源，filesort 外部排序、逐行回表与结果丢弃叠加成的三层浪费，其代价正比于偏移量而非页大小；对比游标分页、覆盖索引与 search_after、scroll 等方案的原理与适用场景，并给出 MySQL 与 Elasticsearch 场景选型及随机跳页的工程建议。</div></div></div></a><a class="pagination-related" href="/2025/09/351e0f653b484f3cb3ed3c71e3c1bb5a/" title="分库分表后如何分页？从全局排序到游标与归并查询"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1743560732214174356073226.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-05</div><div class="info-item-2">分库分表后如何分页？从全局排序到游标与归并查询</div></div><div class="info-2"><div class="info-item-1">厘清分库分表分片与分区的概念边界与适用场景，聚焦分库分表后跨库分页的分布式难题，多分片汇总再排序的成本为何随页码线性膨胀，对比游标分页、排序归并、二次查询法与优先队列流式归并的原理与取舍，并给出与 ID 内置分片的选型。</div></div></div></a><a class="pagination-related" href="/2026/05/a133fb49803447c5ab302ef47370112f/" title="PenShot 召回评测：三层记忆真机实测、静默失效与评测方法论"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144020384175514402028.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-21</div><div class="info-item-2">PenShot 召回评测：三层记忆真机实测、静默失效与评测方法论</div></div><div class="info-2"><div class="info-item-1">以源码与真机数据为准绳考证 PenShot 召回链路：拆解三层记忆的写入分发、Redis 降级与摘要持久化机制，澄清嵌入模型与向量库的选型误传，并实测记录长期记忆空库与评测脚本哑参数两类静默失效边界，附一套可复现的召回评测方法论与排查清单。</div></div></div></a><a class="pagination-related" href="/2026/04/a9ce9bf3877546b898042064e6081d37/" title="NeoTask 任务持久化：三存储实现与数据格式 + 清理策略"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-21</div><div class="info-item-2">NeoTask 任务持久化：三存储实现与数据格式 + 清理策略</div></div><div class="info-2"><div class="info-item-1">NeoTask 持久化：任务实体与队列索引分离的双写模型、内存/SQLite/Redis 三套存储的数据格式（deepcopy 防御、非原子出队、String JSON + SET 索引）、双层 JSON 序列化取舍，以及 cleanup_expired 无调度者的清理边界。</div></div></div></a><a class="pagination-related" href="/2025/12/fb61cae088544f86a4209a47b2ca6a3d/" title="Redis 数据类型背后是什么？从 Type、Encoding 到底层数据结构"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small081407qOyN61757549647.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-07</div><div class="info-item-2">Redis 数据类型背后是什么？从 Type、Encoding 到底层数据结构</div></div><div class="info-2"><div class="info-item-1">剖析 Redis 的类型-编码-数据结构三层对象模型，SDS、压缩列表、快速列表、字典与渐进式 rehash、跳表、整数集合等底层结构的原理与适用规模，String/Hash/Set/ZSet/List 在何种规模下触发编码切换并因此节省内存，以及依据访问模式与数据规模做数据结构选型的工程结论与常见内存问题规避。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">Redis ZSET 的深度分页解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%88%E7%BB%99%E7%BB%93%E8%AE%BA"><span class="toc-number">1.1.</span> <span class="toc-text">先给结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#ZSET-%E7%9A%84%E6%A0%B8%E5%BF%83%E5%88%86%E9%A1%B5%E5%91%BD%E4%BB%A4"><span class="toc-number">1.2.</span> <span class="toc-text">ZSET 的核心分页命令</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-ZRANGE-%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5%E4%BC%9A%E5%8F%98%E6%85%A2%EF%BC%9F"><span class="toc-number">1.3.</span> <span class="toc-text">为什么 ZRANGE 深度分页会变慢？</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%B7%B3%E8%A1%A8%EF%BC%88Skip-List%EF%BC%89%E7%9A%84%E7%BB%93%E6%9E%84%E7%89%B9%E6%80%A7"><span class="toc-number">1.3.1.</span> <span class="toc-text">跳表（Skip List）的结构特性</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8E%9F%E7%90%86%E7%A4%BA%E6%84%8F%E5%9B%BE"><span class="toc-number">1.3.2.</span> <span class="toc-text">原理示意图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E8%B7%B3%E8%A1%A8%E5%AE%9A%E4%BD%8D%E5%85%83%E7%B4%A0%E6%98%AF-O-log-N-%EF%BC%8C%E5%AE%9A%E4%BD%8D%E6%8E%92%E5%90%8D%E5%8D%B4%E6%98%AF-O-N-%EF%BC%9F"><span class="toc-number">1.3.3.</span> <span class="toc-text">为什么跳表定位元素是 O(log N)，定位排名却是 O(N)？</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9F%BA%E4%BA%8E-Score-%E7%9A%84%E6%B8%B8%E6%A0%87%E5%88%86%E9%A1%B5%EF%BC%88Cursor-based%EF%BC%89"><span class="toc-number">1.4.</span> <span class="toc-text">基于 Score 的游标分页（Cursor-based）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%87%E5%87%86%E5%AE%9E%E7%8E%B0%E6%B5%81%E7%A8%8B%EF%BC%88%E6%97%A0%E9%99%90%E6%BB%9A%E5%8A%A8%E5%8A%A0%E8%BD%BD%EF%BC%89"><span class="toc-number">1.4.1.</span> <span class="toc-text">标准实现流程（无限滚动加载）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%81%AD%E9%81%87%E2%80%9C%E5%90%8C%E5%88%86%E2%80%9D%E9%97%AE%E9%A2%98%EF%BC%88Score-%E9%87%8D%E5%A4%8D%EF%BC%89"><span class="toc-number">1.4.2.</span> <span class="toc-text">遭遇“同分”问题（Score 重复）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%94%AF%E6%8C%81%E2%80%9C%E9%9A%8F%E6%9C%BA%E8%B7%B3%E9%A1%B5%E2%80%9D%EF%BC%88%E5%B1%80%E9%99%90%E6%80%A7%E8%AE%A8%E8%AE%BA%EF%BC%89"><span class="toc-number">1.5.</span> <span class="toc-text">支持“随机跳页”（局限性讨论）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E6%80%BB%E7%BB%93"><span class="toc-number">1.6.</span> <span class="toc-text">最佳实践总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Redis-%E4%B8%8E-MySQL-%E7%9A%84%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5%E5%AF%B9%E6%AF%94"><span class="toc-number">1.7.</span> <span class="toc-text">Redis 与 MySQL 的深度分页对比</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5%EF%BC%9A%E6%8E%92%E8%A1%8C%E6%A6%9C%E9%80%9A%E5%B8%B8%E6%9B%B4%E9%80%82%E5%90%88%E2%80%9C%E7%AA%97%E5%8F%A3%E2%80%9D%E8%80%8C%E4%B8%8D%E6%98%AF%E2%80%9C%E9%A1%B5%E7%A0%81%E2%80%9D"><span class="toc-number">1.8.</span> <span class="toc-text">工程实践：排行榜通常更适合“窗口”而不是“页码”</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="toc-number">1.9.</span> <span class="toc-text">参考资料</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2025/09/b35492bf2a96482e86fe1e77b2bc7812/">海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/12/d37bd4a145d34befa210169209870a38/">Elasticsearch 深度分页为何越来越慢？从 from/size 到 search_after + PIT</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/01/4c3bfb375d2e49448ccc3898e4bf57ac/">Redis 大 Key 为什么危险？从主线程阻塞到检测治理闭环</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/08/65a671b1723e48818f080dda25a3730f/">Redis 内存满了怎么办？过期删除与淘汰策略如何选择</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/10/d76bb55725a449d6bdd400ff4f058f00/">Redis 重启后数据为什么会丢？RDB、AOF 与混合持久化的取舍</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/01/dc5a65a9f3154fe8a413c1e341080100/">https://pengline.cn/2025/01/dc5a65a9f3154fe8a413c1e341080100/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5/">深度分页</a><a class="post-meta__tags" href="/tags/%E6%B8%B8%E6%A0%87%E5%88%86%E9%A1%B5/">游标分页</a><a class="post-meta__tags" href="/tags/Redis/">Redis</a><a class="post-meta__tags" href="/tags/ZSET/">ZSET</a><a class="post-meta__tags" href="/tags/ZRANGE/">ZRANGE</a><a class="post-meta__tags" href="/tags/ZREVRANGE/">ZREVRANGE</a><a class="post-meta__tags" href="/tags/ZRANGEBYSCORE/">ZRANGEBYSCORE</a><a class="post-meta__tags" href="/tags/ZRANK/">ZRANK</a><a class="post-meta__tags" href="/tags/%E8%B7%B3%E8%A1%A8/">跳表</a><a class="post-meta__tags" href="/tags/SkipList/">SkipList</a><a class="post-meta__tags" href="/tags/span/">span</a><a class="post-meta__tags" href="/tags/%E6%8E%92%E8%A1%8C%E6%A6%9C/">排行榜</a><a class="post-meta__tags" href="/tags/Score/">Score</a><a class="post-meta__tags" href="/tags/%E5%A4%8D%E5%90%88%E5%88%86%E6%95%B0/">复合分数</a><a class="post-meta__tags" href="/tags/%E6%B5%AE%E7%82%B9%E7%B2%BE%E5%BA%A6/">浮点精度</a><a class="post-meta__tags" href="/tags/%E5%B9%B6%E5%8F%91%E5%86%99%E5%85%A5/">并发写入</a><a class="post-meta__tags" href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%80%E8%87%B4%E6%80%A7/">数据一致性</a><a class="post-meta__tags" href="/tags/%E6%96%B9%E6%A1%88%E5%AF%B9%E6%AF%94/">方案对比</a><a class="post-meta__tags" href="/tags/%E6%95%85%E9%9A%9C%E5%A4%8D%E7%9B%98/">故障复盘</a><a class="post-meta__tags" href="/tags/%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5/">工程实践</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/08/b1cb29e686e347279ef8bd70ec59e09b/" title="一台电脑同时配置 Github 与 Gitee 的 SSH 免密为何要靠主机别名隔离"><img class="cover" src="/img/%E4%B9%A1%E9%97%B4%E5%B0%8F%E8%B7%AF-%E4%BA%91%E6%9C%B5%E6%9C%88%E4%BA%AE.png" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">一台电脑同时配置 Github 与 Gitee 的 SSH 免密为何要靠主机别名隔离</div></div><div class="info-2"><div class="info-item-1">GitHub 与 Gitee 并存时，简单放同一把公钥往往因主机名认证冲突而免密失效。文章先讲公钥认证与私钥签名原理，再演示如何用主机别名与配置文件区分多组密钥与多平台账号，覆盖常用端口改道、多账号隔离与权限设置等生产细节。</div></div></div></a><a class="pagination-related" href="/2025/01/4c3bfb375d2e49448ccc3898e4bf57ac/" title="Redis 大 Key 为何能拖垮整个实例？从主线程阻塞到检测治理的完整闭环"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small220310sh3iJ1756130590.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">Redis 大 Key 为何能拖垮整个实例？从主线程阻塞到检测治理的完整闭环</div></div><div class="info-2"><div class="info-item-1">剖析 Redis 大 Key 的判定标准与四大危害根因：单线程模型下删除、过期与全量返回为何阻塞主线程，集群倾斜、网络拥堵与持久化写时复制如何放大风险，并结合线上故障场景讲解检测手段、分桶拆分、异步删除与渐进瘦身等治理方案及监控告警设计。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/12/d37bd4a145d34befa210169209870a38/" title="Elasticsearch 深度分页为何越来越慢？从 from&#x2F;size 到 search_after + PIT"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small161326iKTsw1759047206.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-22</div><div class="info-item-2">Elasticsearch 深度分页为何越来越慢？从 from&#x2F;size 到 search_after + PIT</div></div><div class="info-2"><div class="info-item-1">厘清 Elasticsearch 深度分页的核心陷阱——from/size 实质是“取出前 N+M 条再丢弃”而非跳过，偏移量越大协调节点的全局排序与内存开销线性增长直至 OOM；对比 Scroll 快照与 search_after 游标的原理差异，讲解用排序值代替偏移量并配合 PIT 保证翻页一致性的最优实践，给出不同跳页场景的选型建议。</div></div></div></a><a class="pagination-related" href="/2025/09/b35492bf2a96482e86fe1e77b2bc7812/" title="海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1727147141745172714714181.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-05</div><div class="info-item-2">海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案</div></div><div class="info-2"><div class="info-item-1">剖析海量数据下 LIMIT offset 深分页越翻越慢的根源，filesort 外部排序、逐行回表与结果丢弃叠加成的三层浪费，其代价正比于偏移量而非页大小；对比游标分页、覆盖索引与 search_after、scroll 等方案的原理与适用场景，并给出 MySQL 与 Elasticsearch 场景选型及随机跳页的工程建议。</div></div></div></a><a class="pagination-related" href="/2025/09/351e0f653b484f3cb3ed3c71e3c1bb5a/" title="分库分表后如何分页？从全局排序到游标与归并查询"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small211845B4zPN1756646325.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-05</div><div class="info-item-2">分库分表后如何分页？从全局排序到游标与归并查询</div></div><div class="info-2"><div class="info-item-1">厘清分库分表分片与分区的概念边界与适用场景，聚焦分库分表后跨库分页的分布式难题，多分片汇总再排序的成本为何随页码线性膨胀，对比游标分页、排序归并、二次查询法与优先队列流式归并的原理与取舍，并给出与 ID 内置分片的选型。</div></div></div></a><a class="pagination-related" href="/2026/09/redis-cluster-hash-slot/" title="Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-28</div><div class="info-item-2">Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制</div></div><div class="info-2"><div class="info-item-1">单机 Redis 撑不住内存和写压力时，官方集群用 16384 个哈希槽把数据摊到多个主节点。本文拆解槽位计算、MOVED 与 ASK 重定向、gossip 通信、槽迁移全流程和自动故障转移，并复盘迁移风暴、数据倾斜等典型故障的处理与恢复。</div></div></div></a><a class="pagination-related" href="/2026/09/consistent-hashing/" title="普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-28</div><div class="info-item-2">普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法</div></div><div class="info-2"><div class="info-item-1">缓存集群从三台扩到四台，普通取模会让四分之三的键换位，命中率随之崩塌。本文从公式推演讲清一致性哈希如何把迁移范围压缩到邻近区段，再借虚拟节点治理倾斜，并对比哈希槽、剖析热点与宕机两大线上事故的处理思路。</div></div></div></a><a class="pagination-related" href="/2026/09/5c9e72b1d8a64f30b1e7c4a29f6d8352/" title="耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860420693163886042042.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-23</div><div class="info-item-2">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</div></div><div class="info-2"><div class="info-item-1">耗时任务排队传统方案要引入 Celery 加 Redis/RabbitMQ 中间件，运维成本高。NeoTask 用纯 Python 异步任务池把调度内嵌进应用：即时、延时、Cron 定时、四级优先级、自动重试开箱即用，内存、SQLite、Redis 三种持久化按需切换。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">Redis ZSET 的深度分页解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E5%85%88%E7%BB%99%E7%BB%93%E8%AE%BA%EF%BC%9A%E4%B8%89%E4%B8%AA%E5%8F%8D%E7%9B%B4%E8%A7%89%E7%9A%84%E4%BA%8B%E5%AE%9E"><span class="toc-number">1.1.</span> <span class="toc-text">一、先给结论：三个反直觉的事实</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E9%97%AE%E9%A2%98%E5%AE%9A%E4%B9%89"><span class="toc-number">1.2.</span> <span class="toc-text">二、问题定义</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-ZSET-%E7%9A%84%E5%BA%95%E5%B1%82%E7%BB%93%E6%9E%84%EF%BC%9A%E5%AD%97%E5%85%B8-%E8%B7%B3%E8%A1%A8"><span class="toc-number">1.2.1.</span> <span class="toc-text">2.1 ZSET 的底层结构：字典 + 跳表</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E4%B8%A4%E7%A7%8D%E5%AE%8C%E5%85%A8%E4%B8%8D%E5%90%8C%E7%9A%84%E5%88%86%E9%A1%B5%E9%9C%80%E6%B1%82"><span class="toc-number">1.2.2.</span> <span class="toc-text">2.2 两种完全不同的分页需求</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-%E6%A0%B8%E5%BF%83-rank-%E5%88%86%E9%A1%B5%E5%91%BD%E4%BB%A4"><span class="toc-number">1.2.3.</span> <span class="toc-text">2.3 核心 rank 分页命令</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E5%8E%9F%E7%90%86%E8%80%83%E8%AF%81%EF%BC%9A%E6%8C%89%E6%8E%92%E5%90%8D%E5%AE%9A%E4%BD%8D%E5%88%B0%E5%BA%95%E6%98%AF-O-N-%E8%BF%98%E6%98%AF-O-log-N-%EF%BC%9F"><span class="toc-number">1.3.</span> <span class="toc-text">三、原理考证：按排名定位到底是 O(N) 还是 O(log N)？</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-%E8%B7%B3%E8%A1%A8%E4%B8%BA%E4%BB%80%E4%B9%88%E5%BF%AB%EF%BC%9A%E4%B8%8D%E5%8F%AA%E9%9D%A0-%E5%A4%9A%E5%B1%82%E7%B4%A2%E5%BC%95-%EF%BC%8C%E8%BF%98%E9%9D%A0-span"><span class="toc-number">1.3.1.</span> <span class="toc-text">3.1 跳表为什么快：不只靠&quot;多层索引&quot;，还靠 span</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-%E4%B8%80%E6%AC%A1-rank-%E5%AE%9A%E4%BD%8D%E7%9A%84%E5%AE%8C%E6%95%B4%E8%B5%B0%E4%BD%8D"><span class="toc-number">1.3.2.</span> <span class="toc-text">3.2 一次 rank 定位的完整走位</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-%E5%A4%8D%E6%9D%82%E5%BA%A6%E5%85%A8%E6%99%AF%EF%BC%88%E4%BF%AE%E6%AD%A3%E7%89%88%EF%BC%89"><span class="toc-number">1.3.3.</span> <span class="toc-text">3.3 复杂度全景（修正版）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-4-%E5%A6%82%E4%BD%95%E5%9C%A8%E8%87%AA%E5%B7%B1%E7%9A%84%E7%8E%AF%E5%A2%83%E9%87%8C%E9%AA%8C%E8%AF%81"><span class="toc-number">1.3.4.</span> <span class="toc-text">3.4 如何在自己的环境里验证</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E6%B7%B1%E5%88%86%E9%A1%B5%E7%9C%9F%E6%AD%A3%E7%9A%84%E4%B8%89%E6%9D%A1%E4%BB%A3%E4%BB%B7%E8%B7%AF%E5%BE%84"><span class="toc-number">1.4.</span> <span class="toc-text">四、深分页真正的三条代价路径</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E6%8E%92%E5%90%8D%E4%B8%8D%E7%A8%B3%E5%AE%9A%EF%BC%9A%E5%B9%B6%E5%8F%91%E5%86%99%E5%85%A5%E4%B8%8B%E7%9A%84%E9%87%8D%E5%A4%8D%E4%B8%8E%E6%BC%8F%E9%A1%B5%EF%BC%88%E6%9C%80%E4%B8%BB%E8%A6%81%E7%9A%84%E6%AD%A3%E7%A1%AE%E6%80%A7%E9%97%AE%E9%A2%98%EF%BC%89"><span class="toc-number">1.4.1.</span> <span class="toc-text">4.1 排名不稳定：并发写入下的重复与漏页（最主要的正确性问题）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-%E9%9A%90%E8%97%8F%E7%9A%84%E7%BA%BF%E6%80%A7%E8%B7%AF%E5%BE%84%EF%BC%9ABYSCORE-%E5%91%BD%E4%BB%A4%E7%9A%84-LIMIT-offset"><span class="toc-number">1.4.2.</span> <span class="toc-text">4.2 隐藏的线性路径：BYSCORE 命令的 LIMIT offset</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-%E5%85%B6%E4%BB%96%E7%9C%9F%E5%AE%9E%E4%BB%A3%E4%BB%B7%EF%BC%9A%E5%A4%A7-M%E3%80%81%E5%85%A8%E9%87%8F%E6%8B%89%E5%8F%96%E4%B8%8E-payload"><span class="toc-number">1.4.3.</span> <span class="toc-text">4.3 其他真实代价：大 M、全量拉取与 payload</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E6%96%B9%E6%A1%88%EF%BC%9A%E5%9F%BA%E4%BA%8E-Score-%E7%9A%84%E6%B8%B8%E6%A0%87%E5%88%86%E9%A1%B5"><span class="toc-number">1.5.</span> <span class="toc-text">五、方案：基于 Score 的游标分页</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#5-1-%E6%A0%87%E5%87%86%E5%AE%9E%E7%8E%B0%EF%BC%88%E6%97%A0%E9%99%90%E6%BB%9A%E5%8A%A8%E5%8A%A0%E8%BD%BD%EF%BC%89"><span class="toc-number">1.5.1.</span> <span class="toc-text">5.1 标准实现（无限滚动加载）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-2-%E5%90%8C%E5%88%86%E9%97%AE%E9%A2%98%EF%BC%9A%E6%B8%B8%E6%A0%87%E5%8F%AA%E5%B8%A6-Score-%E4%BC%9A%E6%BC%8F%E6%95%B0%E6%8D%AE"><span class="toc-number">1.5.2.</span> <span class="toc-text">5.2 同分问题：游标只带 Score 会漏数据</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-3-%E5%A4%8D%E5%90%88%E5%88%86%E6%95%B0%E7%9A%84%E7%B2%BE%E5%BA%A6%E7%BA%A2%E7%BA%BF%EF%BC%9A-2-53"><span class="toc-number">1.5.3.</span> <span class="toc-text">5.3 复合分数的精度红线：$2^{53}$</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-4-%E6%B8%B8%E6%A0%87%E5%A4%B1%E6%95%88%E4%B8%8E%E6%95%B0%E6%8D%AE%E5%8F%98%E6%9B%B4%E7%9A%84%E8%BE%B9%E7%95%8C"><span class="toc-number">1.5.4.</span> <span class="toc-text">5.4 游标失效与数据变更的边界</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E6%94%AF%E6%8C%81-%E9%9A%8F%E6%9C%BA%E8%B7%B3%E9%A1%B5-%E7%9A%84%E5%8F%96%E8%88%8D"><span class="toc-number">1.6.</span> <span class="toc-text">六、支持&quot;随机跳页&quot;的取舍</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81%E6%96%B9%E6%A1%88%E5%AF%B9%E6%AF%94%EF%BC%9ARedis-MySQL-Elasticsearch"><span class="toc-number">1.7.</span> <span class="toc-text">七、方案对比：Redis &#x2F; MySQL &#x2F; Elasticsearch</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81%E6%95%85%E9%9A%9C%E5%AE%9E%E6%88%98%E5%A4%8D%E7%9B%98"><span class="toc-number">1.8.</span> <span class="toc-text">八、故障实战复盘</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF%E4%B8%80%EF%BC%9A%E5%90%8C%E5%88%86%E7%8E%A9%E5%AE%B6-%E9%9B%86%E4%BD%93%E6%B6%88%E5%A4%B1"><span class="toc-number">1.8.1.</span> <span class="toc-text">场景一：同分玩家&quot;集体消失&quot;</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF%E4%BA%8C%EF%BC%9A%E4%B8%80%E6%9D%A1-%E8%B7%B3%E5%88%B0%E6%9C%80%E5%90%8E%E4%B8%80%E9%A1%B5-%E7%9A%84%E8%AF%B7%E6%B1%82%E6%8B%96%E5%87%BA-Redis-%E9%95%BF%E5%B0%BE"><span class="toc-number">1.8.2.</span> <span class="toc-text">场景二：一条&quot;跳到最后一页&quot;的请求拖出 Redis 长尾</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF%E4%B8%89%EF%BC%9A%E5%A4%8D%E5%90%88%E5%88%86%E6%95%B0%E8%B6%85-2-53-%EF%BC%8C%E5%90%8C%E5%88%86%E5%90%8D%E6%AC%A1-%E9%9A%8F%E6%9C%BA%E8%B7%B3%E5%8F%98"><span class="toc-number">1.8.3.</span> <span class="toc-text">场景三：复合分数超 $2^{53}$，同分名次&quot;随机跳变&quot;</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B9%9D%E3%80%81%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9%E4%B8%8E%E6%8E%92%E5%9D%91%E6%B8%85%E5%8D%95"><span class="toc-number">1.9.</span> <span class="toc-text">九、注意事项与排坑清单</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8D%81%E3%80%81%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E6%80%BB%E7%BB%93"><span class="toc-number">1.10.</span> <span class="toc-text">十、最佳实践总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8D%81%E4%B8%80%E3%80%81%E5%9B%9E%E5%88%B0%E6%9C%80%E5%88%9D%E7%9A%84%E9%97%AE%E9%A2%98"><span class="toc-number">1.11.</span> <span class="toc-text">十一、回到最初的问题</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="toc-number">1.12.</span> <span class="toc-text">参考资料</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">1.13.</span> <span class="toc-text">相关阅读</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',

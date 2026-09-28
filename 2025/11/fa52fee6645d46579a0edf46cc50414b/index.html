@@ -1,25 +1,34 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Java 线程睡眠等待加入让步的状态迁移与锁行为辨析 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="多线程协作常需区分 sleep、wait、join、yield 四者的阻塞与锁行为，避免误用导致死锁或资源浪费。本文从释放锁与否切入，剖析状态迁移、中断响应差异与自旋时机等关键机制，并结合典型协作场景给出各自的适用结论。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Java 线程的休眠、等待、加入、让步有何区别？锁释放与状态迁移深度辨析 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="sleep、wait、join、yield 是 Java 并发中最易混淆的四个线程控制方法，它们在释放锁、同步依赖与线程状态上有本质差异。本文对照 JDK 源码与 HotSpot 实现剖析机制与取舍，绘制状态迁移图与时序图，并沉淀虚假唤醒、丢失唤醒、join 挂死等故障的定位与修复经验。">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Java 线程睡眠等待加入让步的状态迁移与锁行为辨析">
+<meta property="og:title" content="Java 线程的休眠、等待、加入、让步有何区别？锁释放与状态迁移深度辨析">
 <meta property="og:url" content="https://pengline.cn/2025/11/fa52fee6645d46579a0edf46cc50414b/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="多线程协作常需区分 sleep、wait、join、yield 四者的阻塞与锁行为，避免误用导致死锁或资源浪费。本文从释放锁与否切入，剖析状态迁移、中断响应差异与自旋时机等关键机制，并结合典型协作场景给出各自的适用结论。">
+<meta property="og:description" content="sleep、wait、join、yield 是 Java 并发中最易混淆的四个线程控制方法，它们在释放锁、同步依赖与线程状态上有本质差异。本文对照 JDK 源码与 HotSpot 实现剖析机制与取舍，绘制状态迁移图与时序图，并沉淀虚假唤醒、丢失唤醒、join 挂死等故障的定位与修复经验。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1751961512420175196151245.webp">
 <meta property="article:published_time" content="2025-11-22T16:00:00.000Z">
-<meta property="article:modified_time" content="2026-09-22T08:00:21.203Z">
+<meta property="article:modified_time" content="2026-09-23T15:42:12.351Z">
 <meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Condition">
+<meta property="article:tag" content="HotSpot">
+<meta property="article:tag" content="IllegalMonitorStateException">
 <meta property="article:tag" content="Java多线程">
 <meta property="article:tag" content="Object.wait">
 <meta property="article:tag" content="Thread.join">
+<meta property="article:tag" content="Thread.sleep">
 <meta property="article:tag" content="Thread.yield">
 <meta property="article:tag" content="中断机制">
+<meta property="article:tag" content="源码解析">
+<meta property="article:tag" content="生产者消费者">
+<meta property="article:tag" content="线程优先级">
 <meta property="article:tag" content="线程协作">
+<meta property="article:tag" content="线程排障">
 <meta property="article:tag" content="线程状态迁移">
+<meta property="article:tag" content="虚假唤醒">
 <meta property="article:tag" content="锁释放">
 <meta property="article:tag" content="阻塞等待">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/11/fa52fee6645d46579a0edf46cc50414b/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1751961512420175196151245.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/11/fa52fee6645d46579a0edf46cc50414b/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -166,7 +175,7 @@
   },
   autoDarkmode: true
 }</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
-  title: 'Java 线程睡眠等待加入让步的状态迁移与锁行为辨析',
+  title: 'Java 线程的休眠、等待、加入、让步有何区别？锁释放与状态迁移深度辨析',
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
@@ -175,10 +184,28 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">117</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">797</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">52</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Java 线程睡眠等待加入让步的状态迁移与锁行为辨析</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature"><i class="fa-fw fas fa-file"></i><span> 文档在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Java 线程睡眠等待加入让步的状态迁移与锁行为辨析</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-11-22T16:00:00.000Z" title="发表于 2025-11-23 00:00:00">2025-11-23</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-22T08:00:21.203Z" title="更新于 2026-09-22 16:00:21">2026-09-22</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/">Java</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/%E5%A4%9A%E7%BA%BF%E7%A8%8B/">多线程</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>在 Java 中，线程的 <strong>休眠（sleep）</strong>、<strong>等待（wait）</strong>、<strong>加入（join）</strong> 和 <strong>让步（yield）</strong> 是四种不同的线程协作或控制方式，它们的作用、机制和使用场景各不相同。</p>
-<p>在线程的生命周期中，不同状态之间切换时，可以通过调用 <code>sleep()</code>、<code>wait()</code>、<code>join()</code>、<code>yield()</code> 等方法进行线程状态控制。</p>
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">88</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">769</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">52</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1751961512420175196151245.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Java 线程的休眠、等待、加入、让步有何区别？锁释放与状态迁移深度辨析</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Java 线程的休眠、等待、加入、让步有何区别？锁释放与状态迁移深度辨析</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-11-22T16:00:00.000Z" title="发表于 2025-11-23 00:00:00">2025-11-23</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-23T15:42:12.351Z" title="更新于 2026-09-23 23:42:12">2026-09-23</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/">Java</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/%E5%A4%9A%E7%BA%BF%E7%A8%8B/">多线程</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>在 Java 中，线程的 <strong>休眠（sleep）</strong>、<strong>等待（wait）</strong>、<strong>加入（join）</strong> 和 <strong>让步（yield）</strong> 是四种不同的线程协作与控制方式。它们名字相近、表面都涉及&quot;线程暂停&quot;，但底层机制完全不同：有的依赖对象监视器，有的只依赖操作系统的定时器；有的会释放锁，有的死抱锁不放；有的改变线程状态，有的连状态都不变。</p>
+<p>混淆这四个方法的代价很高：轻则写出&quot;靠运气运行&quot;的时序代码，重则在线上出现偶发超时、线程永久挂起、服务假死这类难以复现的故障。本文的目标是把它们的机制讲透：从 JDK 源码与 HotSpot 实现层面逐条考证结论，绘制状态迁移图与时序图，并用真实工程中的故障场景沉淀定位与修复经验。</p>
+<p>为避免歧义，先约定本文的资料分级：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>【真实源码】</strong>：直接来自 JDK 或 Javadoc 的代码与原文表述，未做逻辑改动。</p>
+</li>
+<li class="lvl-2">
+<p><strong>【源码简化】</strong>：保留核心逻辑、省略非主干分支的代码。</p>
+</li>
+<li class="lvl-2">
+<p><strong>【实现层面】</strong>：HotSpot 虚拟机内部实现，属于实现细节而非语言规范，版本间可能重构，不能当作规范依赖。</p>
+</li>
+<li class="lvl-2">
+<p><strong>【理论分析】</strong>：基于模型推导的结论，无实测数据支撑。</p>
+</li>
+<li class="lvl-2">
+<p><strong>【示例数据】</strong>：演示用的输出或数值，不具复现性，不代表真实环境。</p>
+</li>
+</ul>
 <p><img src="/imgs/java/fb69d5fd10be8001244a14b2e2896f40.webp" alt="img" loading='lazy'></p>
-<p>以下是它们的详细区别：</p>
+<p>先给出四者的核心对比（后文逐个展开论证）：</p>
 <table>
 <thead>
 <tr>
@@ -230,15 +257,59 @@
 </tr>
 </tbody>
 </table>
+<p>这张表里&quot;是否释放锁&quot;一列最容易背错也最关键。注意其中有两处需要修正直觉的地方：<code>join()</code> 标注&quot;否&quot;指的是<strong>不释放调用者自己持有的业务锁</strong>，但 <code>join()</code> 内部基于 <code>wait()</code> 实现，在等待期间它会释放<strong>目标 Thread 对象的监视器锁</strong>——这一点第四节会结合源码展开。<code>wait()</code> 标注&quot;是&quot;也只针对<strong>调用 wait 的那个对象的监视器</strong>，若线程还持有其他对象锁，那些锁并不释放。</p>
+<h2 id="一、先建立坐标系：线程状态与监视器模型">一、先建立坐标系：线程状态与监视器模型</h2>
+<p>四个方法的一切行为差异，最终都体现在<strong>线程状态</strong>和<strong>锁的持有关系</strong>上，所以先把这两套坐标系建立起来。</p>
+<h3 id="1-1-官方六状态模型">1.1 官方六状态模型</h3>
+<p><code>java.lang.Thread.State</code> 枚举（Javadoc 定义）共六个状态：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>NEW</strong>：线程对象已创建但尚未调用 <code>start()</code>。</p>
+</li>
+<li class="lvl-2">
+<p><strong>RUNNABLE</strong>：包括&quot;可被调度&quot;与&quot;正在运行&quot;两种情形，Java 官方模型把传统教科书里的就绪与运行合并为一个状态。</p>
+</li>
+<li class="lvl-2">
+<p><strong>BLOCKED</strong>：正在竞争某个对象的监视器锁、尚未获得。</p>
+</li>
+<li class="lvl-2">
+<p><strong>WAITING</strong>：无限期等待，需要被显式唤醒（<code>wait()</code>、<code>join()</code>、<code>LockSupport.park()</code>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>TIMED_WAITING</strong>：限时等待（<code>sleep(ms)</code>、<code>wait(ms)</code>、<code>join(ms)</code>、<code>parkNanos</code>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>TERMINATED</strong>：<code>run()</code> 执行完毕或异常退出，线程终止。</p>
+</li>
+</ul>
+</blockquote>
+<p>用状态机完整表达（包括很多资料画漏的一条边：<strong>WAITING/TIMED_WAITING 被唤醒后，如果锁还没抢回来，会先回到 BLOCKED</strong>）：</p>
+<pre><code class="highlight mermaid">stateDiagram-v2
+    [*] --&gt; NEW: new Thread()
+    NEW --&gt; RUNNABLE: start()
+    RUNNABLE --&gt; BLOCKED: 竞争监视器锁失败
+    BLOCKED --&gt; RUNNABLE: 竞争成功获得锁
+    RUNNABLE --&gt; WAITING: wait() / join() / LockSupport.park()
+    RUNNABLE --&gt; TIMED_WAITING: sleep(ms) / wait(ms) / join(ms) / parkNanos
+    WAITING --&gt; BLOCKED: 被唤醒后重新竞争锁失败
+    TIMED_WAITING --&gt; BLOCKED: 被唤醒后重新竞争锁失败
+    WAITING --&gt; RUNNABLE: 唤醒且重新获得锁 / 目标线程终止 / unpark
+    TIMED_WAITING --&gt; RUNNABLE: 超时或唤醒且重新获得锁
+    RUNNABLE --&gt; TERMINATED: run() 执行结束
+    TERMINATED --&gt; [*]</code></pre>
+<p>这张图里&quot;唤醒 ≠ RUNNABLE&quot;是理解 <code>wait()</code> 行为的钥匙：被 <code>notify()</code> 的线程只是离开了等待集，它还必须<strong>重新抢到监视器锁</strong>才能从 <code>wait()</code> 返回；抢锁失败期间，线程处于 <code>BLOCKED</code> 状态。这一点与 <code>sleep()</code> 形成鲜明对比——<code>sleep()</code> 到点唤醒后不需要抢任何锁，直接回 <code>RUNNABLE</code>。</p>
 <p>线程的5种状态：</p>
 <img src="/imgs/java/1552484-20181207142955022-624689519.webp" alt="img" style="zoom:67%;" loading='lazy'>
+<h3 id="1-2-传统-五态-三种阻塞-模型的由来与辨析">1.2 传统&quot;五态/三种阻塞&quot;模型的由来与辨析</h3>
+<p>上面这张&quot;5 种状态&quot;图来自传统操作系统教科书的划分，很多老资料用它解释 Java 线程。它把阻塞细分为三类，这个视角本身有价值，但必须与官方模型对应清楚，否则看线程栈时会误判：</p>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
 <p><strong>新建状态(New)</strong> :  线程对象被创建后，就进入了新建状态。例如，Thread thread = new Thread()，且threadStatus = 0。</p>
 </li>
 <li class="lvl-2">
-<p><strong>就绪状态(Runnable)</strong>: 也被称为“可执行状态”。线程对象被创建后，其它线程调用了该对象的start()方法，从而来启动该线程。例如，thread.start()，就绪状态的线程，随时可能被CPU调度执行。</p>
+<p><strong>就绪状态(Runnable)</strong>: 也被称为&quot;可执行状态&quot;。线程对象被创建后，其它线程调用了该对象的start()方法，从而来启动该线程。例如，thread.start()，就绪状态的线程，随时可能被CPU调度执行。</p>
 </li>
 <li class="lvl-2">
 <p><strong>运行状态(Running)</strong> : 线程获取CPU权限进行执行。需要注意的是，线程只能从就绪状态进入到运行状态。</p>
@@ -255,50 +326,104 @@
 <p><strong>消亡状态(Dead)</strong> : 线程执行完了或者因异常退出了run()方法，该线程结束生命周期。</p>
 </li>
 </ul>
-<p><strong>补充说明</strong>：Java 线程官方共 6 种状态（<code>NEW</code>、<code>RUNNABLE</code>、<code>BLOCKED</code>、<code>WAITING</code>、<code>TIMED_WAITING</code>、<code>TERMINATED</code>），其中 RUNNABLE 合并了“就绪 + 运行”，WAITING/TIMED_WAITING 与 BLOCKED 归入上文的“阻塞”大类；下文各状态图中的 Runnable/Sleeping 等命名仅用于示意，并非官方枚举名。</p>
 </blockquote>
-<h2 id="休眠（sleep）">休眠（sleep）</h2>
-<p><strong>作用</strong>：让当前线程暂停执行指定的时间，但<strong>不会释放锁</strong>（不释放已持有的对象锁）。</p>
-<blockquote>
-<ul class="lvl-1">
+<p>对照官方模型做三点修正：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>&quot;等待阻塞&quot;对应 <code>WAITING</code>/<code>TIMED_WAITING</code></strong>（wait 家族），&quot;同步阻塞&quot;对应 <code>BLOCKED</code>，这两个映射是干净的。</p>
+</li>
+<li class="lvl-3">
+<p><strong>&quot;其他阻塞&quot;是混合体</strong>：<code>sleep()</code>/<code>join()</code> 在官方模型里分别是 <code>TIMED_WAITING</code> 与 <code>WAITING</code>/<code>TIMED_WAITING</code>，并不是 <code>BLOCKED</code>；而<strong>网络 IO 阻塞在 Java 视角下根本不是任何等待状态</strong>——一个卡在 <code>socketRead0()</code> 上的线程，<code>Thread.getState()</code> 返回的是 <code>RUNNABLE</code>。这是线程栈分析中最经典的误判点：看到 <code>RUNNABLE</code> 以为线程在跑，实际它在内核里等网络。BIO 场景下大量线程&quot;RUNNABLE 但卡在 IO&quot;，对应上文&quot;获取第三方资源网络阻塞&quot;的诊断提示。</p>
+</li>
+<li class="lvl-3">
+<p>传统模型里&quot;Running 与 Runnable 分离&quot;在 Java 中被合并，<code>Thread</code> 层面无法区分&quot;正在 CPU 上运行&quot;与&quot;就绪等待 CPU&quot;，这也是 Java 线程状态模型有意做的简化。</p>
+</li>
+</ol>
+<h3 id="1-3-监视器模型：一个对象的-两个队列">1.3 监视器模型：一个对象的&quot;两个队列&quot;</h3>
+<p>理解 <code>wait()</code> 与 <code>join()</code> 必须先认识 JVM 的监视器结构。【实现层面】在 HotSpot 中，每个被 <code>synchronized</code> 保护的对象在 JVM 内部关联一个 ObjectMonitor（对象监视器），其中至少有两类&quot;排队区&quot;：</p>
+<ul class="lvl-0">
 <li class="lvl-2">
-<p>通过设置方法中的时间参数，使调用它的线程休眠指定时间，线程从<strong>Running</strong>（运行）状态转为<strong>Blocked</strong>（阻塞）状态。时间结束后自动恢复运行（进入就绪状态 <strong>Runnable</strong> ）。</p>
+<p><strong>竞争队列（EntryList/cxq）</strong>：已经执行到 <code>synchronized</code> 入口、正在抢锁的线程排在里头，对应线程状态 <code>BLOCKED</code>。</p>
 </li>
 <li class="lvl-2">
-<p>这个过程中会释放CPU资源，给其他线程运行机会时不考虑线程的优先级，但如果有同步锁则不会释放锁，其他线程无法获得同步锁。</p>
+<p><strong>等待集（WaitSet）</strong>：曾经持有锁、但主动调用 <code>wait()</code> 放弃锁进入等待的线程排在里头，对应线程状态 <code>WAITING</code>。等待集中的线程<strong>不参与锁竞争</strong>，直到被 <code>notify()</code>/<code>notifyAll()</code>、超时或中断移出等待集，重新进入竞争队列。</p>
 </li>
 </ul>
-</blockquote>
+<p><code>synchronized</code> 抢锁失败与 <code>wait()</code> 等待，表面都是&quot;线程停下来了&quot;，实际分属两个不同的队列、两种不同的状态、两套不同的唤醒路径。后文所有对 <code>wait()</code> 行为的解释，都可以落回这个模型。</p>
+<h2 id="二、休眠（sleep）：线程级的定时暂停">二、休眠（sleep）：线程级的定时暂停</h2>
+<p><strong>作用</strong>：让当前线程暂停执行指定的时间，但<strong>不会释放锁</strong>（不释放已持有的对象锁）。</p>
+<p><code>Thread.sleep</code> 的语义在 Javadoc 中写得很清楚（翻译）：&quot;使当前正在执行的线程休眠（暂时停止执行）指定毫秒数……<strong>该线程不会失去任何监视器的所有权</strong>。&quot;这句 “does not lose ownership of any monitors” 就是&quot;sleep 不释放锁&quot;的官方出处。</p>
+<h3 id="2-1-真实源码与一个常见的静态方法误用">2.1 真实源码与一个常见的静态方法误用</h3>
+<p>【真实源码】JDK 8 中，毫秒版 sleep 是一个 native 方法：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// JDK 8 java.lang.Thread —— 真实源码</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">native</span> <span class="keyword">void</span> <span class="title function_">sleep</span><span class="params">(<span class="type">long</span> millis)</span> <span class="keyword">throws</span> InterruptedException;</span><br></pre></td></tr></table></figure>
+<p>【真实源码】纳秒重载在 JDK 8 中只是毫秒版的包装：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// JDK 8 java.lang.Thread —— 真实源码</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">sleep</span><span class="params">(<span class="type">long</span> millis, <span class="type">int</span> nanos)</span> <span class="keyword">throws</span> InterruptedException &#123;</span><br><span class="line">    <span class="keyword">if</span> (millis &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(<span class="string">&quot;timeout value is negative&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (nanos &lt; <span class="number">0</span> || nanos &gt; <span class="number">999999</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(<span class="string">&quot;nanosecond timeout value out of range&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (nanos &gt;= <span class="number">500000</span> || (nanos != <span class="number">0</span> &amp;&amp; millis == <span class="number">0</span>)) &#123;</span><br><span class="line">        millis++;</span><br><span class="line">    &#125;</span><br><span class="line">    sleep(millis);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>两个要点：其一，<strong>纳秒参数被向上取整到毫秒</strong>（四舍五入进位），所谓&quot;纳秒精度&quot;并不存在，实际精度还受操作系统计时器粒度限制；其二，JDK 19 起线程基础设施重构，<code>sleep</code> 改为在 Java 层统一处理毫秒/纳秒参数（行为保持兼容），不再依赖旧的 native 声明，但对外语义未变。</p>
+<p>这里有个高频误用必须指出：<code>sleep</code> 是<strong>静态方法，永远只作用于&quot;当前正在执行的线程&quot;</strong>。<code>Thread.sleep(200)</code> 与 <code>t.sleep(200)</code>（哪怕写成在另一个线程对象上调用）完全等价，都是让<strong>当前线程</strong>睡觉。下面这种写法不会让 <code>t</code> 暂停，只是让调用者自己暂停，还骗过了阅读代码的人：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">t.sleep(<span class="number">1000</span>); <span class="comment">// 语义上等于 Thread.sleep(1000)：让&quot;当前线程&quot;睡，与 t 无关</span></span><br></pre></td></tr></table></figure>
+<h3 id="2-2-为什么-sleep-不释放锁：设计取舍">2.2 为什么 sleep 不释放锁：设计取舍</h3>
+<p>不是 HotSpot&quot;做不到&quot;，而是<strong>不该做</strong>。<code>sleep</code> 的设计定位是&quot;线程级的定时暂停&quot;，它与任何对象、任何临界区无关——它甚至定义在 <code>Thread</code> 而不是 <code>Object</code> 上，就是为了表明它不依附于监视器模型。</p>
+<p>反证一下&quot;如果 sleep 释放锁&quot;会发生什么：线程 A 在 <code>synchronized(lock)</code> 临界区里调用 <code>sleep(200)</code> 想模拟一次慢处理，若锁被释放，另一个线程 B 会趁 A 睡觉时进入同一临界区，A 醒来后继续执行——<strong>同一临界区出现了两个线程交错操作</strong>，<code>synchronized</code> 保护的原子性被自己临时放开的锁击穿。临界区内的中间态（比如&quot;扣了 A 账户、还没加到 B 账户&quot;）会被其他线程看到。所以&quot;sleep 不释放锁&quot;是保证临界区原子性语义自洽的必然选择，而它的代价就是下一节的故障场景：<strong>临界区里睡觉 = 持锁占坑</strong>。</p>
+<p>对比 <code>wait()</code> 为什么就必须释放锁：<code>wait</code> 的定位是&quot;等待某个条件成立&quot;。如果等待者不放锁，条件永远无法被别的线程制造出来（别人进不了临界区改状态），逻辑上就是死锁。<strong>释放锁是&quot;等待条件&quot;语义的必然要求，不释放锁是&quot;定时暂停&quot;语义的必然要求</strong>——两个设计各自自洽，差异来自语义而非实现水平。</p>
+<h3 id="2-3-状态迁移与中断响应">2.3 状态迁移与中断响应</h3>
 <pre><code class="highlight mermaid">stateDiagram-v2
     [*] --&gt; Runnable
     Runnable --&gt; Sleeping: 调用 Thread.sleep(millis)
     Sleeping --&gt; Runnable: 休眠时间结束 或 被中断 (InterruptedException)
     Sleeping --&gt; [*]: 线程终止（可选路径）</code></pre>
-<p>休眠时间未到时，可通过调用<code>interrupt()</code>方法来唤醒休眠线程。</p>
+<p>（图中 Sleeping 对应官方状态 <code>TIMED_WAITING</code>，图注沿用示意命名。）</p>
+<p>时间未到时，可通过 <code>interrupt()</code> 提前唤醒休眠线程：</p>
 <figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    Thread.sleep(<span class="number">200</span>); <span class="comment">//暂停200毫秒</span></span><br><span class="line">&#125; <span class="keyword">catch</span> (InterruptedException e) &#123;</span><br><span class="line">    e.printStackTrace();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>sleep是线程级别的休眠，不涉及到对象类，只是让当前线程暂停，进入休眠状态，并不释放同步锁资源，也不需要去获得对象锁。</p>
-<blockquote>
-<ul class="lvl-1">
+<p>【实现层面】中断的本质是：<code>interrupt()</code> 设置线程的中断标志位；睡眠中的线程由 JVM 在挂起期间监听该标志（HotSpot 内部通过 park/事件机制在操作系统的等待原语上被提前唤醒），随后<strong>清除中断标志</strong>并抛出 <code>InterruptedException</code>。如果调用 <code>sleep</code> 时中断标志已经置位，则<strong>立即</strong>抛出异常而不是先睡。</p>
+<p>对 <code>InterruptedException</code> 的处理是工程里最容易出事故的地方。捕获后如果什么都不做（或只打印），<strong>中断信号就被吞掉了</strong>：上层框架（线程池、超时控制器）再也感知不到这次取消请求，该线程会继续跑完本应被取消的任务。标准做法是&quot;要么向上抛，要么恢复中断标志&quot;：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    Thread.sleep(backoffMs);</span><br><span class="line">&#125; <span class="keyword">catch</span> (InterruptedException e) &#123;</span><br><span class="line">    Thread.currentThread().interrupt(); <span class="comment">// 恢复中断标志，让上层取消逻辑可见</span></span><br><span class="line">    <span class="keyword">return</span>; <span class="comment">// 结束当前工作</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>还有一个精度问题要明确：<strong><code>sleep(n)</code> 的实际睡眠时间恒为 <code>n</code> 毫秒以上</strong>，包含计时器粒度误差与醒来后的调度延迟，高负载下可能多睡数十毫秒。所以 sleep 不能用来做精确节拍控制——需要固定频率调度的场景应使用 <code>ScheduledExecutorService</code>（fixed-rate 模式会补偿累计漂移）。</p>
+<h3 id="2-4-故障场景一：用-sleep-轮询做同步，偶发超时">2.4 故障场景一：用 sleep 轮询做同步，偶发超时</h3>
+<p><strong>发生什么</strong>：某系统用&quot;下游异步生成报告 + 轮询查询&quot;的方式实现导出功能。调用线程发起任务后循环 <code>Thread.sleep(100)</code> 再查一次状态，约定&quot;轮询 30 次（3 秒）还没完成就报超时&quot;。压测时一切正常，上线后偶发报&quot;导出超时失败&quot;，且集中在业务高峰。</p>
+<p><strong>为什么</strong>：sleep 轮询的延迟由轮询周期决定。【理论分析】设轮询周期为 $T$，任务完成时刻在某个周期内近似均匀分布，则发现完成的平均延迟为：</p>
+<p>$$\bar{d}=\int_0^T (T-t),\frac{1}{T},dt=\frac{T}{2}$$</p>
+<p>即平均要白等 $T/2$，最坏白等 $T$。但这只是&quot;慢&quot;，不是&quot;偶发失败&quot;。真正的杀手是：<strong>sleep 的恢复时间在负载高峰时被拉长</strong>。睡眠结束后线程还要参与调度，高峰期 CPU 就绪队列很长，&quot;睡 100ms&quot;实际可能 150ms 后才轮到执行；再加上下游任务本身在高峰期完成变慢，“3 秒 30 次&quot;的实际覆盖能力大幅缩水。更隐蔽的是，轮询代码若还夹带了 <code>synchronized</code> 读取共享状态，多个轮询线程会互相挤占，进一步恶化时序。本质问题是：<strong>用时间猜结果，把&quot;任务大概 3 秒内能完成&quot;这个统计假设当成了同步协议</strong>——负载一变，假设失效，故障就按概率出现，所以&quot;偶发、难复现”。</p>
+<p><strong>系统如何处理</strong>：业务侧报导出失败，用户重试，高峰期重试流量进一步加剧负载，形成正反馈劣化；同时每个卡在轮询里的请求占着一个容器线程，大量导出请求会耗尽 Web 线程池，把&quot;偶发超时&quot;放大成&quot;整站变慢&quot;。</p>
+<p><strong>如何恢复与根治</strong>：恢复上，先扩容或调大轮询预算止血。根治必须把&quot;轮询猜&quot;换成&quot;完成即知&quot;：</p>
+<ul class="lvl-0">
 <li class="lvl-2">
-<p>不释放已持有的对象锁（即使在 synchronized 块中）。</p>
+<p>有条件谓词的，用 <code>wait/notifyAll</code>（或 <code>ReentrantLock</code> + <code>Condition</code>）实现&quot;完成信号&quot;；</p>
 </li>
 <li class="lvl-2">
-<p>会抛出 <code>InterruptedException</code>，必须处理。</p>
+<p>任务分发的，直接用 <code>BlockingQueue</code>，消费者 <code>take()</code> 阻塞等待，天然零轮询；</p>
 </li>
 <li class="lvl-2">
-<p>时间结束后自动恢复运行（进入就绪状态）。</p>
+<p>带返回值异步任务的，用 <code>CompletableFuture.supplyAsync(...)</code>，调用方 <code>thenApply</code>/<code>get(timeout)</code> 感知完成，超时由框架保证。</p>
 </li>
 </ul>
-</blockquote>
-<h2 id="等待（wait）">等待（wait）</h2>
+<h3 id="2-5-故障场景二：在临界区里-持锁睡觉">2.5 故障场景二：在临界区里&quot;持锁睡觉&quot;</h3>
+<p><strong>发生什么</strong>：线程栈显示几十个业务线程 <code>BLOCKED (waiting for monitor entry)</code>，全部堵在同一个全局锁（比如包了一层 <code>synchronized</code> 的缓存查询方法）上，RT 抖动从毫秒级飙到秒级。</p>
+<p><strong>为什么</strong>：持锁线程在临界区里调用了 <code>sleep</code>（常见于&quot;慢一点怕打爆下游&quot;的节流代码）。sleep 不释放锁，于是&quot;睡 500ms&quot;变成了&quot;独占全局锁 500ms&quot;——其他线程全部堆积在 <code>BLOCKED</code>。这也解释了 1.2 节引用的诊断口诀：“大量线程在同步阻塞状态，可能是争夺一个全局锁而被阻塞（某线程在临界区时间太长，以至于新线程迟迟无法进入临界区）”。</p>
+<p><strong>系统如何处理与恢复</strong>：<code>BLOCKED</code> 堆积本身不会自动解除，只有持锁线程醒来并退出临界区才能逐个放行；若持锁线程在睡眠期间还嵌套等别的锁，就直接升级成死锁。恢复手段：把 sleep 移出临界区（节流应在锁外做）；缩小临界区（锁内只做内存操作，慢调用放锁外）；全局锁降级为分段锁或改用 <code>ReentrantLock</code> 的 <code>tryLock(timeout)</code> 避免无限堆积。预防规则很简单：<strong><code>synchronized</code> 块内禁止出现 sleep、RPC、磁盘 IO 等一切不可预估耗时的调用</strong>。</p>
+<h2 id="三、等待（wait）：监视器上的条件等待">三、等待（wait）：监视器上的条件等待</h2>
 <p><strong>作用</strong>：让当前线程在某个对象上等待，<strong>会释放该对象的锁</strong>，直到被其他线程唤醒（<code>notify</code>/<code>notifyAll</code>）。</p>
-<blockquote>
+<h3 id="3-1-真实源码与三步机制">3.1 真实源码与三步机制</h3>
+<p>【真实源码】<code>java.lang.Object</code>（JDK 8）：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// JDK 8 java.lang.Object —— 真实源码</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="keyword">void</span> <span class="title function_">wait</span><span class="params">()</span> <span class="keyword">throws</span> InterruptedException &#123;</span><br><span class="line">    wait(<span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="keyword">native</span> <span class="keyword">void</span> <span class="title function_">wait</span><span class="params">(<span class="type">long</span> timeout)</span> <span class="keyword">throws</span> InterruptedException;</span><br></pre></td></tr></table></figure>
 <p><code>wait()</code> 是 <code>Object</code> 的本地方法，调用它会让持有对象锁的线程<strong>释放锁并进入等待集（wait set）</strong>，同时释放 CPU；线程在等待集中不参与锁竞争，直到被 <code>notify()</code>/<code>notifyAll()</code> 唤醒，或因超时、中断而返回，才会回到同步块重新竞争锁。</p>
-<ul class="lvl-1">
-<li class="lvl-2">notify 的唤醒顺序取决于JVM的实现，可能是随机，可能是顺序唤醒</li>
-<li class="lvl-2">在hotspot 虚拟机中，是顺序唤醒，每次取出第一个等待的元素</li>
-</ul>
-</blockquote>
+<p>展开成监视器视角的三步：【实现层面】</p>
+<ol>
+<li class="lvl-3">
+<p><strong>入等待集</strong>：当前线程进入 <code>obj</code> 对应 ObjectMonitor 的 WaitSet，状态转为 <code>WAITING</code>；</p>
+</li>
+<li class="lvl-3">
+<p><strong>释放锁并挂起</strong>：释放 <code>obj</code> 的监视器，唤醒竞争队列中的等待者，自己挂起；</p>
+</li>
+<li class="lvl-3">
+<p><strong>被唤醒后重新竞争锁</strong>：从等待集移回竞争队列，抢到锁后才能从 <code>wait()</code> 返回、继续执行后续代码。</p>
+</li>
+</ol>
+<p>第 3 步常被忽略：<code>wait()</code> 返回时<strong>线程必然重新持有该对象的锁</strong>（这也是 Javadoc 明确的语义），所以 <code>wait()</code> 之后的代码仍然处于受保护的临界区内，可以安全地继续读取共享状态。</p>
+<p>为什么 <code>wait</code> 必须在 <code>synchronized</code> 中调用？因为&quot;检查条件 → 进入等待&quot;必须是原子的。如果允许无锁 wait，会出现这样的交错：消费者判断&quot;队列空了&quot;→（此刻生产者放入数据并 notify，但没人在等，通知消失）→ 消费者才执行 wait → <strong>永久等待</strong>。持锁调用把&quot;看条件&quot;和&quot;睡下去&quot;绑成原子操作，通知才不会插在中间丢失。这是 <code>wait</code> 必须持锁的第一性原因，而不只是&quot;API 硬性规定&quot;。</p>
+<p>它的调用必须在同步方法或同步代码块中执行，也需要捕获 InterruptedException 异常：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//同步代码块</span></span><br><span class="line"> <span class="keyword">synchronized</span> (obj) &#123;</span><br><span class="line">     System.out.println(<span class="string">&quot;obj to wait on RunnableImpl1&quot;</span>);</span><br><span class="line">     <span class="keyword">try</span> &#123;</span><br><span class="line">         obj.wait();</span><br><span class="line">     &#125; <span class="keyword">catch</span> (InterruptedException e) &#123;</span><br><span class="line">         e.printStackTrace();</span><br><span class="line">     &#125;</span><br><span class="line">     System.out.println(<span class="string">&quot;obj continue to run on RunnableImpl1&quot;</span>);</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure>
+<p>每个对象都拥有各自的对象锁，wait 的作用是释放当前线程占有的对象锁，自然是要操作对应的 Object 而不是 Thread——这也回答了一个设计问题：<strong>为什么 wait 定义在 <code>Object</code> 而不是 <code>Thread</code></strong>。锁和&quot;等待条件&quot;天然绑定在对象监视器上：每个对象一个监视器、一个等待集，<code>obj.wait()</code> 的含义是&quot;在 obj 这个条件的等待集里排队&quot;；<code>sleep</code> 与条件无关，所以留在 <code>Thread</code> 上。两者各归其位，不是 API 随意安排。</p>
+<h3 id="3-2-状态迁移图">3.2 状态迁移图</h3>
 <pre><code class="highlight mermaid">stateDiagram-v2
     [*] --&gt; Runnable
     Runnable --&gt; Blocked: 尝试进入 synchronized 块（获取锁）
@@ -307,30 +432,119 @@
     Waiting --&gt; Runnable: 其他线程调用 obj.notify() 或 obj.notifyAll()
     Waiting --&gt; Runnable: 被中断（抛出 InterruptedException）
     Waiting --&gt; [*]: 线程结束（可选）</code></pre>
-<p>它的调用必须在同步方法或同步代码块中执行，也需要捕获 InterruptedException 异常。</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//同步代码块</span></span><br><span class="line"> <span class="keyword">synchronized</span> (obj) &#123;</span><br><span class="line">     System.out.println(<span class="string">&quot;obj to wait on RunnableImpl1&quot;</span>);</span><br><span class="line">     <span class="keyword">try</span> &#123;</span><br><span class="line">         obj.wait();</span><br><span class="line">     &#125; <span class="keyword">catch</span> (InterruptedException e) &#123;</span><br><span class="line">         e.printStackTrace();</span><br><span class="line">     &#125;</span><br><span class="line">     System.out.println(<span class="string">&quot;obj continue to run on RunnableImpl1&quot;</span>);</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure>
-<p>每个对象都拥有各自的对象锁，wait的作用是释放当前线程占有的对象锁，自然是要操作对应的Object而不是Thread</p>
+<p>严格按官方状态补充一句：<code>Waiting --&gt; Runnable</code> 中间还有一段 <code>Blocked</code>（重新竞争锁失败期间），如 1.1 节总图所示；上图沿用原文示意命名，保留主干路径。</p>
+<h3 id="3-3-notify-的唤醒顺序：规范不保证，实现近似-FIFO">3.3 notify 的唤醒顺序：规范不保证，实现近似 FIFO</h3>
 <blockquote>
 <ul class="lvl-1">
 <li class="lvl-2">
-<p>必须在同步上下文中调用（否则抛出 <code>IllegalMonitorStateException</code>）。</p>
+<p>notify 的唤醒顺序取决于JVM的实现，可能是随机，可能是顺序唤醒</p>
 </li>
 <li class="lvl-2">
-<p>会释放对象锁，允许其他线程进入同步块。</p>
-</li>
-<li class="lvl-2">
-<p>可设置超时时间（<code>wait(long timeout)</code>），超时后自动唤醒。</p>
-</li>
-<li class="lvl-2">
-<p>通常与 <code>notify()</code>/<code>notifyAll()</code> 配合使用，实现线程间通信。</p>
+<p>在hotspot 虚拟机中，是顺序唤醒，每次取出第一个等待的元素</p>
 </li>
 </ul>
 </blockquote>
-<h2 id="加入（join）">加入（join）</h2>
+<p>这段话大方向正确，但要分&quot;规范&quot;与&quot;实现&quot;两层说清，工程上才敢放心依赖（或明确不依赖）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>规范层面</strong>：JVM 规范与 Javadoc 都不保证任何唤醒顺序，<code>notify()</code> 只承诺&quot;唤醒等待在该监视器上的<strong>某一个</strong>线程，选择是任意的（arbitrary）&quot;。任何依赖唤醒顺序的程序都是错的。</p>
+</li>
+<li class="lvl-2">
+<p><strong>实现层面（HotSpot）</strong>：等待集内部是一条双向链表，线程调用 <code>wait</code> 时按先后顺序追加（近似 FIFO）；<code>notify()</code> 默认取出等待集头节点（最早开始等待的线程）移回竞争队列。但注意**“先被唤醒&quot;不等于&quot;先拿到锁”**：被移出的线程进入竞争队列后，要与正在 <code>synchronized</code> 入口排队的线程一起重新竞争，最终谁先拿到锁由锁的出队策略决定。所以即使在 HotSpot 上，也只是&quot;唤醒顺序近似公平&quot;，&quot;锁的获得顺序&quot;仍无保证。</p>
+</li>
+</ul>
+<p>另外 <code>notify</code> 与 <code>notifyAll</code> 的取舍：<code>notifyAll</code> 会把等待集整体唤醒，全员重新抢锁，抢不到的继续回等待集——正确但开销 $O(n)$（惊群）；<code>notify</code> 只唤醒一个，开销小，但若<strong>不同线程等待的条件谓词不同</strong>（比如生产者、消费者共用了同一个对象 wait），被唤醒的可能恰好是不满足条件的那类，通知被&quot;无效消耗&quot;，极端时造成部分线程永远等不到通知。安全准则：<strong>条件谓词存在多类等待者、或无法证明只有一类时，一律 <code>notifyAll</code></strong>；能证明单类等待者时才用 <code>notify</code> 省开销。</p>
+<h3 id="3-4-虚假唤醒与标准模板">3.4 虚假唤醒与标准模板</h3>
+<p>Javadoc 对 <code>Object.wait</code> 有一段必须重视的原文（翻译）：“线程也可能在没有被通知、中断或超时的情况下醒来，即<strong>虚假唤醒（spurious wakeup）</strong>。虽然实践中很少发生，但应用程序必须通过测试本应导致线程被唤醒的条件来防范它，条件不满足就继续等待。”</p>
+<p>【实现层面】虚假唤醒的源头在操作系统层：POSIX 条件变量规范显式允许 <code>pthread_cond_wait</code> 无故返回（某些多核平台为性能放宽了&quot;必须先发生 signal&quot;的要求），JVM 落到 pthread 实现上，便把这个口子如实透传给了 Java 层，并以 Javadoc 条款要求调用方防御。</p>
+<p>因此 <strong><code>wait</code> 必须包在 <code>while</code> 条件循环里，而不是 <code>if</code></strong>：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 标准模板：while 守卫条件谓词</span></span><br><span class="line"><span class="keyword">synchronized</span> (lock) &#123;</span><br><span class="line">    <span class="keyword">while</span> (!conditionSatisfied) &#123;   <span class="comment">// 被唤醒后重新验证条件</span></span><br><span class="line">        lock.wait();                 <span class="comment">// 虚假唤醒/条件未满足 → 继续等</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 走到这里：持锁 + 条件成立，安全消费</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>用 <code>if</code> 的后果是真实的：虚假唤醒（或被不相关线程 notify 消耗）后直接往下走，从空队列 <code>remove()</code> 抛异常，或对未就绪的数据做处理。<code>while</code> 循环把&quot;醒来&quot;降级为&quot;有机会重新检查&quot;，条件成立才放行——这是 wait/notify 唯一正确的使用姿势。</p>
+<h3 id="3-5-超时变体与中断语义">3.5 超时变体与中断语义</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>wait(long timeout)</code>：超时后自动从等待集移出、重新竞争锁并返回。<code>wait(0)</code> 表示无限等待。注意超时返回与被 notify 返回<strong>在返回值上无法区分</strong>（返回类型是 void），&quot;等到条件成立&quot;还是&quot;只是超时&quot;必须靠重新检查条件谓词判断——这也是 <code>while</code> 模板的另一个必要性。</p>
+</li>
+<li class="lvl-2">
+<p><code>wait(long timeout, int nanos)</code>：【真实源码】JDK 8 中只是把纳秒向上取整进位到毫秒后调用 <code>wait(timeout)</code>，无真实纳秒精度，工程上应视为与毫秒版等价。</p>
+</li>
+<li class="lvl-2">
+<p>中断语义有个精细点：Javadoc 明确，<code>wait</code> 期间被中断时，<strong>InterruptedException 不会在锁被恢复之前抛出</strong>——即线程先重新拿到锁，再以持有锁的状态抛异常，保证异常抛出点仍在合法的临界区语境里。中断标志在异常抛出时被清除。</p>
+</li>
+</ul>
+<h3 id="3-6-故障场景三：wait-未持锁抛-IllegalMonitorStateException">3.6 故障场景三：wait 未持锁抛 IllegalMonitorStateException</h3>
+<p><strong>发生什么</strong>：新同事给老代码加&quot;等待初始化完成&quot;逻辑，把 <code>obj.wait()</code> 写在了没有 <code>synchronized</code> 包裹的方法里，联调时稳定抛 <code>java.lang.IllegalMonitorStateException</code>，HotSpot 下的异常消息是 “current thread not owner”。</p>
+<p><strong>为什么</strong>：<code>wait/notify/notifyAll</code> 的前置条件是<strong>当前线程必须是该对象监视器的持有者</strong>，JVM 在方法入口做所有权校验，不满足立即抛异常。典型触发方式有三种：其一，压根没在 <code>synchronized</code> 块里调用（本例）；其二，<code>wait</code> 与 <code>notify</code> 用的<strong>不是同一个对象</strong>（例如代码锁的是 <code>lock</code> 对象、却调用了 <code>queue.wait()</code>）；其三，嵌套锁下在最外层对象上 wait——<code>wait</code> 只释放并要求持有&quot;被调用的那个对象&quot;的锁，在内层对象上 wait 同样不满足所有权。</p>
+<p><strong>系统如何处理与恢复</strong>：这是显式异常，不会静默，通常在开发期就暴露，属良性故障。修复方法：让 <code>wait/notify</code> 与 <code>synchronized</code> 使用<strong>同一个对象</strong>并保证成对出现。预防上，可以把&quot;锁对象&quot;与&quot;条件对象&quot;封装在一起（或直接用 <code>Condition</code>，其 <code>await/signal</code> 前置条件是持有对应的 <code>Lock</code>，语义更显式），并统一团队模板：<code>synchronized (lock) { while (!cond) lock.wait(); }</code>。</p>
+<h3 id="3-7-故障场景四：丢失唤醒导致线程永久-WAITING">3.7 故障场景四：丢失唤醒导致线程永久 WAITING</h3>
+<p><strong>发生什么</strong>：线上一个消费线程突然&quot;消失&quot;，不再处理任何消息，线程栈显示它停在 <code>WAITING (on object monitor)</code>，栈顶是 <code>Object.wait</code>，且永远没有恢复的迹象。</p>
+<p><strong>为什么</strong>：这是<strong>丢失唤醒（lost wakeup）</strong>。wait/notify 的通知是<strong>无记忆的</strong>——如果 <code>notify()</code> 发生时等待集里没有线程，通知直接蒸发，不会记下来补偿后来的等待者。典型时序：消费者检查完条件（队列空）之后、还没执行到 <code>wait()</code> 之前的间隙，生产者完成了&quot;放入数据 + notify&quot;，此时通知发给了一个&quot;还没开始等&quot;的消费者；随后消费者进入 <code>wait()</code>，而生产者认为自己已经通知过了不再发——信号被永久错过。此外还有两类同源故障：用 <code>notify</code> 却存在多类等待者（3.3 节），以及被 <code>notify</code> 唤醒的线程因条件不满足回等待集时恰好没有其他线程再触发通知。</p>
+<p><strong>系统如何处理</strong>：没有系统兜底——<code>WAITING</code> 状态的线程不参与调度也不会超时，任务永久堆积，消费线程等价于泄漏。这类故障不会抛任何异常，只能靠线程栈发现。</p>
+<p><strong>如何恢复与根治</strong>：恢复上用 jstack 抓栈，定位&quot;永久 WAITING 且无人 notify&quot;的线程，评估后重启实例恢复消费。根治分三档：短期，在业务条件上加&quot;哨兵唤醒&quot;（写入方在状态可能变化时<strong>总是</strong> <code>notifyAll</code>，配合 <code>while</code> 模板自愈）；中期，给无限等待加超时——<code>wait(millis)</code> 循环重查条件，即使信号丢失也能靠超时自愈；长期，<strong>直接放弃裸 wait/notify，改用 <code>BlockingQueue</code>（<code>take</code>/<code>put</code> 天然处理好条件与唤醒）或 <code>ReentrantLock</code> + 多个 <code>Condition</code></strong>（每个条件独立等待集，<code>signal</code> 精确唤醒，无记忆问题则由&quot;持锁检查条件&quot;的约定覆盖）。裸 wait/notify 在新业务代码里几乎没有不可替代的场景。</p>
+<h3 id="3-8-故障场景五：嵌套锁下-wait-只释放一把锁">3.8 故障场景五：嵌套锁下 wait 只释放一把锁</h3>
+<p><strong>发生什么</strong>：线程 A 持有 <code>lockA</code> 后进入 <code>synchronized(lockB)</code>，在 <code>lockB</code> 上 <code>wait()</code>；线程 B 需要 <code>lockA</code> 才能制造条件唤醒 A。结果：A 在 <code>lockB</code> 的等待集里沉睡，但它<strong>仍持有 lockA</strong>；B 拿不到 lockA，永远造不成条件——形成&quot;自己锁死自己&quot;的变体死锁。</p>
+<p><strong>为什么</strong>：<code>obj.wait()</code> 只释放 <code>obj</code> 这一把监视器，<strong>对线程持有的其他锁不产生任何影响</strong>。很多资料说&quot;wait 会释放锁&quot;，省略了&quot;仅限被调用的那个对象&quot;这个定语，就是这类故障的认知根源。</p>
+<p><strong>如何恢复与预防</strong>：恢复同死锁处理（jstack 检测 <code>Found one Java-level deadlock</code> 或人工分析锁持有链，重启）。预防原则：<strong>等待条件的临界区要&quot;最小持锁&quot;</strong>——进入 <code>wait</code> 前确保只持有与条件相关的这一把锁；两把锁的协作场景，重构为单一锁对象，或改用 JUC 的显式锁结构。</p>
+<h3 id="3-9-wait-notify-与-Condition-的选型">3.9 wait/notify 与 Condition 的选型</h3>
+<p><code>ReentrantLock</code> 配套的 <code>Condition</code> 是 wait/notify 的 JUC 对应物，差异决定了选型：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>synchronized + wait/notify</th>
+<th>ReentrantLock + Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>等待集数量</td>
+<td>每对象仅一个等待集</td>
+<td>一个锁可派生多个 Condition，按条件分队列</td>
+</tr>
+<tr>
+<td>唤醒精度</td>
+<td>notifyAll 惊群 / notify 易错</td>
+<td>signal 精确唤醒指定条件的等待者</td>
+</tr>
+<tr>
+<td>超时/中断</td>
+<td>wait(ms) 有超时，中断统一抛异常</td>
+<td>awaitNanos/awaitUninterruptibly 等更细粒度控制</td>
+</tr>
+<tr>
+<td>公平性</td>
+<td>无公平选项</td>
+<td>可选公平锁</td>
+</tr>
+<tr>
+<td>使用成本</td>
+<td>模板简单但易错（if/丢唤醒）</td>
+<td>必须 finally 中 unlock，锁忘释放风险高</td>
+</tr>
+</tbody>
+</table>
+<p>选型建议：单条件、简单互斥的场景用 synchronized + while + notifyAll 模板即可；多条件协作（如有界缓冲区的&quot;非满&quot;&quot;非空&quot;两个条件）、需要公平性或精确唤醒的，用 Condition；纯数据交接用 <code>BlockingQueue</code>，连锁都不必手写。</p>
+<h2 id="四、加入（join）：等待另一个线程终止">四、加入（join）：等待另一个线程终止</h2>
 <p><strong>作用</strong>：让当前线程<strong>等待另一个线程执行完毕</strong>后再继续执行。</p>
-<blockquote>
-<p>调用<code>join()</code>的线程拥有优先使用CPU时间片的权利，其他线程需要等待join()调用线程执行结束后才能继续执行</p>
-</blockquote>
+<p>原文有一个流传很广的说法需要修正：“调用 join() 的线程拥有优先使用 CPU 时间片的权利，其他线程需要等待 join() 调用线程执行结束后才能继续执行”——这是误传。<code>join</code> 与 CPU 时间片、优先级毫无关系：调用 <code>t.join()</code> 只是让<strong>当前线程</strong>阻塞等待<strong>目标线程 t 终止</strong>，其他线程照常调度，t 该抢时间片照样抢。</p>
+<h3 id="4-1-真实源码：join-就是-持锁的条件等待">4.1 真实源码：join 就是&quot;持锁的条件等待&quot;</h3>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="keyword">synchronized</span> <span class="keyword">void</span> <span class="title function_">join</span><span class="params">(<span class="type">long</span> millis)</span> <span class="keyword">throws</span> InterruptedException &#123;</span><br><span class="line">    <span class="type">long</span> <span class="variable">base</span> <span class="operator">=</span> System.currentTimeMillis();</span><br><span class="line">    <span class="type">long</span> <span class="variable">now</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (millis &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(<span class="string">&quot;timeout value is negative&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (millis == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">while</span> (isAlive()) &#123;</span><br><span class="line">            wait(<span class="number">0</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">while</span> (isAlive()) &#123;</span><br><span class="line">            <span class="type">long</span> <span class="variable">delay</span> <span class="operator">=</span> millis - now;</span><br><span class="line">            <span class="keyword">if</span> (delay &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            wait(delay);</span><br><span class="line">            now = System.currentTimeMillis() - base;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>【真实源码】以上是 <code>java.lang.Thread</code> 的 <code>join(long)</code>，JDK 8 至 JDK 21 基本未变（仅变量修饰等微调）。Javadoc 对此也有官方注解（翻译）：&quot;该实现基于 <code>this.isAlive</code> 条件对 <code>this.wait</code> 的循环调用。线程终止时会调用 <code>this.notifyAll</code>。&quot;三处源码细节值得逐条读透：</p>
+<ol>
+<li class="lvl-3">
+<p><strong><code>synchronized</code> 修饰</strong>：join 锁的是<strong>目标线程对象自身</strong>（<code>synchronized(t)</code>）。这解释了 join 的&quot;不释放锁&quot;到底指什么——它等待期间释放的是 t 的监视器（内部 <code>wait</code> 释放），对调用者自己的业务锁不碰。副作用是：若你的业务代码也 <code>synchronized(t)</code> 并长期持有，<code>t.join()</code> 会先卡在锁竞争上（<code>BLOCKED</code> 而非 <code>WAITING</code>），这也正是 Javadoc 建议不要在 Thread 实例上自行使用 wait/notify 的原因——避免与 join 的内部用法互相干扰。</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>while (isAlive())</code> 而不是 <code>if</code></strong>：与 3.4 节的 while 模板同源。理由有三：虚假唤醒要重新检查；<strong>其他线程可能对 t 调用 <code>notify()</code>/<code>notifyAll()</code></strong>（Javadoc 建议别这么做，但拦不住），误唤醒后必须回查 <code>isAlive</code>；带超时版本每次醒来要重算剩余等待时间（<code>delay = millis - now</code>），时间没等够就继续 <code>wait(delay)</code>。</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>isAlive()</code> 是唯一条件谓词</strong>：join 等的不是&quot;任务执行成功&quot;，只是&quot;线程死了&quot;。<code>run()</code> 抛出未捕获异常同样算终止，<code>join()</code> 照样正常返回——<strong>异常被吞进线程的死亡过程</strong>。需要感知执行结果或异常时，join 不是合适的工具（见 4.6）。</p>
+</li>
+</ol>
+<h3 id="4-2-为什么-join-能-等到线程死-：终止通知机制">4.2 为什么 join 能&quot;等到线程死&quot;：终止通知机制</h3>
+<p><code>join</code> 内部 <code>wait(0)</code> 无限等待，那谁来唤醒它？【实现层面】HotSpot 在线程退出路径（<code>JavaThread::exit</code> 过程中）会以该线程的 Thread 对象为目标执行一次 <code>notifyAll</code>，即源码层面的 <code>ensure_join</code> 逻辑：线程终止时对 <code>threadObj</code> 加监视器锁、清除引用、设置死亡标记，然后<strong>通知所有在该对象上等待的线程</strong>。Javadoc 里 “As a thread terminates the this.notifyAll method is called” 说的就是这件事。</p>
+<p>所以 join 的完整闭环是：主线程 <code>t.join()</code> → 对 t 加锁 → <code>while(isAlive()) wait(0)</code> 进入 t 的等待集 → t 的 <code>run()</code> 结束 → JVM 在 t 终止时 <code>t.notifyAll()</code> → 主线程被唤醒重新抢 t 的锁 → <code>isAlive()</code> 为 false，循环退出，join 返回。<strong>join 不是一个独立机制，只是&quot;以 Thread 对象为条件对象的 wait/notify&quot;</strong>——理解这一点后，join 的一切行为（可中断、超时变体、状态迁移）都能从 wait 推导出来。</p>
+<h3 id="4-3-状态迁移与时序">4.3 状态迁移与时序</h3>
 <pre><code class="highlight mermaid">stateDiagram-v2
     [*] --&gt; MainRunning
     [*] --&gt; ChildRunning
@@ -356,50 +570,30 @@
       子线程独立运行，
       不受 join 影响。
     end note</code></pre>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//创建TestRunnable类</span></span><br><span class="line"><span class="type">TestRunnable</span> <span class="variable">mr</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">TestRunnable</span>();</span><br><span class="line"><span class="comment">//创建Thread类的有参构造,并设置线程名</span></span><br><span class="line"><span class="type">Thread</span> <span class="variable">t1</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Thread</span>(mr, <span class="string">&quot;t1&quot;</span>);</span><br><span class="line"><span class="type">Thread</span> <span class="variable">t2</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Thread</span>(mr, <span class="string">&quot;t2&quot;</span>);</span><br><span class="line"><span class="type">Thread</span> <span class="variable">t3</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Thread</span>(mr, <span class="string">&quot;t3&quot;</span>);</span><br><span class="line"><span class="comment">//启动线程</span></span><br><span class="line">t1.start();</span><br><span class="line"><span class="keyword">try</span> &#123;</span><br><span class="line">    t1.join(); <span class="comment">//等待t1执行完才会轮到t2，t3抢</span></span><br><span class="line">&#125; <span class="keyword">catch</span> (InterruptedException e) &#123;</span><br><span class="line">    e.printStackTrace();</span><br><span class="line">&#125;</span><br><span class="line">t2.start();</span><br><span class="line">t3.start();</span><br></pre></td></tr></table></figure>
-<p>底层主要通过<code>wait()</code>实现，参数代表等待当前线程最多执行多少毫秒，如果 为 0，则会一直执行，直至完成，才会轮到其他线程继续；</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">final</span> <span class="keyword">synchronized</span> <span class="keyword">void</span> <span class="title function_">join</span><span class="params">(<span class="type">long</span> millis)</span> <span class="keyword">throws</span> InterruptedException &#123;</span><br><span class="line">    <span class="type">long</span> <span class="variable">base</span> <span class="operator">=</span> System.currentTimeMillis();</span><br><span class="line">    <span class="type">long</span> <span class="variable">now</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (millis &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(<span class="string">&quot;timeout value is negative&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (millis == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">while</span> (isAlive()) &#123;</span><br><span class="line">            wait(<span class="number">0</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">while</span> (isAlive()) &#123;</span><br><span class="line">            <span class="type">long</span> <span class="variable">delay</span> <span class="operator">=</span> millis - now;</span><br><span class="line">            <span class="keyword">if</span> (delay &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            wait(delay);</span><br><span class="line">            now = System.currentTimeMillis() - base;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<blockquote>
-<ul class="lvl-1">
-<li class="lvl-2">
-<p>调用 <code>t.join()</code> 的线程会阻塞，直到 <code>t</code> 终止。</p>
-</li>
-<li class="lvl-2">
-<p>内部使用了 <code>wait()</code> 机制（但对用户透明）。</p>
-</li>
-<li class="lvl-2">
-<p>也会抛出 <code>InterruptedException</code>。</p>
-</li>
-</ul>
-</blockquote>
-<h2 id="让步（yield）">让步（yield）</h2>
-<p><strong>作用</strong>：<strong>提示调度器</strong><code>Thread.yield() </code> 让当前线程主动让出 CPU 资源，给其他相同优先级或更高优先级的线程运行的机会</p>
-<p>提出申请释放CPU资源，在多线程编程中可以用来影响线程执行顺序和资源分配，至于能否成功释放由JVM决定</p>
-<blockquote>
-<ol>
-<li class="lvl-3">
-<p>避免线程长时间占用 CPU</p>
-<ul class="lvl-3">
-<li class="lvl-5">在某些情况下，一个线程可能会长时间占用 CPU 资源，导致其他线程无法得到执行的机会。这时，可以在适当的时候调用<code>yield</code>方法，让当前线程暂停一下，给其他线程一个执行的机会。例如，在一个复杂的计算任务中，如果一个线程一直在进行计算而不释放 CPU 资源，可能会导致其他线程无法及时响应用户的操作。通过在计算过程中定期调用<code>yield</code>方法，可以让其他线程有机会执行，提高系统的响应性。</li>
-</ul>
-</li>
-<li class="lvl-3">
-<p>平衡线程的执行时间</p>
-<ul class="lvl-3">
-<li class="lvl-5">在多线程环境中，不同的线程可能具有不同的执行时间和优先级。如果某些线程的执行时间过长，可能会导致其他线程等待时间过长，影响系统的整体性能。通过在长执行时间的线程中适当调用<code>yield</code>方法，可以让其他线程有机会执行，从而平衡各个线程的执行时间，提高系统的整体效率。</li>
-</ul>
-</li>
-<li class="lvl-3">
-<p>提高线程的公平性</p>
-<ul class="lvl-3">
-<li class="lvl-5">在某些情况下，线程的调度可能会出现不公平的情况，导致某些线程长时间无法得到执行的机会。通过在适当的时候调用<code>yield</code>方法，可以让当前线程主动让出 CPU 资源，给其他线程一个执行的机会，从而提高线程的公平性。</li>
-</ul>
-</li>
-</ol>
-</blockquote>
-<p><strong>原理</strong></p>
-<p>给相同优先级或更高优先级的线程运行的机会执行权（也可能是自己本身），自己会处于<strong>就绪状态</strong>。</p>
-<p>但是线程优先级高的也不一定的获得执行权， 优先级高仅仅只是执行概率大了一点。并且所谓的优先级执行，是在大量执行次数中才能体现出来的。</p>
+<p>调用方等待一个已启动但未终止的线程，主线程进入 <code>WAITING</code>（<code>join()</code>）/<code>TIMED_WAITING</code>（<code>join(ms)</code>）；若 join 一个<strong>还没 <code>start()</code></strong> 的线程，<code>isAlive()</code> 为 false，<code>join</code> 直接返回，不等待——这是&quot;启动前 join 等于没等&quot;的坑。子线程完全不受 join 影响，独立运行。</p>
+<h3 id="4-4-超时变体与-isAlive-复查">4.4 超时变体与 isAlive 复查</h3>
+<p><code>join(millis)</code> 超时后<strong>直接返回，无论目标线程死没死</strong>，且返回值是 void——&quot;等到终止&quot;与&quot;超时放弃&quot;无法从返回值区分，必须 <code>isAlive()</code> 复查：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">t.join(<span class="number">3000</span>);</span><br><span class="line"><span class="keyword">if</span> (t.isAlive()) &#123;</span><br><span class="line">    <span class="comment">// 3 秒后 t 还活着：按超时分支处理（取消、降级、记录）</span></span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="comment">// t 已终止：继续后续编排</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>另外 join 到一个已经终止的线程会立即返回（<code>isAlive</code> 为 false），重复 join 也安全。</p>
+<h3 id="4-5-故障场景六：无超时-join-挂死，服务假死">4.5 故障场景六：无超时 join 挂死，服务假死</h3>
+<p><strong>发生什么</strong>：主线程（或调度线程、发布脚本触发的预热逻辑）调用 <code>t.join()</code> 等一个数据加载线程，某天该线程内部因为下游配置错误进入死循环/网络调用无超时地挂住。结果主流程永久停在 <code>WAITING</code>，服务&quot;进程在、但不干活&quot;，探针超时告警，发布流程卡死。</p>
+<p><strong>为什么</strong>：<code>join()</code> 等价于 <code>wait(0)</code> 无限等待，唯一解除条件是目标线程终止。目标线程的任何非终止型故障（死循环、无超时的阻塞 IO、内部又 join 了别人形成 join 链）都会让等待方永久挂起。这类故障的共同根因是：<strong>把&quot;子线程必然会结束&quot;当成了无需验证的假设</strong>，而这个假设在分布式环境里几乎必然在某天被打破（网络无超时、依赖死锁、逻辑 bug）。</p>
+<p><strong>系统如何处理</strong>：无任何自动恢复——<code>WAITING</code> 不超时、无告警钩子，只能靠外部探针或人工发现。恢复手段：jstack 确认主线程停在 <code>join</code>、目标线程栈停在何处（死循环栈顶在业务方法、IO 挂死栈顶在 <code>socketRead0</code>），修复后重启。</p>
+<p><strong>如何恢复与根治</strong>：根治三件套——其一，永远用带超时的 <code>join(millis)</code> 并 <code>isAlive()</code> 复查，超时分支明确降级（默认值、告警、重试）；其二，更推荐用 <code>CountDownLatch</code>：<code>latch.await(timeout, TimeUnit.SECONDS)</code> 返回布尔值，语义上&quot;等到没等到&quot;一目了然，且不受&quot;在 Thread 对象上做锁操作&quot;的副作用影响；其三，异步任务一律 <code>CompletableFuture.get(timeout)</code>，还能拿到异常。编排&quot;主线程等一批任务&quot;的场景，<code>CountDownLatch</code>/<code>CompletableFuture.allOf</code> 全面优于逐个 join。</p>
+<h3 id="4-6-join-的适用边界：拿不到结果，也感知不到异常">4.6 join 的适用边界：拿不到结果，也感知不到异常</h3>
+<p>join 的返回值是 void、目标线程的异常随线程死亡被吞掉（除非注册 <code>UncaughtExceptionHandler</code>），所以它只适合<strong>纯时序编排</strong>——“必须先做完 A 再做 B”，不关心 A 的产出与成败。需要结果或异常传播时，<code>Future.get()</code>（抛 <code>ExecutionException</code> 携带子任务异常）、<code>CompletableFuture.thenApply</code> 是正确工具。还有一个边界坑：<code>Thread.currentThread().join()</code>（自己 join 自己）会导致永久自锁——当前线程永远等不到自己终止，这类代码通常来自把线程引用传错位置的 bug，代码评审时值得专设一条检查。</p>
+<h2 id="五、让步（yield）：对调度器的一次提示">五、让步（yield）：对调度器的一次提示</h2>
+<p><strong>作用</strong>：<strong>提示调度器</strong> <code>Thread.yield()</code> 让当前线程主动让出 CPU 资源，给其他线程运行的机会。Javadoc 原文（翻译）：“向调度器提示当前线程愿意让出对处理器的当前使用。<strong>调度器可以随意忽略这个提示。</strong>”</p>
+<p>【真实源码】JDK 各版本的声明：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// java.lang.Thread —— 真实源码</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">native</span> <span class="keyword">void</span> <span class="title function_">yield</span><span class="params">()</span>;</span><br></pre></td></tr></table></figure>
+<p>提出申请释放 CPU 资源，至于能否成功释放由 JVM 与操作系统决定。</p>
+<h3 id="5-1-操作系统层与优先级的真相">5.1 操作系统层与优先级的真相</h3>
+<p>【实现层面】HotSpot 上，Linux 将 yield 落到 <code>sched_yield()</code>，Windows 落到 <code>SwitchToThread()</code> 一类原语：让出后当前线程回到就绪队列参与下一轮竞争，若没有其他可运行线程，<strong>它可能立刻再次被调度</strong>——这就是&quot;yield 后输出顺序几乎不变&quot;的底层原因。注意 yield 与 sleep 有个关键差异：<strong>yield 后线程仍是 <code>RUNNABLE</code></strong>，它只是没被选中执行的那一刻，而不是&quot;等待状态&quot;；<code>sleep</code> 则实实在在进入 <code>TIMED_WAITING</code>。</p>
+<p>老资料常说 yield “给相同优先级或更高优先级的线程机会”，这是早期文档的历史说法，现行 Javadoc 已无此表述，规范层面没有任何优先级相关承诺。</p>
+<p>那线程优先级本身靠不靠谱？【实现层面】一个少有人知的事实：HotSpot 默认把 <code>JavaPriority1_To_OSPriority</code> 到 <code>JavaPriority10_To_OSPriority</code> 这组参数设为 -1，含义是<strong>不把 Java 优先级映射到操作系统线程优先级</strong>。也就是说默认配置下，<code>setPriority</code> 基本不影响 CPU 调度，Java 优先级更多是 JVM 内部记录与个别内部机制的参考值。即便映射生效，调度器给的也只是概率倾斜而非承诺。【理论分析】假如某调度器按权重 $w_i = p_i$ 线性分配时间片，优先级 10 与 5 的两个线程时间占比为：</p>
+<p>$$R=\frac{p_{high}}{p_{high}+p_{low}}=\frac{10}{10+5}\approx 66.7%$$</p>
+<p>【示例数据】这个 66.7% 只用于说明&quot;概率倾斜、统计上才可观察&quot;的含义，并非任何真实 JVM 的行为。结论：<strong>优先级与 yield 一样，只能影响&quot;可能性&quot;，永远不能作为正确性依赖</strong>。</p>
+<h3 id="5-2-状态迁移与示例代码">5.2 状态迁移与示例代码</h3>
 <pre><code class="highlight mermaid">stateDiagram-v2
     [*] --&gt; Runnable
 
@@ -409,71 +603,244 @@
     note right of Yielding
       yield() 建议当前线程让出 CPU，
       但不保证其他线程一定获得执行权。
-      线程仍处于 RUNNABLE 状态（Java 中无独立“Yielding”状态）。
+      线程仍处于 RUNNABLE 状态（Java 中无独立&quot;Yielding&quot;状态）。
     end note</code></pre>
-<p><code>sleep()</code> 调用后线程处于 <code>TIMED_WAITING</code>（计时等待）状态；而 <code>yield()</code> 调用后线程<strong>仍是 <code>RUNNABLE</code></strong>，只是暂时把调度权让给别人，随后可以立刻重新参与调度。</p>
+<p><code>sleep()</code> 调用后线程处于 <code>TIMED_WAITING</code>（计时等待）状态；而 <code>yield()</code> 调用后线程<strong>仍是 <code>RUNNABLE</code></strong>，只是暂时把调度权让给别人，随后可以立刻重新参与调度。yield 也不响应中断——它太短暂，连被中断的窗口都不留。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">Test</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> &#123;</span><br><span class="line">        <span class="type">Thread</span> <span class="variable">thread1</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Thread</span>(Test::printNumbers, <span class="string">&quot;小明&quot;</span>);</span><br><span class="line">        <span class="type">Thread</span> <span class="variable">thread2</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Thread</span>(Test::printNumbers, <span class="string">&quot;小华&quot;</span>);</span><br><span class="line">        thread1.start();</span><br><span class="line">        thread2.start();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">printNumbers</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">1</span>; i &lt;= <span class="number">5</span>; i++) &#123;</span><br><span class="line">            System.out.println(Thread.currentThread().getName() + <span class="string">&quot;: &quot;</span> + i);</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 当 i 是偶数时，当前线程暂停执行</span></span><br><span class="line">            <span class="keyword">if</span> (i % <span class="number">2</span> == <span class="number">0</span>) &#123;</span><br><span class="line">                System.out.println(Thread.currentThread().getName() + <span class="string">&quot; 让出控制权...&quot;</span>);</span><br><span class="line">                Thread.<span class="keyword">yield</span>();</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 小明: 1</span></span><br><span class="line"><span class="comment">// 小华: 1</span></span><br><span class="line"><span class="comment">// 小华: 2</span></span><br><span class="line"><span class="comment">// 小明: 2</span></span><br><span class="line"><span class="comment">// 小明 让出控制权...</span></span><br><span class="line"><span class="comment">// 小华 让出控制权...</span></span><br><span class="line"><span class="comment">// 小明: 3</span></span><br><span class="line"><span class="comment">// 小明: 4</span></span><br><span class="line"><span class="comment">// 小明 让出控制权...</span></span><br><span class="line"><span class="comment">// 小明: 5</span></span><br><span class="line"><span class="comment">// 小华: 3</span></span><br><span class="line"><span class="comment">// 小华: 4</span></span><br><span class="line"><span class="comment">// 小华 让出控制权...</span></span><br><span class="line"><span class="comment">// 小华: 5</span></span><br></pre></td></tr></table></figure>
+<p>【示例数据】上面的输出是<strong>某一次运行的结果</strong>，不具备复现性：多核 CPU 上两个线程并行执行、yield 被调度器部分忽略、打印本身有 IO 抖动，每次运行顺序都可能不同。恰恰是这个&quot;结果不可预测&quot;，才是这段示例真正要教的东西——<strong>任何指望 yield 产生确定执行顺序的代码都是错误的</strong>。</p>
 <blockquote>
 <p>Yield 是一种启发式尝试，旨在改善线程之间的相对进展，否则会过度使用 CPU。 它的使用应与详细的分析和基准测试相结合，以确保它确实具有预期的效果。很少适合使用这种方法。 它对于调试或测试目的可能很有用，它可能有助于重现由于竞争条件引起的错误。 在设计并发控制结构（例如java.util.concurrent.locks包中的结构）时，它也可能很有用。</p>
+</blockquote>
+<p>（以上为 Javadoc 对 yield 的官方评价，要点翻译如下。）</p>
+<blockquote>
 <ol>
-<li class="lvl-3">不确定性
+<li class="lvl-3">
+<p>不确定性</p>
 <ul class="lvl-3">
 <li class="lvl-5"><code>yield</code>方法只是一个提示性的方法，它不能保证当前线程往往会让出 CPU 资源，也不能保证其他线程往往会被选中执行。因此，在使用<code>yield</code>方法时，不能依赖它来实现特定的线程执行顺序。</li>
 </ul>
 </li>
-<li class="lvl-3">性能影响
+<li class="lvl-3">
+<p>性能影响</p>
 <ul class="lvl-3">
 <li class="lvl-5">频繁地调用<code>yield</code>方法可能会对性能产生一定的影响。因为每次调用<code>yield</code>方法都会导致当前线程进入就绪状态，然后由调度器重新选择下一个要执行的线程，这个过程可能会消耗一定的时间和系统资源。</li>
 </ul>
 </li>
-<li class="lvl-3">优先级问题
+<li class="lvl-3">
+<p>优先级问题</p>
 <ul class="lvl-3">
 <li class="lvl-5"><code>yield</code>方法并不能改变线程的优先级。如果一个线程的优先级较高，即使其他线程调用了<code>yield</code>方法，调度器仍然可能会优先选择高优先级的线程执行。</li>
 </ul>
 </li>
 </ol>
 </blockquote>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">Test</span> &#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> &#123;</span><br><span class="line">        <span class="type">Thread</span> <span class="variable">thread1</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Thread</span>(Test::printNumbers, <span class="string">&quot;小明&quot;</span>);</span><br><span class="line">        <span class="type">Thread</span> <span class="variable">thread2</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Thread</span>(Test::printNumbers, <span class="string">&quot;小华&quot;</span>);</span><br><span class="line">        thread1.start();</span><br><span class="line">        thread2.start();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">printNumbers</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">1</span>; i &lt;= <span class="number">5</span>; i++) &#123;</span><br><span class="line">            System.out.println(Thread.currentThread().getName() + <span class="string">&quot;: &quot;</span> + i);</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 当 i 是偶数时，当前线程暂停执行</span></span><br><span class="line">            <span class="keyword">if</span> (i % <span class="number">2</span> == <span class="number">0</span>) &#123;</span><br><span class="line">                System.out.println(Thread.currentThread().getName() + <span class="string">&quot; 让出控制权...&quot;</span>);</span><br><span class="line">                Thread.<span class="keyword">yield</span>();</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 小明: 1</span></span><br><span class="line"><span class="comment">// 小华: 1</span></span><br><span class="line"><span class="comment">// 小华: 2</span></span><br><span class="line"><span class="comment">// 小明: 2</span></span><br><span class="line"><span class="comment">// 小明 让出控制权...</span></span><br><span class="line"><span class="comment">// 小华 让出控制权...</span></span><br><span class="line"><span class="comment">// 小明: 3</span></span><br><span class="line"><span class="comment">// 小明: 4</span></span><br><span class="line"><span class="comment">// 小明 让出控制权...</span></span><br><span class="line"><span class="comment">// 小明: 5</span></span><br><span class="line"><span class="comment">// 小华: 3</span></span><br><span class="line"><span class="comment">// 小华: 4</span></span><br><span class="line"><span class="comment">// 小华 让出控制权...</span></span><br><span class="line"><span class="comment">// 小华: 5</span></span><br></pre></td></tr></table></figure>
-<blockquote>
-<ul class="lvl-1">
-<li class="lvl-2">
-<p><strong>不保证一定让出 CPU</strong>，只是建议（JVM 可能忽略）。</p>
-</li>
-<li class="lvl-2">
-<p>不会阻塞线程（线程仍处于 RUNNABLE 状态）。</p>
-</li>
-<li class="lvl-2">
-<p>不释放锁。</p>
-</li>
-<li class="lvl-2">
-<p>通常用于调试或测试，生产代码中很少使用。</p>
-</li>
-</ul>
-</blockquote>
-<h2 id="总结">总结</h2>
+<p>那 yield 什么时候才真的有用？官方给的定位很克制：调试/测试中放大竞争窗口、复现竞态问题；以及自研并发结构里做自旋退避。JDK 9+ 的自旋场景有了更好的选择：<code>Thread.onSpinWait()</code>，它编译为 x86 的 <code>PAUSE</code> 指令（ARM 上是 YIELD 提示），明确告诉 CPU&quot;这是自旋等待&quot;，能降低流水线功耗与对同核超兄弟线程的干扰——<strong>自旋微调用它，别用 yield</strong>。</p>
+<h3 id="5-3-故障场景七：yield-忙等烧-CPU">5.3 故障场景七：yield 忙等烧 CPU</h3>
+<p><strong>发生什么</strong>：一个&quot;等配置刷新&quot;的线程写成 <code>while (!refreshed) { Thread.yield(); }</code>，上线后该核 CPU 长期 100%，同宿主其他服务延迟上升。</p>
+<p><strong>为什么</strong>：多核机器上 yield 后几乎总有核可用，调度器转一圈又把它挑起来，循环退化成<strong>全速自旋</strong>——yield 既没让线程进入任何等待状态，也没降低它的调度优先级，只是&quot;绕了一圈回来接着烧&quot;。这与 2.4 节 sleep 轮询是同源问题的两个极端：sleep 版本浪费时延、yield 版本浪费 CPU。</p>
+<p><strong>系统如何处理与恢复</strong>：操作系统无感知、不会限流，靠 CPU 监控告警发现；重启即恢复，但代码不修必然复发。根治按等待时长选型：微秒级等待用 <code>LockSupport.parkNanos(n)</code> 或 <code>Thread.onSpinWait()</code>；毫秒级及以上用条件等待或 <code>CompletableFuture</code>；配置刷新这类场景用监听回调/<code>CountDownLatch</code>，等待成本为零。原则一句话：<strong>任何等待都应该&quot;睡着等&quot;，而不是&quot;醒着转&quot;</strong>。</p>
+<h2 id="六、横向对比与选型">六、横向对比与选型</h2>
+<h3 id="6-1-工程视角完整对比">6.1 工程视角完整对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>wait()</th>
+<th>sleep()</th>
+<th>join()</th>
+<th>yield()</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>定义位置</td>
+<td><code>java.lang.Object</code></td>
+<td><code>java.lang.Thread</code></td>
+<td><code>java.lang.Thread</code></td>
+<td><code>java.lang.Thread</code></td>
+</tr>
+<tr>
+<td>方法性质</td>
+<td>final 实例方法，底层 native</td>
+<td>静态方法（JDK 8 中 native）</td>
+<td>final 实例方法，synchronized 修饰</td>
+<td>静态 native 方法</td>
+</tr>
+<tr>
+<td>作用对象</td>
+<td>当前线程（在 obj 监视器上等待）</td>
+<td>当前线程（与调用写法无关）</td>
+<td>当前线程等待目标线程终止</td>
+<td>当前线程（提示）</td>
+</tr>
+<tr>
+<td>锁行为</td>
+<td>释放<strong>该对象</strong>的监视器；不释放其他已持锁</td>
+<td>不释放任何锁</td>
+<td>等待期间释放目标 Thread 对象锁（内部 wait）；不释放其他锁</td>
+<td>不涉及锁</td>
+</tr>
+<tr>
+<td>持锁前置要求</td>
+<td>必须持有该对象监视器，否则 IllegalMonitorStateException</td>
+<td>无</td>
+<td>内部自行 synchronized(t)，对调用方透明</td>
+<td>无</td>
+</tr>
+<tr>
+<td>线程状态</td>
+<td>WAITING；wait(ms) 为 TIMED_WAITING</td>
+<td>TIMED_WAITING</td>
+<td>WAITING；join(ms) 为 TIMED_WAITING</td>
+<td>始终 RUNNABLE</td>
+</tr>
+<tr>
+<td>唤醒方式</td>
+<td>notify/notifyAll、超时、中断</td>
+<td>到点、中断</td>
+<td>目标线程终止（含异常终止）、超时、中断</td>
+<td>无</td>
+</tr>
+<tr>
+<td>中断响应</td>
+<td>抛 InterruptedException 并清标志</td>
+<td>同左</td>
+<td>同左</td>
+<td>不响应</td>
+</tr>
+<tr>
+<td>结果语义</td>
+<td>返回 void，条件需自行复查</td>
+<td>返回 void</td>
+<td>返回 void，终止/超时需 isAlive 复查</td>
+<td>无</td>
+</tr>
+<tr>
+<td>现代替代</td>
+<td>Condition、BlockingQueue</td>
+<td>ScheduledExecutor、LockSupport.parkNanos</td>
+<td>CountDownLatch、CompletableFuture</td>
+<td>onSpinWait、LockSupport</td>
+</tr>
+</tbody>
+</table>
+<h3 id="6-2-超时变体的行为差异">6.2 超时变体的行为差异</h3>
+<p>三个方法都有&quot;带时间参数&quot;的变体，但<strong>超时那一刻发生的事完全不同</strong>，这是选型时最常被忽略的细节：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>零值语义</th>
+<th>超时后的行为</th>
+<th>如何区分&quot;等到&quot;与&quot;超时&quot;</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sleep(millis)</code></td>
+<td><code>sleep(0)</code> 合法，极短暂停（效果依实现，勿当 yield 用）</td>
+<td>到点自然返回，无等待目标</td>
+<td>不适用</td>
+</tr>
+<tr>
+<td><code>wait()</code> / <code>wait(ms)</code></td>
+<td><code>wait(0)</code> 无限等待</td>
+<td>重新竞争锁后从 wait 返回，<strong>条件未必成立</strong></td>
+<td>无法从返回值区分，必须 while 复查条件谓词</td>
+</tr>
+<tr>
+<td><code>join()</code> / <code>join(ms)</code></td>
+<td><code>join(0)</code> 无限等待直至目标终止</td>
+<td>直接返回，<strong>目标线程可能还活着</strong></td>
+<td>无法从返回值区分，必须 <code>isAlive()</code> 复查</td>
+</tr>
+</tbody>
+</table>
+<p>共同规律：三者超时后的返回值都&quot;什么也不说&quot;，正确性都要靠<strong>调用方复查</strong>——复查条件谓词（wait）或复查存活状态（join）。这也是&quot;超时变体 + 复查&quot;必须成对出现的根本原因。</p>
+<h3 id="6-3-wait-notify-完整时序：唤醒之后还有一场锁的竞争">6.3 wait/notify 完整时序：唤醒之后还有一场锁的竞争</h3>
+<pre><code class="highlight mermaid">sequenceDiagram
+    participant P as 生产者线程
+    participant M as 监视器对象 obj
+    participant Q as 共享队列
+    participant C as 消费者线程
+
+    C-&gt;&gt;M: synchronized(obj) 获得锁
+    C-&gt;&gt;Q: while 检查条件：队列为空
+    C-&gt;&gt;M: wait() 进入等待集并释放锁
+    Note over C: WAITING，不参与锁竞争
+    P-&gt;&gt;Q: synchronized(lock) 生产数据入队
+    P-&gt;&gt;M: obj.notifyAll() 唤醒等待集
+    P-&gt;&gt;M: 退出同步块，释放锁
+    Note over M,C: 消费者从等待集移回竞争队列
+    C-&gt;&gt;M: 重新竞争锁成功（期间可能处于 BLOCKED）
+    C-&gt;&gt;Q: while 重新检查：条件成立，取出数据
+    C-&gt;&gt;M: 处理完毕退出同步块</code></pre>
+<p>这张图把最容易画错的一段补齐了：<code>notifyAll</code> 之后、消费者真正执行到&quot;取出数据&quot;之前，还隔着&quot;移出等待集 → 竞争锁 → 重新验证条件&quot;三步。时序上任何一环出问题（生产者 notify 后没退出同步块、消费者被不相关 notify 唤醒），都会被 <code>while</code> 模板兜住。</p>
+<h3 id="6-4-选型决策">6.4 选型决策</h3>
+<pre><code class="highlight mermaid">flowchart LR
+    A[需要暂停或等待] --&gt; B&#123;等待的是另一个线程的终止吗?&#125;
+    B -- 是 --&gt; C&#123;需要超时保护吗?&#125;
+    C -- 是 --&gt; E[&quot;join(millis) + isAlive 复查&lt;br/&gt;或 CountDownLatch.await(ms)&quot;]
+    C -- 否 --&gt; F[&quot;join()&lt;br/&gt;务必确认子线程必然终止&quot;]
+    B -- 否 --&gt; G&#123;需要等待共享条件成立吗?&#125;
+    G -- 是 --&gt; H[&quot;synchronized + while + notifyAll&lt;br/&gt;或 Condition / BlockingQueue&quot;]
+    G -- 否 --&gt; I&#123;只是定时暂停吗?&#125;
+    I -- 是 --&gt; J[&quot;sleep(millis)&lt;br/&gt;切勿在临界区内使用&quot;]
+    I -- 否 --&gt; K[&quot;自旋微调仅考虑 onSpinWait&lt;br/&gt;yield 生产代码慎用&quot;]</code></pre>
+<p>决策树里没有一条路径指向&quot;依赖 yield 保证正确性&quot;，这本身就是结论。</p>
+<h3 id="6-5-总结与建议">6.5 总结与建议</h3>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p>四者的本质区别在<strong>是否释放锁</strong>与<strong>是否立即阻塞</strong>：<code>wait()</code> 释放对象锁并进入等待集；<code>sleep()</code>/<code>join()</code> 不释放锁但阻塞当前线程；<code>yield()</code> 既不阻塞也不释放锁，只是让出一次调度机会。</p>
-</li>
-<li class="lvl-2">
-<p>选型建议：定时节奏用 <code>sleep()</code>；生产者-消费者等线程间协作用 <code>wait()</code>/<code>notify()</code>；等待子任务完成用 <code>join()</code>；<strong>不要指望 <code>yield()</code> 控制执行顺序</strong>，需要确定性先后时用 <code>join()</code> 或 <code>CountDownLatch</code> 更可靠。</p>
+<p>四者的本质区别在<strong>是否释放锁</strong>与<strong>是否阻塞</strong>：<code>wait()</code> 释放该对象锁并进入等待集；<code>sleep()</code>/<code>join()</code> 不释放调用者的业务锁但阻塞当前线程（join 内部对目标 Thread 对象做的是 wait 语义）；<code>yield()</code> 既不阻塞也不释放锁，只是让出一次调度机会。</p>
 </li>
 <li class="lvl-2">
 <p>状态对照：<code>sleep(millis)</code>、<code>wait(timeout)</code>、<code>join(millis)</code> 进入 <code>TIMED_WAITING</code>；无参 <code>wait()</code>/<code>join()</code> 进入 <code>WAITING</code>；<code>yield()</code> 始终处于 <code>RUNNABLE</code>。</p>
+</li>
+<li class="lvl-2">
+<p>选型建议：定时节奏用 <code>sleep()</code>；生产者-消费者等线程间协作用 <code>wait()</code>/<code>notifyAll()</code>（while 守卫）或更安全的 <code>Condition</code>/<code>BlockingQueue</code>；等待子任务完成用带超时的 <code>join()</code> 或 <code>CountDownLatch</code>/<code>CompletableFuture</code>；<strong>不要指望 <code>yield()</code> 控制执行顺序</strong>，需要确定性先后时用 <code>join()</code> 或 <code>CountDownLatch</code> 更可靠。</p>
+</li>
+<li class="lvl-2">
+<p>四条高频事故守则，评审时可当检查清单：<strong>临界区内不 sleep；wait/notify 必须同锁且 while 守卫；join 必须带超时或先验证子线程必然终止；任何等待都要有&quot;睡着等&quot;的形态，禁止裸轮询与 yield 忙等。</strong></p>
+</li>
+<li class="lvl-2">
+<p>中断是一条贯穿四者的协作通道：sleep/wait/join 都通过 <code>InterruptedException</code> 响应取消，捕获时要么上抛要么 <code>Thread.currentThread().interrupt()</code> 恢复标志，唯独不要静默吞掉。</p>
 </li>
 </ul>
 <h2 id="工程边界与验证">工程边界与验证</h2>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>运行环境</strong>：JDK、GC、操作系统和容器资源限制都会影响实际行为。</p>
+<p><strong>运行环境</strong>：JDK 版本（尤其 JDK 19 前后线程基础设施的重构）、GC、操作系统与容器资源限制都会影响实际行为；文中【实现层面】的 HotSpot 细节应以目标版本的源码与参数为准。</p>
 </li>
 <li class="lvl-2">
-<p><strong>性能结论</strong>：涉及吞吐、延迟、CPU 或内存时，应使用目标版本和接近真实负载的数据复测。</p>
+<p><strong>性能结论</strong>：涉及吞吐、延迟、CPU 或内存的结论，应使用目标版本和接近真实负载的数据复测；本文的延迟与占比公式均为【理论分析】，不可直接当作实测值引用。</p>
 </li>
 <li class="lvl-2">
-<p><strong>故障定位</strong>：优先保留线程栈、GC 日志、慢查询、指标和请求链路等证据，再决定优化方向。</p>
+<p><strong>故障定位</strong>：优先保留线程栈（jstack）、GC 日志、慢查询、指标和请求链路等证据再下结论；本文故障场景中给出的状态特征（<code>WAITING (on object monitor)</code>、<code>BLOCKED (waiting for monitor entry)</code>、<code>TIMED_WAITING (sleeping)</code>、<code>RUNNABLE 但停在 socketRead0</code>）可作为读栈时的对照参考。</p>
+</li>
+<li class="lvl-2">
+<p><strong>规范优先</strong>：本文所有结论中，只有 Javadoc 与 JVM 规范描述的语义可长期依赖；HotSpot 实现细节（等待集 FIFO、终止 notifyAll、优先级参数默认值）都可能随版本演进变化，理解它们是为了看懂线程栈与源码，而不是写出依赖实现的代码。</p>
 </li>
 </ul>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/11/fa52fee6645d46579a0edf46cc50414b/">https://pengline.cn/2025/11/fa52fee6645d46579a0edf46cc50414b/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Java%E5%A4%9A%E7%BA%BF%E7%A8%8B/">Java多线程</a><a class="post-meta__tags" href="/tags/%E7%BA%BF%E7%A8%8B%E5%8D%8F%E4%BD%9C/">线程协作</a><a class="post-meta__tags" href="/tags/Object-wait/">Object.wait</a><a class="post-meta__tags" href="/tags/Thread-join/">Thread.join</a><a class="post-meta__tags" href="/tags/Thread-yield/">Thread.yield</a><a class="post-meta__tags" href="/tags/%E7%BA%BF%E7%A8%8B%E7%8A%B6%E6%80%81%E8%BF%81%E7%A7%BB/">线程状态迁移</a><a class="post-meta__tags" href="/tags/%E9%94%81%E9%87%8A%E6%94%BE/">锁释放</a><a class="post-meta__tags" href="/tags/%E4%B8%AD%E6%96%AD%E6%9C%BA%E5%88%B6/">中断机制</a><a class="post-meta__tags" href="/tags/%E9%98%BB%E5%A1%9E%E7%AD%89%E5%BE%85/">阻塞等待</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/11/a8416e3d58d542d3883d2be1dab051f6/" title="分布式事务如何取舍一致性与可用性：从 2PC、TCC 到 Saga"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">分布式事务如何取舍一致性与可用性：从 2PC、TCC 到 Saga</div></div><div class="info-2"><div class="info-item-1">微服务多节点写入需跨库保持数据一致，强一致与可用性常难两全。本文系统对比 2PC、3PC 与 XA 的阻塞和协调流程，剖析 TCC、Saga、AT 的最终一致性补偿机制，并梳理 Seata 落地选型，给出按一致性强度与性能取舍的方案结论。</div></div></div></a><a class="pagination-related" href="/2025/11/3c4d982a91d8456caff785f7782b2332/" title="一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204470553163420447079.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路</div></div><div class="info-2"><div class="info-item-1">完整拆解一条 SQL 从客户端到存储引擎的执行链路——连接器建会话与认证、查询缓存为何在 8.0 移除、解析器进行词法与语法分析、优化器按成本模型与统计信息选索引和连接顺序、执行器逐行迭代取数，并详解三大日志分工、两阶段提交与慢定位。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/09/5667928f59754e0e87f521c9c6c351c6/" title="Java 多线程实现交替打印的多种并发方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small230936xI6rH1758467376.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-30</div><div class="info-item-2">Java 多线程实现交替打印的多种并发方案</div></div><div class="info-2"><div class="info-item-1">多线程交替执行的常见需求就是按轮次交替打印。本文汇总 Condition、AtomicBoolean、CyclicBarrier、Semaphore、LockSupport 等方案，剖析各自线程调度、唤醒机制与切换开销，对比等待通知的有序性保证与实现篇幅，给出常见生产环境下的选取与工程注意点。</div></div></div></a><a class="pagination-related" href="/2025/09/f09e383fabf7484584ede610c1453cd2/" title="Java 多线程保证任务有序执行的实现方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-08</div><div class="info-item-2">Java 多线程保证任务有序执行的实现方案</div></div><div class="info-2"><div class="info-item-1">并发场景常要求线程按指定顺序执行而非竞态调度。本文汇总 Condition、CountDownLatch、CyclicBarrier、Semaphore、join 等经典方案，剖析各自实现原理、可复用性与协调复杂度，对比开发量与扩展性，结合线程池给出保证任务有序执行与规避等待陷阱的工程建议。</div></div></div></a><a class="pagination-related" href="/2025/09/366f9754e67846f0b38a4354a634b75f/" title="Java 线程池的运行原理与参数配置避坑指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1704301678924170430167898.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-10</div><div class="info-item-2">Java 线程池的运行原理与参数配置避坑指南</div></div><div class="info-2"><div class="info-item-1">未合理配置线程池易导致资源耗尽或任务堆积。本文从 ThreadPoolExecutor 七大核心参数与执行流程出发，剖析核心到饱和的线程创建、队列与拒绝策略对比，衡量 Executors 工厂与 ForkJoinPool、虚拟线程的差异，权衡吞吐与响应后给出参数配置与避坑建议。</div></div></div></a><a class="pagination-related" href="/2025/08/ab60513384f74cac8ff0ab36a98cc1a6/" title="Java 多线程如何等待至少一个任务成功即继续"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1730166918792173016691849.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-28</div><div class="info-item-2">Java 多线程如何等待至少一个任务成功即继续</div></div><div class="info-2"><div class="info-item-1">多线程并发执行多个任务，常需只要有一个成功即可继续，同时要避免其余任务浪费资源。本文汇总 CountDownLatch、Semaphore、CompletionService 等实现，剖析闭环取消、阻塞语义与公平性差异，并给出等待至少一个完成场景下的选型结论与工程注意点。</div></div></div></a><a class="pagination-related" href="/2025/08/6d4b4511bd2443af994ec8e5982eb34a/" title="Java 多线程等待全部任务结束的同步手段剖析"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small103754rLdNH1758681474.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-28</div><div class="info-item-2">Java 多线程等待全部任务结束的同步手段剖析</div></div><div class="info-2"><div class="info-item-1">并行任务汇总阶段，主线程需等待所有子任务全部结束后再做处理。本文对比 CountDownLatch、Semaphore、CyclicBarrier 与 join 等同步手段，剖析各自等待语义、异常传播、使用限制与复位复用，并给出分场景最优选型，注意避免超时与线程泄漏等问题。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BC%91%E7%9C%A0%EF%BC%88sleep%EF%BC%89"><span class="toc-number">1.</span> <span class="toc-text">休眠（sleep）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%AD%89%E5%BE%85%EF%BC%88wait%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">等待（wait）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8A%A0%E5%85%A5%EF%BC%88join%EF%BC%89"><span class="toc-number">3.</span> <span class="toc-text">加入（join）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%AE%A9%E6%AD%A5%EF%BC%88yield%EF%BC%89"><span class="toc-number">4.</span> <span class="toc-text">让步（yield）</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">5.</span> <span class="toc-text">总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E8%BE%B9%E7%95%8C%E4%B8%8E%E9%AA%8C%E8%AF%81"><span class="toc-number">6.</span> <span class="toc-text">工程边界与验证</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2025/09/5667928f59754e0e87f521c9c6c351c6/">Java 多线程实现交替打印的多种并发方案</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/09/f09e383fabf7484584ede610c1453cd2/">Java 多线程保证任务有序执行的实现方案</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/09/366f9754e67846f0b38a4354a634b75f/">Java 线程池的运行原理与参数配置避坑指南</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/08/6d4b4511bd2443af994ec8e5982eb34a/">Java 多线程等待全部任务结束的同步手段剖析</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/08/ab60513384f74cac8ff0ab36a98cc1a6/">Java 多线程如何等待至少一个任务成功即继续</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/11/fa52fee6645d46579a0edf46cc50414b/">https://pengline.cn/2025/11/fa52fee6645d46579a0edf46cc50414b/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Java%E5%A4%9A%E7%BA%BF%E7%A8%8B/">Java多线程</a><a class="post-meta__tags" href="/tags/Condition/">Condition</a><a class="post-meta__tags" href="/tags/%E7%BA%BF%E7%A8%8B%E5%8D%8F%E4%BD%9C/">线程协作</a><a class="post-meta__tags" href="/tags/Thread-sleep/">Thread.sleep</a><a class="post-meta__tags" href="/tags/Object-wait/">Object.wait</a><a class="post-meta__tags" href="/tags/Thread-join/">Thread.join</a><a class="post-meta__tags" href="/tags/Thread-yield/">Thread.yield</a><a class="post-meta__tags" href="/tags/%E7%BA%BF%E7%A8%8B%E7%8A%B6%E6%80%81%E8%BF%81%E7%A7%BB/">线程状态迁移</a><a class="post-meta__tags" href="/tags/%E9%94%81%E9%87%8A%E6%94%BE/">锁释放</a><a class="post-meta__tags" href="/tags/%E8%99%9A%E5%81%87%E5%94%A4%E9%86%92/">虚假唤醒</a><a class="post-meta__tags" href="/tags/IllegalMonitorStateException/">IllegalMonitorStateException</a><a class="post-meta__tags" href="/tags/%E4%B8%AD%E6%96%AD%E6%9C%BA%E5%88%B6/">中断机制</a><a class="post-meta__tags" href="/tags/%E7%94%9F%E4%BA%A7%E8%80%85%E6%B6%88%E8%B4%B9%E8%80%85/">生产者消费者</a><a class="post-meta__tags" href="/tags/%E7%BA%BF%E7%A8%8B%E4%BC%98%E5%85%88%E7%BA%A7/">线程优先级</a><a class="post-meta__tags" href="/tags/HotSpot/">HotSpot</a><a class="post-meta__tags" href="/tags/%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/">源码解析</a><a class="post-meta__tags" href="/tags/%E9%98%BB%E5%A1%9E%E7%AD%89%E5%BE%85/">阻塞等待</a><a class="post-meta__tags" href="/tags/%E7%BA%BF%E7%A8%8B%E6%8E%92%E9%9A%9C/">线程排障</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1751961512420175196151245.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/11/a8416e3d58d542d3883d2be1dab051f6/" title="分布式事务如何取舍一致性与可用性：从 2PC、TCC 到 Saga"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1743560732214174356073226.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">分布式事务如何取舍一致性与可用性：从 2PC、TCC 到 Saga</div></div><div class="info-2"><div class="info-item-1">微服务多节点写入需跨库保持数据一致，强一致与可用性常难两全。本文系统对比 2PC、3PC 与 XA 的阻塞和协调流程，剖析 TCC、Saga、AT 的最终一致性补偿机制，并梳理 Seata 落地选型，给出按一致性强度与性能取舍的方案结论。</div></div></div></a><a class="pagination-related" href="/2025/11/3c4d982a91d8456caff785f7782b2332/" title="一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路</div></div><div class="info-2"><div class="info-item-1">完整拆解一条 SQL 从客户端到存储引擎的执行链路——连接器建会话与认证、查询缓存为何在 8.0 移除、解析器进行词法与语法分析、优化器按成本模型与统计信息选索引和连接顺序、执行器逐行迭代取数，并详解三大日志分工、两阶段提交与慢定位。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/09/5667928f59754e0e87f521c9c6c351c6/" title="Java 多线程实现交替打印的多种并发方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small202824LQTsk1760099304.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-30</div><div class="info-item-2">Java 多线程实现交替打印的多种并发方案</div></div><div class="info-2"><div class="info-item-1">多线程交替执行的常见需求就是按轮次交替打印。本文汇总 Condition、AtomicBoolean、CyclicBarrier、Semaphore、LockSupport 等方案，剖析各自线程调度、唤醒机制与切换开销，对比等待通知的有序性保证与实现篇幅，给出常见生产环境下的选取与工程注意点。</div></div></div></a><a class="pagination-related" href="/2025/09/f09e383fabf7484584ede610c1453cd2/" title="Java 多线程保证任务有序执行的实现方案"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1642751157273164275115763.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-08</div><div class="info-item-2">Java 多线程保证任务有序执行的实现方案</div></div><div class="info-2"><div class="info-item-1">并发场景常要求线程按指定顺序执行而非竞态调度。本文汇总 Condition、CountDownLatch、CyclicBarrier、Semaphore、join 等经典方案，剖析各自实现原理、可复用性与协调复杂度，对比开发量与扩展性，结合线程池给出保证任务有序执行与规避等待陷阱的工程建议。</div></div></div></a><a class="pagination-related" href="/2025/09/366f9754e67846f0b38a4354a634b75f/" title="Java 线程池的运行原理与参数配置避坑指南"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small212810tjRiI1754227690.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-10</div><div class="info-item-2">Java 线程池的运行原理与参数配置避坑指南</div></div><div class="info-2"><div class="info-item-1">未合理配置线程池易导致资源耗尽或任务堆积。本文从 ThreadPoolExecutor 七大核心参数与执行流程出发，剖析核心到饱和的线程创建、队列与拒绝策略对比，衡量 Executors 工厂与 ForkJoinPool、虚拟线程的差异，权衡吞吐与响应后给出参数配置与避坑建议。</div></div></div></a><a class="pagination-related" href="/2025/08/6d4b4511bd2443af994ec8e5982eb34a/" title="Java 多线程如何安全等待全部任务完成？从挂死根因到方案选型"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1712590388795171259038894.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-28</div><div class="info-item-2">Java 多线程如何安全等待全部任务完成？从挂死根因到方案选型</div></div><div class="info-2"><div class="info-item-1">并行任务汇总时主线程必须等全部子任务结束才能继续，但任务抛异常或提交被拒绝会让计数永远无法归零，await 随之无限挂死。本文逐个拆解 Future、CountDownLatch、Semaphore、CyclicBarrier 与 CompletableFuture 的等待语义、异常传播与复用限制，给出超时兜底、finally 防护与分场景选型结论。</div></div></div></a><a class="pagination-related" href="/2025/08/ab60513384f74cac8ff0ab36a98cc1a6/" title="Java 多线程如何等待至少一个任务成功即继续"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-08-28</div><div class="info-item-2">Java 多线程如何等待至少一个任务成功即继续</div></div><div class="info-2"><div class="info-item-1">多线程并发执行多个任务，常需只要有一个成功即可继续，同时要避免其余任务浪费资源。本文汇总 CountDownLatch、Semaphore、CompletionService 等实现，剖析闭环取消、阻塞语义与公平性差异，并给出等待至少一个完成场景下的选型结论与工程注意点。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E5%85%88%E5%BB%BA%E7%AB%8B%E5%9D%90%E6%A0%87%E7%B3%BB%EF%BC%9A%E7%BA%BF%E7%A8%8B%E7%8A%B6%E6%80%81%E4%B8%8E%E7%9B%91%E8%A7%86%E5%99%A8%E6%A8%A1%E5%9E%8B"><span class="toc-number">1.</span> <span class="toc-text">一、先建立坐标系：线程状态与监视器模型</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-1-%E5%AE%98%E6%96%B9%E5%85%AD%E7%8A%B6%E6%80%81%E6%A8%A1%E5%9E%8B"><span class="toc-number">1.1.</span> <span class="toc-text">1.1 官方六状态模型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-2-%E4%BC%A0%E7%BB%9F-%E4%BA%94%E6%80%81-%E4%B8%89%E7%A7%8D%E9%98%BB%E5%A1%9E-%E6%A8%A1%E5%9E%8B%E7%9A%84%E7%94%B1%E6%9D%A5%E4%B8%8E%E8%BE%A8%E6%9E%90"><span class="toc-number">1.2.</span> <span class="toc-text">1.2 传统&quot;五态&#x2F;三种阻塞&quot;模型的由来与辨析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-3-%E7%9B%91%E8%A7%86%E5%99%A8%E6%A8%A1%E5%9E%8B%EF%BC%9A%E4%B8%80%E4%B8%AA%E5%AF%B9%E8%B1%A1%E7%9A%84-%E4%B8%A4%E4%B8%AA%E9%98%9F%E5%88%97"><span class="toc-number">1.3.</span> <span class="toc-text">1.3 监视器模型：一个对象的&quot;两个队列&quot;</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E4%BC%91%E7%9C%A0%EF%BC%88sleep%EF%BC%89%EF%BC%9A%E7%BA%BF%E7%A8%8B%E7%BA%A7%E7%9A%84%E5%AE%9A%E6%97%B6%E6%9A%82%E5%81%9C"><span class="toc-number">2.</span> <span class="toc-text">二、休眠（sleep）：线程级的定时暂停</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-%E7%9C%9F%E5%AE%9E%E6%BA%90%E7%A0%81%E4%B8%8E%E4%B8%80%E4%B8%AA%E5%B8%B8%E8%A7%81%E7%9A%84%E9%9D%99%E6%80%81%E6%96%B9%E6%B3%95%E8%AF%AF%E7%94%A8"><span class="toc-number">2.1.</span> <span class="toc-text">2.1 真实源码与一个常见的静态方法误用</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E4%B8%BA%E4%BB%80%E4%B9%88-sleep-%E4%B8%8D%E9%87%8A%E6%94%BE%E9%94%81%EF%BC%9A%E8%AE%BE%E8%AE%A1%E5%8F%96%E8%88%8D"><span class="toc-number">2.2.</span> <span class="toc-text">2.2 为什么 sleep 不释放锁：设计取舍</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-%E7%8A%B6%E6%80%81%E8%BF%81%E7%A7%BB%E4%B8%8E%E4%B8%AD%E6%96%AD%E5%93%8D%E5%BA%94"><span class="toc-number">2.3.</span> <span class="toc-text">2.3 状态迁移与中断响应</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-4-%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E4%B8%80%EF%BC%9A%E7%94%A8-sleep-%E8%BD%AE%E8%AF%A2%E5%81%9A%E5%90%8C%E6%AD%A5%EF%BC%8C%E5%81%B6%E5%8F%91%E8%B6%85%E6%97%B6"><span class="toc-number">2.4.</span> <span class="toc-text">2.4 故障场景一：用 sleep 轮询做同步，偶发超时</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-5-%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E4%BA%8C%EF%BC%9A%E5%9C%A8%E4%B8%B4%E7%95%8C%E5%8C%BA%E9%87%8C-%E6%8C%81%E9%94%81%E7%9D%A1%E8%A7%89"><span class="toc-number">2.5.</span> <span class="toc-text">2.5 故障场景二：在临界区里&quot;持锁睡觉&quot;</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E7%AD%89%E5%BE%85%EF%BC%88wait%EF%BC%89%EF%BC%9A%E7%9B%91%E8%A7%86%E5%99%A8%E4%B8%8A%E7%9A%84%E6%9D%A1%E4%BB%B6%E7%AD%89%E5%BE%85"><span class="toc-number">3.</span> <span class="toc-text">三、等待（wait）：监视器上的条件等待</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-%E7%9C%9F%E5%AE%9E%E6%BA%90%E7%A0%81%E4%B8%8E%E4%B8%89%E6%AD%A5%E6%9C%BA%E5%88%B6"><span class="toc-number">3.1.</span> <span class="toc-text">3.1 真实源码与三步机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-%E7%8A%B6%E6%80%81%E8%BF%81%E7%A7%BB%E5%9B%BE"><span class="toc-number">3.2.</span> <span class="toc-text">3.2 状态迁移图</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-notify-%E7%9A%84%E5%94%A4%E9%86%92%E9%A1%BA%E5%BA%8F%EF%BC%9A%E8%A7%84%E8%8C%83%E4%B8%8D%E4%BF%9D%E8%AF%81%EF%BC%8C%E5%AE%9E%E7%8E%B0%E8%BF%91%E4%BC%BC-FIFO"><span class="toc-number">3.3.</span> <span class="toc-text">3.3 notify 的唤醒顺序：规范不保证，实现近似 FIFO</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-4-%E8%99%9A%E5%81%87%E5%94%A4%E9%86%92%E4%B8%8E%E6%A0%87%E5%87%86%E6%A8%A1%E6%9D%BF"><span class="toc-number">3.4.</span> <span class="toc-text">3.4 虚假唤醒与标准模板</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-5-%E8%B6%85%E6%97%B6%E5%8F%98%E4%BD%93%E4%B8%8E%E4%B8%AD%E6%96%AD%E8%AF%AD%E4%B9%89"><span class="toc-number">3.5.</span> <span class="toc-text">3.5 超时变体与中断语义</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-6-%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E4%B8%89%EF%BC%9Await-%E6%9C%AA%E6%8C%81%E9%94%81%E6%8A%9B-IllegalMonitorStateException"><span class="toc-number">3.6.</span> <span class="toc-text">3.6 故障场景三：wait 未持锁抛 IllegalMonitorStateException</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-7-%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%9B%9B%EF%BC%9A%E4%B8%A2%E5%A4%B1%E5%94%A4%E9%86%92%E5%AF%BC%E8%87%B4%E7%BA%BF%E7%A8%8B%E6%B0%B8%E4%B9%85-WAITING"><span class="toc-number">3.7.</span> <span class="toc-text">3.7 故障场景四：丢失唤醒导致线程永久 WAITING</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-8-%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E4%BA%94%EF%BC%9A%E5%B5%8C%E5%A5%97%E9%94%81%E4%B8%8B-wait-%E5%8F%AA%E9%87%8A%E6%94%BE%E4%B8%80%E6%8A%8A%E9%94%81"><span class="toc-number">3.8.</span> <span class="toc-text">3.8 故障场景五：嵌套锁下 wait 只释放一把锁</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-9-wait-notify-%E4%B8%8E-Condition-%E7%9A%84%E9%80%89%E5%9E%8B"><span class="toc-number">3.9.</span> <span class="toc-text">3.9 wait&#x2F;notify 与 Condition 的选型</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E5%8A%A0%E5%85%A5%EF%BC%88join%EF%BC%89%EF%BC%9A%E7%AD%89%E5%BE%85%E5%8F%A6%E4%B8%80%E4%B8%AA%E7%BA%BF%E7%A8%8B%E7%BB%88%E6%AD%A2"><span class="toc-number">4.</span> <span class="toc-text">四、加入（join）：等待另一个线程终止</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E7%9C%9F%E5%AE%9E%E6%BA%90%E7%A0%81%EF%BC%9Ajoin-%E5%B0%B1%E6%98%AF-%E6%8C%81%E9%94%81%E7%9A%84%E6%9D%A1%E4%BB%B6%E7%AD%89%E5%BE%85"><span class="toc-number">4.1.</span> <span class="toc-text">4.1 真实源码：join 就是&quot;持锁的条件等待&quot;</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-%E4%B8%BA%E4%BB%80%E4%B9%88-join-%E8%83%BD-%E7%AD%89%E5%88%B0%E7%BA%BF%E7%A8%8B%E6%AD%BB-%EF%BC%9A%E7%BB%88%E6%AD%A2%E9%80%9A%E7%9F%A5%E6%9C%BA%E5%88%B6"><span class="toc-number">4.2.</span> <span class="toc-text">4.2 为什么 join 能&quot;等到线程死&quot;：终止通知机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-%E7%8A%B6%E6%80%81%E8%BF%81%E7%A7%BB%E4%B8%8E%E6%97%B6%E5%BA%8F"><span class="toc-number">4.3.</span> <span class="toc-text">4.3 状态迁移与时序</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-4-%E8%B6%85%E6%97%B6%E5%8F%98%E4%BD%93%E4%B8%8E-isAlive-%E5%A4%8D%E6%9F%A5"><span class="toc-number">4.4.</span> <span class="toc-text">4.4 超时变体与 isAlive 复查</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-5-%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%85%AD%EF%BC%9A%E6%97%A0%E8%B6%85%E6%97%B6-join-%E6%8C%82%E6%AD%BB%EF%BC%8C%E6%9C%8D%E5%8A%A1%E5%81%87%E6%AD%BB"><span class="toc-number">4.5.</span> <span class="toc-text">4.5 故障场景六：无超时 join 挂死，服务假死</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-6-join-%E7%9A%84%E9%80%82%E7%94%A8%E8%BE%B9%E7%95%8C%EF%BC%9A%E6%8B%BF%E4%B8%8D%E5%88%B0%E7%BB%93%E6%9E%9C%EF%BC%8C%E4%B9%9F%E6%84%9F%E7%9F%A5%E4%B8%8D%E5%88%B0%E5%BC%82%E5%B8%B8"><span class="toc-number">4.6.</span> <span class="toc-text">4.6 join 的适用边界：拿不到结果，也感知不到异常</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E8%AE%A9%E6%AD%A5%EF%BC%88yield%EF%BC%89%EF%BC%9A%E5%AF%B9%E8%B0%83%E5%BA%A6%E5%99%A8%E7%9A%84%E4%B8%80%E6%AC%A1%E6%8F%90%E7%A4%BA"><span class="toc-number">5.</span> <span class="toc-text">五、让步（yield）：对调度器的一次提示</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#5-1-%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E5%B1%82%E4%B8%8E%E4%BC%98%E5%85%88%E7%BA%A7%E7%9A%84%E7%9C%9F%E7%9B%B8"><span class="toc-number">5.1.</span> <span class="toc-text">5.1 操作系统层与优先级的真相</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-2-%E7%8A%B6%E6%80%81%E8%BF%81%E7%A7%BB%E4%B8%8E%E7%A4%BA%E4%BE%8B%E4%BB%A3%E7%A0%81"><span class="toc-number">5.2.</span> <span class="toc-text">5.2 状态迁移与示例代码</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-3-%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E4%B8%83%EF%BC%9Ayield-%E5%BF%99%E7%AD%89%E7%83%A7-CPU"><span class="toc-number">5.3.</span> <span class="toc-text">5.3 故障场景七：yield 忙等烧 CPU</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E6%A8%AA%E5%90%91%E5%AF%B9%E6%AF%94%E4%B8%8E%E9%80%89%E5%9E%8B"><span class="toc-number">6.</span> <span class="toc-text">六、横向对比与选型</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#6-1-%E5%B7%A5%E7%A8%8B%E8%A7%86%E8%A7%92%E5%AE%8C%E6%95%B4%E5%AF%B9%E6%AF%94"><span class="toc-number">6.1.</span> <span class="toc-text">6.1 工程视角完整对比</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-2-%E8%B6%85%E6%97%B6%E5%8F%98%E4%BD%93%E7%9A%84%E8%A1%8C%E4%B8%BA%E5%B7%AE%E5%BC%82"><span class="toc-number">6.2.</span> <span class="toc-text">6.2 超时变体的行为差异</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-3-wait-notify-%E5%AE%8C%E6%95%B4%E6%97%B6%E5%BA%8F%EF%BC%9A%E5%94%A4%E9%86%92%E4%B9%8B%E5%90%8E%E8%BF%98%E6%9C%89%E4%B8%80%E5%9C%BA%E9%94%81%E7%9A%84%E7%AB%9E%E4%BA%89"><span class="toc-number">6.3.</span> <span class="toc-text">6.3 wait&#x2F;notify 完整时序：唤醒之后还有一场锁的竞争</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-4-%E9%80%89%E5%9E%8B%E5%86%B3%E7%AD%96"><span class="toc-number">6.4.</span> <span class="toc-text">6.4 选型决策</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-5-%E6%80%BB%E7%BB%93%E4%B8%8E%E5%BB%BA%E8%AE%AE"><span class="toc-number">6.5.</span> <span class="toc-text">6.5 总结与建议</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E8%BE%B9%E7%95%8C%E4%B8%8E%E9%AA%8C%E8%AF%81"><span class="toc-number">7.</span> <span class="toc-text">工程边界与验证</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">8.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
