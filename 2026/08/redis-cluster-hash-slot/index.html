@@ -1,0 +1,913 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="单机 Redis 撑不住内存和写压力时，官方集群用 16384 个哈希槽把数据摊到多个主节点。本文拆解槽位计算、MOVED 与 ASK 重定向、gossip 通信、槽迁移全流程和自动故障转移，并复盘迁移风暴、数据倾斜等典型故障的处理与恢复。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制">
+<meta property="og:url" content="https://pengline.cn/2026/08/redis-cluster-hash-slot/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="单机 Redis 撑不住内存和写压力时，官方集群用 16384 个哈希槽把数据摊到多个主节点。本文拆解槽位计算、MOVED 与 ASK 重定向、gossip 通信、槽迁移全流程和自动故障转移，并复盘迁移风暴、数据倾斜等典型故障的处理与恢复。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp">
+<meta property="article:published_time" content="2026-08-19T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-29T02:55:47.404Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="ASK">
+<meta property="article:tag" content="CRC16">
+<meta property="article:tag" content="Gossip">
+<meta property="article:tag" content="MOVED">
+<meta property="article:tag" content="Redis">
+<meta property="article:tag" content="Redis Cluster">
+<meta property="article:tag" content="Reshard">
+<meta property="article:tag" content="Smart Client">
+<meta property="article:tag" content="hash tag">
+<meta property="article:tag" content="一致性哈希">
+<meta property="article:tag" content="中间件">
+<meta property="article:tag" content="分布式">
+<meta property="article:tag" content="哈希槽">
+<meta property="article:tag" content="大 Key">
+<meta property="article:tag" content="故障转移">
+<meta property="article:tag" content="数据分片">
+<meta property="article:tag" content="数据库">
+<meta property="article:tag" content="槽迁移">
+<meta property="article:tag" content="缓存">
+<meta property="article:tag" content="高可用">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/08/redis-cluster-hash-slot/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">91</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">781</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Redis 集群是如何分片的？从哈希槽到扩缩容迁移的完整机制</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-08-19T16:00:00.000Z" title="发表于 2026-08-20 00:00:00">2026-08-20</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-29T02:55:47.404Z" title="更新于 2026-09-29 10:55:47">2026-09-29</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/Redis/">Redis</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><blockquote>
+<p><strong>本文定位</strong>：这不是命令手册，而是围绕一条主线解释集群的分片设计——一个 key 如何被放进某个槽、一个槽如何被搬来搬去、这条链路上每一步的代价与陷阱。内容分三类标注：<strong>机制考证</strong>（基于官方文档与源码行为）、<strong>理论估算</strong>（给出推导与前提，未经实测背书）、<strong>经验值</strong>（业界通行实践，需按业务校准）。</p>
+</blockquote>
+<p>深夜的告警通常是一个固定剧本：先是某个 Redis 实例内存使用率越过 90%，接着主从同步断开重连、RDB 的 fork 耗时飙到几百毫秒，然后接口延迟全面上涨。打开监控，这台实例已经 50 多 GB，写 QPS 稍微冲高，单线程的 CPU 就顶满。加内存只能再撑几个月——内存可以堆，单线程的写能力堆不出来。到这一步，垂直扩展的路就走完了，剩下的选择只有分片：把数据拆到多台机器上。</p>
+<p>Redis Cluster 是官方内置的分片方案。它把全部数据映射到 16384 个哈希槽，再把槽分摊给各个主节点，同时内置了路由重定向、在线扩缩容和自动故障转移。本文围绕一个核心问题展开：<strong>为什么中间要引入&quot;槽&quot;这一层抽象</strong>，以及围绕槽建立的路由、通信、迁移与容错机制各自解决了什么问题、付出了什么代价。</p>
+<h2 id="一、概述：分片方案要同时回答三个问题">一、概述：分片方案要同时回答三个问题</h2>
+<p>把单机 Redis 换成分布式，本质上是回答三个问题：数据怎么分、请求发给谁、节点挂了怎么办。三个问题互相咬合，一个方案在任何一个问题上的选择，都会决定另外两个问题的形态。</p>
+<p><strong>数据怎么分，决定扩容难度。</strong> 最朴素的做法是 <code>hash(key) mod N</code>，N 是节点数。这个方案最大的问题在于 N 是易变的：加一台节点，N 从 3 变 4，几乎所有 key 的映射关系全部失效——要么接受缓存全量失效打穿数据库，要么停机做全量重哈希。扩容从&quot;加一台机器&quot;变成一次全量数据搬家工程。一致性哈希把 N 变化的影响限制在相邻区间，缓解了这个问题，但映射是随机的，你无法精确控制&quot;哪些数据应该在哪台机器上&quot;。</p>
+<p><strong>请求发给谁，决定架构形态。</strong> 让客户端自己算路由（客户端分片），逻辑分散在每个服务里，规则一改所有使用方都要对齐；加一层代理转发（代理分片），多一跳延迟、多一个要保活的组件；让服务端自己会转发（Redis Cluster 的重定向模式），服务端要维护全局拓扑并把它传播出去。</p>
+<p><strong>节点挂了怎么办，决定高可用水位。</strong> 客户端分片和代理分片都只管&quot;分数据&quot;，不管高可用，每一台主节点背后还得再挂一套哨兵做主从切换；Redis Cluster 把分片和容错做在同一个体系里，主节点挂了从节点自动顶上，槽的归属跟着主节点走，客户端通过 MOVED 重定向自动收敛到新主。</p>
+<p>Redis Cluster 对这三个问题的回答可以浓缩成一句话：<strong>在 key 和节点之间加一个固定数量的中间层——16384 个哈希槽</strong>。key 到槽的映射永远不变（CRC16 算出来是多少就是多少），槽到节点的映射随时可调。于是：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>扩缩容 = 调整一批槽的归属，key 的哈希值永远不用重算；</p>
+</li>
+<li class="lvl-2">
+<p>路由 = 查&quot;槽归哪个节点&quot;这一张表；</p>
+</li>
+<li class="lvl-2">
+<p>故障转移 = 槽跟着主节点整体移交。</p>
+</li>
+</ul>
+<p>后面所有的机制——MOVED/ASK 重定向、gossip 通信、MIGRATING/IMPORTING 状态机、从节点选举——都是围绕这张&quot;槽表&quot;的读、写、传播和一致性展开的。</p>
+<p>把三个问题的答案连起来看，会发现集群设计的重心不在&quot;分&quot;，而在&quot;账本的一致性&quot;：分片规则本身极简（一个取模），难的是让所有节点和所有客户端对&quot;账本当前是什么样&quot;达成一致，并且在改写账本（迁移、故障转移）的过程中不丢请求。带着这个视角读后文，每个机制的出现位置都会显得顺理成章。</p>
+<h2 id="二、哈希槽：为什么是-16384-个">二、哈希槽：为什么是 16384 个</h2>
+<h2 id="2-1-槽是怎么算出来的">2.1 槽是怎么算出来的</h2>
+<p>任何进入集群的 key，按同一个公式定位：</p>
+<p>$$\text{slot} = \text{CRC16}(key) \bmod 16384$$</p>
+<p>CRC16 产生 16 位校验值，取值空间 $2^{16} = 65536$；对 16384 取模等效于取低 14 位，源码里就是 <code>crc16(key,len) &amp; 0x3FFF</code>。因为 16384 是 2 的幂，取模退化成位运算，没有除法开销；CRC16 在这个模数下的分布均匀性是官方验证过的，不存在明显偏斜。</p>
+<p>验证某个 key 落在哪个槽：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">127.0.0.1:7000&gt; CLUSTER KEYSLOT user:1001</span><br><span class="line">(<span class="built_in">integer</span>) 9842</span><br></pre></td></tr></table></figure>
+<p>再把 16384 个槽分给节点。假设 3 个主节点，<code>redis-cli --cluster create --cluster-replicas 1</code> 创建集群时默认均分：</p>
+<table>
+<thead>
+<tr>
+<th>节点角色</th>
+<th>负责的槽</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节点 A（主）</td>
+<td>0~5460</td>
+<td>从节点 A’ 异步复制 A</td>
+</tr>
+<tr>
+<td>节点 B（主）</td>
+<td>5461~10922</td>
+<td>从节点 B’ 异步复制 B</td>
+</tr>
+<tr>
+<td>节点 C（主）</td>
+<td>10923~16383</td>
+<td>从节点 C’ 异步复制 C</td>
+</tr>
+</tbody>
+</table>
+<p>用一个图把两层映射画出来：</p>
+<pre><code class="highlight mermaid">graph LR
+    K[&quot;key = user:1001&quot;] --&gt;|&quot;CRC16 mod 16384&quot;| S[&quot;槽 13380&quot;]
+    S --&gt; NC[&quot;主节点 C + 从节点 C&#x27;&quot;]
+    S0[&quot;槽 0~5460&quot;] --&gt; NA[&quot;主节点 A + 从节点 A&#x27;&quot;]
+    S1[&quot;槽 5461~10922&quot;] --&gt; NB[&quot;主节点 B + 从节点 B&#x27;&quot;]
+    S2[&quot;槽 10923~16383&quot;] --&gt; NC</code></pre>
+<p>有一个关键事实必须先立住：<strong>槽是逻辑分片，不与节点上的物理数据绑定</strong>。节点 A 不是&quot;存了 0~5460 这段数字&quot;，而是&quot;存了所有槽号落在 0~5460 的 key&quot;。槽号只是 key 的分组编号——正因为分组与存储位置解耦，槽的归属才能随时调整，这是第六节在线迁移能成立的前提。</p>
+<p>另外注意：向集群 ADD-NODE 一个新节点后，它默认是&quot;空节点&quot;（不负责任何槽），不会自动搬数据。必须显式执行 reshard 或 rebalance，槽才会划过去——这是集群行为与很多&quot;自动负载均衡&quot;存储系统的明确区别，第八节对比时会再提。</p>
+<p>还有一层容易被误解的统计口径：<strong>槽均分不等于数据均分</strong>。<code>--cluster create</code> 把槽按编号轮询分给各节点，槽的数量是绝对均匀的，但每个槽里的 key 数量、value 大小由业务数据决定。CRC16 只保证离散 key 落槽均匀，不保证槽内数据体积均匀——判断是否需要 rebalance 的依据是各节点的 used_memory 与 QPS 分布，而不是槽号表本身。</p>
+<p>集群元数据的自身开销也小到可以忽略：每个节点的槽归属表由 16384 个指针（64 位下约 128KB）加 2KB 位图组成，再加上节点列表，百节点规模也就 MB 级内存——这是槽方案除心跳体积之外的另一个存储红利。</p>
+<h2 id="2-2-为什么不用一致性哈希">2.2 为什么不用一致性哈希</h2>
+<p>这是高频面试题，但值得从工程角度重新推一遍。一致性哈希把节点散列到环形空间，key 顺时针找最近的节点存储。它和哈希槽解决的是同一个问题——减少扩容时的数据搬移量——但路径完全不同：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>映射的确定性。</strong> 一致性哈希里 key 直接映射到节点，节点加入或退出会改变环上相邻节点的负责区间；哈希槽把映射拆成两段：key→槽 永远固定，槽→节点 可变。扩容时搬的是&quot;槽&quot;这个有明确边界的完整单元，而不是按哈希值散落的零散 key。</p>
+</li>
+<li class="lvl-3">
+<p><strong>迁移的控制粒度。</strong> 一致性哈希没有&quot;把某段数据迁走&quot;的操作原语，再平衡是环重算后的被动结果，中途无法暂停、无法只迁一半。哈希槽可以精确指定&quot;把槽 3000 从节点 A 迁到节点 B&quot;，每一步都是显式命令，可以观察、可以暂停、可以修复。</p>
+</li>
+<li class="lvl-3">
+<p><strong>元数据的紧凑性。</strong> 槽有固定编号，&quot;本节点负责哪些槽&quot;可以压成一张 16384 位的位图——这对第五节 gossip 心跳包的体积是决定性的。哈希环没有固定结构，元数据没法这样压缩。</p>
+</li>
+<li class="lvl-3">
+<p><strong>均衡的确定性。</strong> 一致性哈希靠虚拟节点逼近均匀，虚拟节点数、哈希函数质量都会引入倾斜，且倾斜了不容易定向修；哈希槽天然 16384 等分，只要各槽 key 数量接近，分布就均匀，个别槽倾斜也能定向把它挪走。</p>
+</li>
+</ol>
+<p>一句话总结 trade-off：一致性哈希换来的是&quot;无中心、自动再平衡&quot;，代价是失控——数据在哪、迁多少、迁给谁，都不由你决定；哈希槽用一张全局槽表换来完全的可控性，代价是需要一个机制去维护和传播这张表（gossip 协议），客户端也必须感知路由（smart client 或重定向）。</p>
+<p>再回答一个衍生问题：槽数为什么固定，而不是随节点数动态伸缩？固定槽数让&quot;槽表&quot;成为一份可以独立传输、校验、修复的数据结构——任何时刻、任何节点对&quot;16384 个槽各归谁&quot;都能给出明确答案，配置传播和一致性判断（比较 epoch）都围绕这份静态结构进行。槽数若随节点数伸缩，每次拓扑变更都要重定义分片边界，等于退回重哈希的老路。固定数目的中间层，是这套设计里最朴素也最关键的决定。</p>
+<h2 id="2-3-为什么恰好是-16384">2.3 为什么恰好是 16384</h2>
+<p>16384 不是拍脑袋定的数字。antirez 在 GitHub issue 里正面回答过这个问题，核心是两个约束的折中。</p>
+<p><strong>约束一：心跳包体积。</strong> 集群节点定期互发 PING/PONG，消息头里必须携带&quot;本节点负责哪些槽&quot;的完整位图，这是其他节点维护全局槽表的基础。位图大小等于槽数除以 8：</p>
+<p>$$16384 \div 8 = 2048 = 2\text{KB}$$</p>
+<p>如果把槽数提高到 65536（用满 CRC16 的 16 位输出），位图就是 $65536 \div 8 = 8\text{KB}$。gossip 消息发送频率高、且每个包都要携带，8KB 的心跳在几百上千节点的规模下是实打实的带宽与 CPU 开销。2KB 是&quot;槽表信息完整&quot;与&quot;心跳包体可控&quot;的平衡点。</p>
+<p><strong>约束二：集群规模上限。</strong> 官方对 Redis Cluster 的定位是支撑约 1000 个主节点。1000 个节点分 16384 个槽，平均每节点 16 个槽，粒度足够细，再做更细的切分（65536 槽）对分配精度没有实质提升，只会白白撑大心跳。反过来，如果集群只有 10 个节点，每节点约 1638 个槽，槽粒度依然够用——槽数往下取（比如 Codis 的 1024）也能工作，但会让大集群下的均衡调整变粗糙：想把 1000 个节点的负载调平，每节点只有十几二十块&quot;可搬动的积木&quot;已经不宽裕，槽数更少时连积木都不够分。</p>
+<p>还有两个附带好处：16384 是 $2^{14}$，取模即位运算 <code>&amp; 16383</code>，无除法开销；槽的数量远大于常见集群的节点数，&quot;槽→节点&quot;的分配可以做得均匀，不会出现哈希环上节点稀少时的大段区间倾斜。</p>
+<p><strong>适用边界</strong>：预估规模在百节点以内，16384 绰绰有余；如果想象中的目标是几千个节点的单一集群，官方会直接告诉你这不是设计目标——正确做法是拆多个集群，而不是嫌槽数太少。</p>
+<p>补充一个常见追问：为什么用 CRC16 而不是 CRC32？一是 CRC16 实现极轻、可硬件加速，antirez 明确说过这让集群协议的实现保持简单；二是对 16384 取模后，两者的分布质量差异可以忽略——模数只占 14 位，16 位校验值的信息量已经绰绰有余，换 CRC32 不会更均匀，只会更贵。另外，若目标只是几个节点的迷你集群，更少的槽数（如 256）同样够用且心跳更小；16384 是官方面向&quot;百到千节点&quot;场景的一次性定档，这也是选型要先估规模的原因。</p>
+<h2 id="三、hash-tag：多-key-操作的逃生门，也是倾斜的源头">三、hash tag：多 key 操作的逃生门，也是倾斜的源头</h2>
+<p>集群模式下，涉及多个 key 的命令——MSET、SUNIONSTORE、MULTI/EXEC 事务、Lua 脚本——要求所有 key 落在同一个槽，否则直接报错：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">127.0.0.1:7000&gt; MSET a 1 b 2</span><br><span class="line">(error) CROSSSLOT Keys <span class="keyword">in</span> request don<span class="string">&#x27;t hash to the same slot</span></span><br></pre></td></tr></table></figure>
+<p>这不是实现偷懒，而是架构必然：不同槽的 key 可能分布在不同节点上，要求跨节点原子执行，等价于要求分布式事务，这与集群&quot;单节点单线程保证原子性&quot;的模型直接冲突。要让多 key 操作可用，只能由业务保证这批 key 同槽——这就是 hash tag 存在的理由。</p>
+<p><strong>规则</strong>：如果 key 中包含花括号，且第一个 <code>&#123;</code> 与其后第一个 <code>&#125;</code> 之间有非空内容，则 CRC16 只对这段内容计算，key 的其余部分被忽略。</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>参与哈希的部分</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&#123;user1000&#125;.following</code></td>
+<td><code>user1000</code></td>
+<td>tag 生效</td>
+</tr>
+<tr>
+<td><code>&#123;user1000&#125;.followers</code></td>
+<td><code>user1000</code></td>
+<td>与上一条同槽，多 key 操作可行</td>
+</tr>
+<tr>
+<td><code>foo&#123;&#125;&#123;bar&#125;</code></td>
+<td>整个 key</td>
+<td>花括号内为空，tag 失效</td>
+</tr>
+<tr>
+<td><code>foo&#123;&#123;bar&#125;&#125;zap</code></td>
+<td><code>&#123;bar</code></td>
+<td>只认第一个 <code>&#123;</code> 到其后第一个 <code>&#125;</code></td>
+</tr>
+</tbody>
+</table>
+<p>用法上，hash tag 是把&quot;业务实体&quot;作为原子单元的正规手段：以订单为中心的 key 统一写成 <code>&#123;order:1001&#125;:detail</code>、<code>&#123;order:1001&#125;:items</code>，订单 1001 的所有数据保证同槽，事务和 Lua 脚本就能正常工作。注意 Lua 脚本在集群里同样受同槽约束：脚本入参的所有 key 必须同槽，否则报错。</p>
+<p>但代价必须写进团队规范：<strong>tag 的粒度直接决定倾斜风险</strong>。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>粒度太细（每个实体一个 tag）：倾斜风险低，但能同槽一起操作的 key 也少，事务覆盖面小。</p>
+</li>
+<li class="lvl-2">
+<p>粒度太粗（整个模块共用一个 tag）：该模块所有 key 落进同一个槽，而槽只能属于一个节点——等于在模块维度上放弃了分片，热点模块还会把单个节点打满。这是第九节故障场景 2 的直接成因。</p>
+</li>
+</ul>
+<p>正确姿势是按<strong>实体 ID</strong> 打 tag（订单号、用户 ID），而不是按<strong>业务域</strong>打 tag。前者天然分散，后者是灾难。</p>
+<p>事务与 Lua 在集群下的行为也值得单独强调：Lua 脚本要求所有 key 通过 KEYS 数组传入并落在同一槽，脚本体里直接硬编码 key 名在单机下静默通过，在集群下会报 Lua script attempted to access a non local key——这是单机代码迁往集群时最典型的不兼容点。迁集群之前用真实拓扑回归一遍多 key 链路，比上线后补课便宜得多。</p>
+<p>顺带把集群模式的另外两条硬性边界在这里一并交代：<strong>只有 db 0</strong>（SELECT 不可用，多 DB 隔离方案失效）；<strong>SCAN 等遍历命令只作用于当前连接的节点</strong>，全量扫描要遍历所有主节点，或用 <code>CLUSTER GETKEYSINSLOT</code> 按槽扫。这两条经常在从单机迁往集群的改造清单里被漏掉。</p>
+<p>一个容易争论的边界问题顺带澄清：hot key（单 key 访问过热）能不能靠 hash tag 解决？不能。hash tag 改变的是 key 到槽的映射，单个 key 的所有访问仍指向同一个槽、同一个节点，正解是本地缓存或读写拆分。hash tag 解决的是&quot;多个 key 被迫同槽&quot;的约束问题，不是&quot;单个 key 过热&quot;的容量问题，混为一谈会开出错误的药方。</p>
+<h2 id="四、客户端路由：MOVED、ASK-与-smart-client">四、客户端路由：MOVED、ASK 与 smart client</h2>
+<p>槽表有了，客户端的请求发给谁？集群给了两层答案：不认识拓扑的客户端走重定向（每条请求可能两跳），认识拓扑的客户端走槽表缓存（常态一跳）。</p>
+<h2 id="4-1-MOVED：槽的归属已经变了">4.1 MOVED：槽的归属已经变了</h2>
+<p>客户端连上任意节点发命令，节点先算 key 的槽号，再查本地槽表：槽归我，直接执行；不归我，返回重定向：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">127.0.0.1:7000&gt; GET foo</span><br><span class="line">(error) MOVED 12182 127.0.0.1:7002</span><br></pre></td></tr></table></figure>
+<p>MOVED 是一个明确信号：<strong>槽的归属发生了持久变化</strong>（扩缩容、故障转移），客户端应该更新本地槽表，之后同类请求直达新节点，不再绕路。</p>
+<p>可以亲手复现：连上集群任意节点，GET 一个不属于它的 key，就能看到 MOVED；改用 <code>redis-cli -c -p 7000</code> 再试一次，redis-cli 会自动跟随重定向并打印转折过程——这是理解集群路由最快的一个小实验。</p>
+<h2 id="4-2-ASK：槽正在搬家">4.2 ASK：槽正在搬家</h2>
+<p>麻烦出在迁移过程中。假设槽 3000 正从节点 A 迁往节点 B，此刻一部分 key 在 A、一部分在 B，槽的正式归属尚未切换。客户端拿着&quot;已经迁走的 key&quot;来问 A 时，A 不能回 MOVED——从全局看槽还是 A 的，回 MOVED 会诱导客户端错误地改写槽表，而槽里剩下的 key 仍必须来 A 处理。所以 A 回的是另一种重定向：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1</span><br><span class="line">(error) ASK 3000 127.0.0.1:7001</span><br></pre></td></tr></table></figure>
+<p>ASK 的语义是&quot;<strong>这个 key 这次去节点 B 试一下，但槽的归属没变，槽表别动</strong>&quot;。客户端收到 ASK 后，向 B 重发命令之前必须先发一条 <code>ASKING</code> 命令。原因：B 此刻对槽 3000 的状态是 IMPORTING（导入中），槽还没正式归它，没有 ASKING 标记的话，B 会按正常规则把请求 MOVED 回 A，形成循环。ASKING 相当于一张一次性通行证：“我知道这个槽还没正式归你，但这条请求是源节点让我来的。”</p>
+<p>两种重定向的本质区别：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>MOVED</th>
+<th>ASK</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>含义</td>
+<td>槽归属已永久变化</td>
+<td>槽迁移中的临时指引</td>
+</tr>
+<tr>
+<td>客户端动作</td>
+<td>更新本地槽表，后续直达</td>
+<td>先发 ASKING 再重发命令，槽表不动</td>
+</tr>
+<tr>
+<td>目标节点校验</td>
+<td>正常接收</td>
+<td>必须带 ASKING 才接收</td>
+</tr>
+</tbody>
+</table>
+<p>迁移期间还有两个补充错误：多 key 命令中<strong>所有 key 都不在源节点</strong>时回 ASK；<strong>部分在、部分已被迁走</strong>时回 <code>TRYAGAIN</code>，客户端稍后重试即可。这两个错误的分界在源节点的视角里非常好理解：全不在，说明这批 key 大概率都在目标上，指过去；一部分在，说明槽正在被搬，此刻执行任何多 key 原子操作都不安全，让客户端等一等。</p>
+<h2 id="4-3-smart-client：把重定向变成例外而非常态">4.3 smart client：把重定向变成例外而非常态</h2>
+<p>如果每条请求都靠 MOVED 二跳，集群吞吐直接腰斩，没人这么用。主流语言的驱动（Java 的 Jedis/Lettuce、Python 的 redis-py RedisCluster、Go 的 go-redis ClusterClient）都是 smart client，工作方式：</p>
+<ol>
+<li class="lvl-3">
+<p>启动时连任意节点，执行 <code>CLUSTER SLOTS</code>（Redis 7 起推荐 <code>CLUSTER SHARDS</code>）拉全量槽表，建立 slot → node 的本地映射，并为每个主节点维护独立连接池；</p>
+</li>
+<li class="lvl-3">
+<p>正常请求按槽表直达目标节点，一跳完成；</p>
+</li>
+<li class="lvl-3">
+<p>收到 MOVED：更新本地槽表；收到 ASK：按规范先发 ASKING 再重定向一次，不更新槽表；</p>
+</li>
+<li class="lvl-3">
+<p>定期或按需刷新槽表，吸收 gossip 层慢慢传播过来的拓扑变化。</p>
+</li>
+</ol>
+<p>时序图把迁移过程中两种重定向放在一起看：</p>
+<pre><code class="highlight mermaid">sequenceDiagram
+    autonumber
+    participant C as 客户端
+    participant A as 源节点 A
+    participant B as 目标节点 B
+    Note over A,B: 阶段一：槽 3000 迁移中（A MIGRATING，B IMPORTING）
+    C-&gt;&gt;A: GET cart:9001
+    A--&gt;&gt;C: OK（key 仍在 A）
+    C-&gt;&gt;A: GET cart:9002
+    Note over A: key 已迁走，槽处于 MIGRATING
+    A--&gt;&gt;C: ASK 3000 127.0.0.1:7001
+    C-&gt;&gt;B: ASKING
+    C-&gt;&gt;B: GET cart:9002
+    B--&gt;&gt;C: OK（ASKING 放行）
+    Note over C: 不更新本地槽表，槽表仍指向 A
+    Note over A,B: 阶段二：迁移完成，SETSLOT 3000 NODE B 已广播
+    C-&gt;&gt;A: GET cart:9004
+    A--&gt;&gt;C: MOVED 3000 127.0.0.1:7001
+    Note over C: 更新本地槽表，此后直达 B</code></pre>
+<p>工程上的坑大多在客户端而非服务端：有的封装库把 ASK 当 MOVED 处理、直接改槽表，迁移一开就出现槽表抖动；有的客户端只在连接报错时才刷新槽表，拓扑变了却拿着旧表一跳到底，直到收到 MOVED 才醒。<strong>在做任何槽迁移变更前，先确认所依赖客户端版本对 cluster 协议的实现是否规范</strong>，这比调服务端参数更有效。</p>
+<p><code>redis-cli -c</code> 是最朴素的&quot;跟随重定向&quot;模式：每条命令都从当前连接发出，收到重定向就换节点重发，不做任何缓存。它适合调试和验证，不适合压测，更不适合业务——用它压出来的吞吐会严重低估真实 smart client 的表现。</p>
+<p>槽表的刷新时机各家实现不同：有按固定间隔轮询的，有收到 MOVED 才触发刷新的，也有订阅拓扑事件主动刷新的。判断一个驱动是否成熟，就看它在故障转移场景下的收敛速度——主挂到新主接管之间，客户端能否在重试几次内自动跟上新拓扑，而不是持续报错直到人工介入。</p>
+<p>还有两个集群客户端的工程细节常被忽视：其一，seed 节点要配置多个（最好覆盖全部主节点），任意一个能返回 CLUSTER SLOTS 即可完成拓扑发现，只写一个 seed 等于给自己造单点；其二，密码要在所有节点上保持一致，smart client 会按槽表直连每个主节点，部分节点缺 AUTH 会造成零星的 NOAUTH 报错且难以归因。</p>
+<h2 id="五、节点间通信：gossip-协议">五、节点间通信：gossip 协议</h2>
+<p>客户端要维护槽表，服务端节点之间也要维护同一份全局视图：谁负责哪些槽、谁还活着。Redis Cluster 是去中心化架构，没有配置中心，所有节点通过 cluster bus（一个二进制协议通道，端口默认为客户端端口 + 10000）互相 gossip。</p>
+<p>四种消息类型：</p>
+<table>
+<thead>
+<tr>
+<th>消息</th>
+<th>触发时机</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MEET</td>
+<td>新节点加入</td>
+<td>握手，把新节点纳入集群视图</td>
+</tr>
+<tr>
+<td>PING</td>
+<td>周期性发送</td>
+<td>携带自身槽位图 + 随机节点的状态摘要</td>
+</tr>
+<tr>
+<td>PONG</td>
+<td>回应 PING</td>
+<td>同时用于主动广播自身最新配置</td>
+</tr>
+<tr>
+<td>FAIL</td>
+<td>判定节点下线</td>
+<td>广播&quot;某节点已下线&quot;的最终结论</td>
+</tr>
+</tbody>
+</table>
+<p>cluster bus 使用独立端口（客户端端口 + 10000）而不是复用业务端口，既是协议隔离——bus 上跑的是二进制节点间消息，与 RESP 命令协议完全不同——也是安全边界：防火墙只需在节点之间放行 bus 端口，客户端侧完全无需感知它的存在。排障时也别把两类流量混进同一个观测口径。</p>
+<p>工作机制拆开看：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>覆盖式探活</strong>。每个节点的集群定时任务每 100ms 跑一次，挑选&quot;超过半个 cluster-node-timeout 没有收到 PONG&quot;的节点补发 PING，保证任何节点在半个超时窗口内至少被探活一次。</p>
+</li>
+<li class="lvl-2">
+<p><strong>全量槽表 + 增量 gossip</strong>。每个 PING/PONG 的消息头带自己完整的槽位图（2KB），消息体带随机抽取的约 1/10 已知节点的状态摘要。于是槽的归属变化靠消息头较快扩散，节点存活状态靠消息体慢速扩散。</p>
+</li>
+<li class="lvl-2">
+<p><strong>两阶段下线判定</strong>。节点 A 超过 cluster-node-timeout（默认 15 秒）没收到节点 B 的 PONG，先把 B 标记为 PFAIL（疑似下线）；A 把这个观点随 gossip 扩散，当集群内<strong>过半数主节点</strong>都报告了同样的 PFAIL，B 被升级为 FAIL，并向全集群广播。用多数派确认而不是单点判定，是防止某台机器自己的网络抖动造成误判。</p>
+</li>
+</ul>
+<p>（故障判定之后的从节点选举时序，见第七节图。）</p>
+<p>新节点加入用的是 MEET 而不是 PING：两者消息格式相同，区别在于收到 MEET 的节点会把对方无条件纳入集群视图，并把&quot;集群里有新节点&quot;这件事继续 gossip 出去。<code>redis-cli --cluster add-node</code> 的背后就是这条消息——它只帮你完成 MEET，槽的划走仍要 reshard，两步是解耦的。</p>
+<p>给一个<strong>理论估算</strong>级的数量感（未经实测，仅用于建立直觉）：gossip 的收敛轮次随集群规模是对数级的——一条新配置传遍 N 个节点大致需要 O(log N) 轮，因为每个 PING 都把状态摘要随机带给一批节点；而心跳的带宽开销随节点数线性增长，N 个节点各自周期性发 2KB 量级的小包。这也是 2.3 节&quot;槽数不能无限大&quot;的另一面：槽数决定单包体积，单包体积乘上消息频率和节点数才是真实成本。</p>
+<p>为什么用 gossip 而不是中心化的元数据服务（Codis 就把槽表存在 ZooKeeper 里）？trade-off 很清楚：中心化方案元数据一致性强、排障直观，但引入外部依赖和单点风险；gossip 无外部依赖、无单点、随节点数自然扩展，代价是<strong>最终一致</strong>——拓扑变化需要若干个 gossip 周期才能传遍全集群，期间不同节点看到的槽表可能短暂不一致。重定向机制恰好用来兜住这种不一致：路由错了几跳，MOVED 会把客户端拉回正轨。</p>
+<p><code>cluster-node-timeout</code> 是整个体系里最需要谨慎对待的参数，它同时出现在三个地方：探活节奏（半个超时）、下线判定（一个超时）、failover 触发（依赖下线判定）。调小，故障发现和切换都快，但网络抖动容易被误判成节点下线，触发不必要的主从切换——而异步复制下切换本身可能丢最近几百毫秒的写入；调大，误判少，但真挂了要等更久。生产常见取值 15~30 秒；跨机房部署建议调大，因为抖动概率更高。</p>
+<h2 id="六、扩缩容：槽迁移的全流程">六、扩缩容：槽迁移的全流程</h2>
+<p>集群扩容是三件事：新节点 MEET 进集群、从现有节点划一批槽给它、补从节点。缩容反过来：先把槽迁空，再 DEL-NODE 摘除节点。整个过程的主体是<strong>槽迁移</strong>——这是集群里最精密、也最容易出事故的流程。</p>
+<h2 id="6-1-迁移五步">6.1 迁移五步</h2>
+<p>以把槽 3000 从节点 A 迁到节点 B 为例。生产上直接用 <code>redis-cli --cluster reshard 127.0.0.1:7000</code>，它会交互式地问&quot;迁多少个槽、迁给谁、从哪些节点迁&quot;，然后自动完成下面的每一步；拆开看才知道它在干什么：</p>
+<p><strong>第一步，让目标节点进入导入态：</strong></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1</span><br><span class="line">&gt; CLUSTER SETSLOT 3000 IMPORTING &lt;id-A&gt;</span><br></pre></td></tr></table></figure>
+<p><strong>第二步，让源节点进入迁出态：</strong></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1</span><br><span class="line">&gt; CLUSTER SETSLOT 3000 MIGRATING &lt;id-B&gt;</span><br></pre></td></tr></table></figure>
+<p>这两个状态就是迁移的&quot;中间态标记&quot;，正是它们驱动了第四节讲的 ASK 重定向——服务端的路由逻辑和迁移状态机是同一套东西。</p>
+<p><strong>第三步，循环搬 key。</strong> 先批量找出槽里的 key：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1</span><br><span class="line">&gt; CLUSTER GETKEYSINSLOT 3000 100</span><br></pre></td></tr></table></figure>
+<p>然后逐个（或按 key 列表批量）迁移：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1</span><br><span class="line">&gt; MIGRATE 127.0.0.1 7001 key_name 0 5000 REPLACE</span><br></pre></td></tr></table></figure>
+<p>MIGRATE 的语义是<strong>原子迁移</strong>：源节点把 key 序列化（DUMP 格式）后通过内部连接发给目标节点，目标执行 RESTORE 写入，收到 OK 后源节点删除本地副本。任一环节失败，源节点不删，key 仍在原地——迁移过程不会因为单个 key 失败而丢数据。参数里的 5000 是超时毫秒数，REPLACE 表示目标已有同名 key 时覆盖（迁移中途超时可能造成两边各有一份，重发时必须带它，见 6.3）。顺带厘清两个选项的语义：COPY 表示不删源副本（复制而非移动），REPLACE 表示覆盖目标同名 key；迁移场景的正确组合是只带 REPLACE，让源副本在成功后必然消失，不留双份数据。</p>
+<p><strong>第四步，槽内 key 搬完后，先通知目标节点正式接管：</strong></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1</span><br><span class="line">&gt; CLUSTER SETSLOT 3000 NODE &lt;id-B&gt;</span><br></pre></td></tr></table></figure>
+<p><strong>第五步，把同样的 SETSLOT NODE 命令发给源节点 A 和集群其余所有节点</strong>，覆盖掉 MIGRATING/IMPORTING 中间态，让全集群槽表一致地指向 B。注意第四、五步的顺序：先让目标认可，再广播全集群，避免出现&quot;全局已经认为槽归 B、B 自己还停留在 IMPORTING&quot;的错位。</p>
+<p>完整时序：</p>
+<pre><code class="highlight mermaid">sequenceDiagram
+    autonumber
+    participant M as reshard 工具
+    participant A as 源节点 A
+    participant B as 目标节点 B
+    M-&gt;&gt;B: CLUSTER SETSLOT 3000 IMPORTING id-A
+    M-&gt;&gt;A: CLUSTER SETSLOT 3000 MIGRATING id-B
+    loop 直到槽内 key 清空
+        M-&gt;&gt;A: CLUSTER GETKEYSINSLOT 3000 100
+        A--&gt;&gt;M: key 列表
+        M-&gt;&gt;A: MIGRATE 127.0.0.1 7001 keys 0 5000 REPLACE
+        Note over A,B: A 序列化并经内部连接发送&lt;br/&gt;B 执行 RESTORE，成功后 A 删除副本&lt;br/&gt;期间 A、B 主线程同步阻塞
+    end
+    M-&gt;&gt;B: CLUSTER SETSLOT 3000 NODE id-B
+    M-&gt;&gt;A: CLUSTER SETSLOT 3000 NODE id-B
+    M-&gt;&gt;M: 向集群其余节点广播 SETSLOT 3000 NODE id-B
+    Note over A,B: 中间态被覆盖，槽正式归属 B</code></pre>
+<p>工程上通常不需要手写这套流程。批量划槽用 rebalance：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 让集群自动摊平槽分布，可按节点指定权重</span></span><br><span class="line">redis-cli --cluster rebalance 127.0.0.1:7000 \</span><br><span class="line">  --cluster-weight node-id-A=1.5 node-id-B=1.0</span><br></pre></td></tr></table></figure>
+<p>权重大的节点按比例分到更多槽，适合节点配置不均的场景；不指定权重就是纯均分。缩容分两步：先把待摘除节点的槽迁给其他节点（reshard 时把它选为源），确认它所有槽的 <code>CLUSTER COUNTKEYSINSLOT</code> 都归零，再执行 <code>redis-cli --cluster del-node 127.0.0.1:7000 </code>。摘除顺序也有讲究：先摘多余的从节点，最后摘主节点，避免中途出现没有从节点的孤主。</p>
+<h2 id="6-2-迁移中的两阶段请求">6.2 迁移中的两阶段请求</h2>
+<p>在第二步与第四步之间，同一个槽的 key 分布在两个节点上，请求路由必须分成两段看。</p>
+<p><strong>源节点 A 收到请求时：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>key 还在本地 → 正常执行；</p>
+</li>
+<li class="lvl-2">
+<p>key 不在本地、槽处于 MIGRATING → 回 ASK 指向 B（单 key 场景）；</p>
+</li>
+<li class="lvl-2">
+<p>多 key 命令、部分 key 已迁走 → 回 TRYAGAIN，等迁移窗口过去再重试。</p>
+</li>
+</ul>
+<p><strong>目标节点 B 收到请求时：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>请求带 ASKING 标记 → 正常执行；</p>
+</li>
+<li class="lvl-2">
+<p>不带 ASKING → 回 MOVED 指回 A（槽还没正式归它，不能自作主张）。</p>
+</li>
+</ul>
+<p>这套两阶段协议保证迁移过程中<strong>不丢请求</strong>：无论 key 此刻在源还是目标，客户端总能被正确引导。代价是迁移中的槽的访问会出现一次额外往返（ASK 二跳），并且多 key 操作在迁移期间可能频繁吃 TRYAGAIN——这也是迁移要挑低峰窗口的第二个理由（第一个理由是 MIGRATE 的阻塞，马上讲）。</p>
+<p>用一个具体请求序列体会两阶段：客户端 GET order:9001 命中源节点 A，key 还在，正常返回；几秒后同路径的 GET order:9002，key 已被迁走，A 回 ASK 指向 B，客户端带 ASKING 去 B 拿到数据；迁移完成、SETSLOT 广播之后，再来一个 GET order:9004，A 直接回 MOVED，客户端更新槽表，此后该槽请求全部直达 B。三次请求分别对应&quot;执行、临时指引、永久指引&quot;，这就是迁移窗口内线上流量的真实形态。</p>
+<p>对业务侧的提示：迁移窗口内，依赖 MULTI 事务和 Lua 的链路要做好 TRYAGAIN 重试（退避后重试，通常一两轮内槽就迁完了）；纯单 key 读写的链路几乎无感，最多多一次 ASK 往返。把&quot;哪些业务用了多 key 原子操作&quot;提前列入迁移评估，是防止线上悄悄报错的最后一道检查。</p>
+<h2 id="6-3-大-Key：迁移最大的敌人">6.3 大 Key：迁移最大的敌人</h2>
+<p>MIGRATE 有一个绕不开的特性：<strong>它是同步阻塞命令</strong>。执行期间源节点与目标节点的主线程都在忙——源要序列化和发送，目标要反序列化和写入——阻塞时长与 key 体积成正比。这不是&quot;可能慢&quot;，而是设计如此：两边都要在主线程上保证这个操作的原子性。</p>
+<p>一个几百 MB 的 zset 在迁移时的线上表现：源和目标两个节点同时无响应，以秒甚至十秒计；两个节点上其他槽的请求全部排队，客户端超时、弃用连接、重建连接（又把槽表缓存丢掉），监控上就是一次全集群抖动。<code>redis-cli --cluster reshard</code> 已经做了批量优化（把多个 key 打包进一条 MIGRATE 的 KEYS 参数，减少往返），但这只减少 RTT 次数，<strong>单 key 的序列化与传输阻塞无解</strong>。</p>
+<p>所以迁移前的检查清单里，第一项永远是处理大 Key：</p>
+<ol>
+<li class="lvl-3">
+<p>用 <code>redis-cli --bigkeys</code> 配合 <code>MEMORY USAGE</code> 扫描待迁移槽内的 key，把重点对象列出来；</p>
+</li>
+<li class="lvl-3">
+<p>单 value 超过 10MB 的字符串、元素数过大的集合，先在业务侧分桶或瘦身（大 Key 治理的具体手段见站内相关文章）；</p>
+</li>
+<li class="lvl-3">
+<p>迁移一批、观察一批：每迁完一个槽，用 <code>CLUSTER COUNTKEYSINSLOT</code> 确认计数归零、确认延迟无毛刺，再继续下一个；</p>
+</li>
+<li class="lvl-3">
+<p>绝对不要在业务高峰对含大 key 的槽做迁移。</p>
+</li>
+</ol>
+<p>另一个容易踩的坑是<strong>超时的双写状态</strong>：MIGRATE 超时返回错误时，目标节点可能已经写入成功，而源节点因为没收到 OK 不删副本——此刻两边各有一份。reshard 工具对此的处理是带 REPLACE 重发迁移，最终以一次成功的迁移为准收敛。但如果自己写迁移脚本，必须显式处理这个中间态，否则会留下两份数据各自演化、最终分叉的事故。</p>
+<h2 id="七、主从复制与自动故障转移">七、主从复制与自动故障转移</h2>
+<p>分片解决容量与吞吐，高可用靠主从。集群模式下每个主节点应当至少配置一个从节点，从节点异步复制主节点数据。主节点挂掉后的切换流程：</p>
+<p><strong>第一步：判定。</strong> 故障节点的 PING 超过 cluster-node-timeout 无 PONG，其他主节点标记它为 PFAIL；gossip 把这个观点扩散，过半数主节点确认后升级为 FAIL 并广播全集群。</p>
+<p><strong>第二步：选举。</strong> 故障主节点的各从节点按复制偏移量排序——数据最新的优先——错开时间发起选举：向所有主节点发送投票请求，携带自己的 epoch；每个主节点在一个 epoch 内只投一票，通常投给数据足够新、最先来拉票的从节点。</p>
+<p><strong>第三步：晋升。</strong> 拿到<strong>过半数主节点</strong>选票的从节点晋升为新主，接管原主的全部槽，epoch 加一，通过 PONG 广播自己的新配置。</p>
+<p><strong>第四步：收敛。</strong> 其他节点收到更高 epoch 的配置后更新槽表；客户端访问旧地址会收到 MOVED，指向新主，槽表刷新后恢复一跳。</p>
+<p>完整时序：</p>
+<pre><code class="highlight mermaid">sequenceDiagram
+    autonumber
+    participant A as 主节点 A（宕机）
+    participant B as 主节点 B
+    participant C as 主节点 C
+    participant R as A 的从节点 R
+    Note over A: 超过 cluster-node-timeout 无响应
+    B-&gt;&gt;B: 标记 A 为 PFAIL
+    C-&gt;&gt;C: 标记 A 为 PFAIL
+    B--&gt;&gt;C: gossip 交换故障报告
+    Note over B,C: 过半数主节点确认，PFAIL 升级为 FAIL
+    R-&gt;&gt;B: 发起选举：请求投票（epoch 加一）
+    B--&gt;&gt;R: 投票（R 复制偏移量最新）
+    R-&gt;&gt;C: 发起选举
+    C--&gt;&gt;R: 投票
+    Note over R: 拿到过半数主节点选票
+    R-&gt;&gt;R: 晋升为主，接管槽 0~5460
+    R--&gt;&gt;B: PONG 广播新配置（更高 epoch）
+    R--&gt;&gt;C: PONG 广播新配置
+    Note over B,C: 槽表更新：槽 0~5460 归新主 R</code></pre>
+<p><strong>为什么选举要过半数主节点同意，而不是从节点自己切？</strong> 和哨兵同样的理由：防脑裂。旧主可能只是网络分区了并没有死，若没有多数派确认，分区两侧可能各出现一个&quot;新主&quot;，同一个槽就有两个写入点。epoch 单调递增的规则保证了方向唯一：网络恢复后，旧主看到更高 epoch 的配置会自动降级为从节点，配置永远不会回滚到旧的槽表。</p>
+<p>几个相关的配置与事实：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>cluster-require-full-coverage</code> 默认 yes：任何槽失去覆盖（主从全挂且没有备用从节点）时，集群对相关请求返回 CLUSTERDOWN。这是&quot;宁可部分不可用、也不让缺口悄悄吞数据&quot;的取舍；改成 no 可以让剩余槽继续服务，但要清楚这是在放弃一致性兜底。</p>
+</li>
+<li class="lvl-2">
+<p>复制是异步的，failover 瞬间新主可能缺少最后一段写入，这是 CAP 里取 AP 的必然代价。重要链路要在业务层做补偿或降级校验，而不是指望集群替你保证。</p>
+</li>
+<li class="lvl-2">
+<p>滚动升级等场景可以主动执行 <code>CLUSTER FAILOVER</code> 让从节点平滑接管（它会先等主从复制追平再切换），比等超时判定优雅得多，这是日常变更的标准动作。</p>
+</li>
+</ul>
+<p>从节点侧还有两个参数影响选举结果：<code>cluster-replica-validity-factor</code> 控制从节点的数据新鲜度门槛——从节点与主节点断连超过 <code>(node-timeout × validity-factor) + repl-ping-period</code> 仍未恢复，就失去参选资格，防止数据严重落后的从节点当选后造成大面积数据丢失；<code>cluster-migration-barrier</code> 是每个主节点保留的最少从节点数，多余的从节点会被集群自动&quot;迁移&quot;给没有从节点的孤主，避免个别主节点裸奔。</p>
+<p><code>CLUSTER FAILOVER [TAKEOVER]</code> 的两种模式也值得区分：不带 TAKEOVER 是安全切换，从节点先确认复制追平、再走多数派投票；TAKEOVER 跳过多数派直接提升自己，用于大多数主节点都已不可用的极端场景，代价是放弃多数派保证，常规变更不要用它。</p>
+<h2 id="八、横向对比：客户端分片、代理分片、一致性哈希">八、横向对比：客户端分片、代理分片、一致性哈希</h2>
+<p>把 Redis Cluster 放回分片方案的全景里，三条路线各有站位：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>客户端分片</th>
+<th>代理分片（Twemproxy/Codis）</th>
+<th>Redis Cluster</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>架构</td>
+<td>业务代码内实现路由</td>
+<td>独立代理层 + 中心化槽表</td>
+<td>去中心化 gossip + smart client</td>
+</tr>
+<tr>
+<td>扩容</td>
+<td>mod N 几乎全量重哈希</td>
+<td>Codis 预分片 1024 槽，支持迁移</td>
+<td>槽粒度在线迁移</td>
+</tr>
+<tr>
+<td>路由开销</td>
+<td>客户端内计算，无额外 RTT</td>
+<td>多一跳代理 RTT</td>
+<td>常态一跳，重定向才两跳</td>
+</tr>
+<tr>
+<td>高可用</td>
+<td>不负责，另配哨兵</td>
+<td>代理自身要 HA，后端配哨兵</td>
+<td>内置故障转移</td>
+</tr>
+<tr>
+<td>客户端要求</td>
+<td>低</td>
+<td>低</td>
+<td>必须支持 cluster 协议</td>
+</tr>
+<tr>
+<td>多 key/事务</td>
+<td>不受限（业务自己兜底）</td>
+<td>取决于代理实现</td>
+<td>同槽才行，hash tag 解</td>
+</tr>
+<tr>
+<td>元数据</td>
+<td>无，各端各记</td>
+<td>集中存储（如 ZooKeeper）</td>
+<td>gossip 最终一致</td>
+</tr>
+</tbody>
+</table>
+<p><strong>客户端分片</strong>的问题不只是扩容痛，而是把路由逻辑复制进了每一个使用方：哈希规则一改（换函数、改节点数），所有服务都要发版对齐，任何一个服务漏改就是路由分裂。<strong>代理分片</strong>把路由收敛到一个地方，业务零改造，代价是多一跳延迟、一个必须高可用的中间件和一套元数据存储；Codis 的 1024 槽预分片 + 中心槽表 + 后台迁移，本质上就是&quot;带代理和元数据中心的集群方案&quot;，可以对照 Redis Cluster 理解——它缺的是 gossip 去中心化和内置故障转移，多的是运维组件。<strong>一致性哈希</strong>与哈希槽的对比在 2.2 节已经展开，补一句选型结论：自建系统追求可控、可观察、可修复，预分片（无论 Codis 的 1024 还是 Cluster 的 16384）几乎总是优于纯哈希环；一致性哈希的价值在无中心、难以维护全局槽表的系统里（Dynamo、Cassandra 一类）。顺带补一个量级对照（经验值）：一致性哈希实践里虚拟节点通常要设到每物理节点上百个才能把负载标准差压到可接受范围，这与 16384 槽均分后&quot;每节点千余槽&quot;是同一思路——都用足够多的逻辑分片逼近均匀——区别只在哈希槽的边界静态可枚举、可定向搬运。</p>
+<p>反过来，代理分片至今没有消失，因为它在两个场景下仍然占优：一是存量系统里有大量老旧客户端无法统一升级 cluster 支持，代理层一处改动全局生效；二是多云、跨机房拓扑下需要中心化的路由与限流点。选型时先盘点客户端形态，再决定是&quot;改造客户端上集群&quot;还是&quot;引入代理保存量&quot;，顺序反了常常返工。</p>
+<p>那什么时候<strong>不该</strong>用 Redis Cluster？三个场景：</p>
+<ol>
+<li class="lvl-3">
+<p>重度依赖跨 key 事务和 Lua，且 key 无法按实体 ID 归组——hash tag 改造的代价可能超过收益；</p>
+</li>
+<li class="lvl-3">
+<p>依赖多 DB 隔离——集群只有 db 0；</p>
+</li>
+<li class="lvl-3">
+<p>数据量和 QPS 用&quot;单主 + 从库读写分离&quot;就能扛住——集群带来的客户端改造、运维心智和翻倍的故障模式，是一笔真实的税。分片方案引入的复杂度是长期税负，不要为想象中的规模提前付费。</p>
+</li>
+</ol>
+<h2 id="九、三个真实故障场景复盘">九、三个真实故障场景复盘</h2>
+<p>以下场景取材于社区与生产环境的常见事故模式，按&quot;发生什么 → 为什么 → 如何处理 → 如何恢复&quot;复盘。</p>
+<h2 id="9-1-迁移期的重定向风暴">9.1 迁移期的重定向风暴</h2>
+<p><strong>发生什么：</strong> 给集群扩容，计划迁移 500 个槽。运维一次性发起大批量 reshard 后十几分钟，业务接口 P99 翻了数倍，客户端错误日志里大量 MOVED 与 TRYAGAIN，连接池频繁重建，部分服务出现超时雪崩苗头。</p>
+<p><strong>为什么：</strong> 三个因素叠加。其一，部分服务的客户端封装较旧，对 MOVED 只重定向、不更新槽表，每条请求都变成两跳，吞吐腰斩；其二，迁移批次太大，MIGRATE 的同步阻塞让源节点周期性卡顿，堆积请求超时后客户端弃用连接重建——重建又丢掉了槽表缓存，从头再走一轮重定向；其三，迁移中的槽命中 ASK 的请求天然多一次往返，把延迟放大了。</p>
+<p><strong>如何处理：</strong> 立即把 reshard 批次调小（经验值：每次 10~20 个槽，批次之间留观察间隔）；排查各服务客户端的 ASK/MOVED 处理逻辑——ASK 应先发 ASKING 重定向一次且不更新槽表，MOVED 应更新槽表；把大 key 从迁移批次中剔除，挪到低峰单独处理。</p>
+<p><strong>如何恢复：</strong> 槽迁移完成、SETSLOT 广播之后，MOVED 会自然归零，客户端槽表在下一次刷新后回到一跳模式。事后用 <code>redis-cli --cluster check</code> 确认所有槽归属一致，并在压测环境验证客户端的重定向处理，再继续剩余迁移量。这个场景的根因多数不在 Redis 而在客户端，把它写进变更前置检查项。监控上的识别特征也值得记下来（经验值）：风暴期 ASK 计数通常显著高于 MOVED——迁移中间态是常态、槽落定是瞬间；如果反过来 MOVED 持续高于 ASK，多半是客户端槽表刷新机制有问题，优先查客户端而不是继续怀疑服务端。</p>
+<h2 id="9-2-hash-tag-造成的数据倾斜">9.2 hash tag 造成的数据倾斜</h2>
+<p><strong>发生什么：</strong> 上线三个月后，集群里一个节点内存 75%，其余节点都在 15% 上下；该节点 CPU 长期是其他节点的数倍，大 key 与慢查询告警频发，而其他节点闲着。</p>
+<p><strong>为什么：</strong> 某业务模块为图省事，把模块内所有 key 共用了一个 hash tag（形如 <code>&#123;mall_order&#125;</code> 前缀），上千万个 key 全部落进同一个槽，而这个槽恰好分配在某一个节点上。CRC16 没有错，参与哈希的内容从来没有变过——分片在模块的边界被击穿了，这个槽所在的节点实质上退化为单机。</p>
+<p><strong>如何处理：</strong> 第一步确认倾斜范围：<code>CLUSTER COUNTKEYSINSLOT</code> 找出大槽，<code>CLUSTER GETKEYSINSLOT</code> 抽样观察 key 的命名模式，定位到错误的 tag 用法。第二步改造 key 命名：tag 收紧到实体粒度（如 <code>&#123;order:100861&#125;</code>），新写入自然分散。第三步处理存量：能设 TTL 的等过期；不能过期的写脚本按新命名重写、双跑比对后再切换读取。</p>
+<p><strong>如何恢复：</strong> 存量重写完成、监控上各节点内存占比回归均衡后，执行一次 <code>redis-cli --cluster rebalance</code> 把槽分布重新摊平。注意一个止血手段的局限：如果业务着急，可以先把热点槽 reshard 到一台高配节点单独扛——但槽内 key 依然挤在一起，CPU 热点依旧，这只是买时间，不是修复。最后把&quot;禁止业务域级 hash tag&quot;写进 code review 清单，这类问题一旦形成惯例，返工成本远高于当初写对。</p>
+<h2 id="9-3-迁移中断，槽卡在过渡态">9.3 迁移中断，槽卡在过渡态</h2>
+<p><strong>发生什么：</strong> reshard 脚本跑到一半网络闪断，进程退出。之后业务开始间歇性报错：有的 key 出现 MOVED 循环（客户端被 A 指到 B、又被 B 指回 A），多 key 命令频繁 TRYAGAIN。<code>CLUSTER NODES</code> 输出里能看到形如 <code>[3000-&gt;-]</code> 的迁移标记。</p>
+<p><strong>为什么：</strong> 迁移只走了一半——MIGRATING/IMPORTING 已设置、部分 key 已搬走，但 SETSLOT NODE 没有执行，两个节点对槽的认知停留在中间态。全局槽表认为槽还是 A 的，A 上的部分 key 却已经在 B 上，&quot;被 ASK 引到 B 的请求&quot;与&quot;仍命中 A 的请求&quot;交替出现，客户端的表现就是路由抖动。</p>
+<p><strong>如何处理：</strong> 优先用官方修复工具：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">1</span><br><span class="line">redis-cli --cluster fix 127.0.0.1:7000</span><br></pre></td></tr></table></figure>
+<p>fix 会扫描所有槽的迁移状态，把残留的 key 补迁完，再统一执行 SETSLOT 收尾。若只有个别槽想手动处理：先 <code>CLUSTER GETKEYSINSLOT</code> 把源节点残留 key 迁完，然后对源、目标和其余节点补执行 <code>CLUSTER SETSLOT 3000 NODE </code>；如果确认这个槽本来就不该迁，用 <code>CLUSTER SETSLOT 3000 STABLE</code> 清掉 MIGRATING 状态回到稳态。</p>
+<p><strong>如何恢复：</strong> 修复后用 <code>redis-cli --cluster check</code> 验证 16384 个槽全部有归属、无过渡态标记，观察 MOVED 错误率归零，再继续后续变更。教训有两条：reshard 工具本身可重复执行，中断后重新跑即可续传，不要在半途用非常规手段&quot;修正&quot;数据；变更平台要把&quot;迁移中断后的检查步骤&quot;固化下来，而不是依赖当事人在深夜凭记忆处理。</p>
+<h2 id="十、总结与建议">十、总结与建议</h2>
+<p>回到开头的单机瓶颈。Redis Cluster 用&quot;固定槽数 + 可变归属&quot;的两层映射，把扩缩容从全量重哈希变成槽粒度的定向搬迁；用 MOVED/ASK 两级重定向加客户端槽表缓存，把路由成本压到常态一跳；用 gossip 加多数派判定加从节点选举，在不引入外部组件的前提下补齐高可用。理解这套机制的钥匙始终是那个中间层：<strong>16384 个槽是数据分布的账本，一切扩容、均衡与故障转移都只是在改写账本</strong>。</p>
+<p>落地建议按优先级排：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>客户端先行。</strong> 选成熟的 smart client 并逐一验证 MOVED/ASK/TRYAGAIN 的处理，这一步做错，后面所有服务端变更都会被放大成线上事故。</p>
+</li>
+<li class="lvl-3">
+<p><strong>大 key 治理前置。</strong> MIGRATE 同步阻塞源和目标两个主线程，大 key 是迁移流程的单点风险，任何 reshard 计划之前先完成扫描与拆分。</p>
+</li>
+<li class="lvl-3">
+<p><strong>hash tag 立规范。</strong> 按实体 ID 打 tag，禁止业务域级 tag；这类问题的返工成本远高于当初写对。</p>
+</li>
+<li class="lvl-3">
+<p><strong>参数与窗口。</strong> cluster-node-timeout 按网络质量取 15~30 秒，跨机房调大；迁移挑低峰、小批量推进、每批观察。</p>
+</li>
+<li class="lvl-3">
+<p><strong>接受边界并设计补偿。</strong> 单 DB、同槽多 key、异步复制下 failover 可能丢毫秒级写入——这三个边界要在架构评审阶段摊开，业务侧准备好补偿与校验，而不是上线后补救。</p>
+</li>
+</ol>
+<h2 id="工程结论">工程结论</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>16384 个槽是心跳位图体积（2KB）与千级节点分配精度的官方折中；key 到槽的映射永远不变，扩缩容只改槽的归属——这是理解集群一切行为的地基。</p>
+</li>
+<li class="lvl-2">
+<p>MOVED 是&quot;槽已易主、更新槽表&quot;，ASK 是&quot;搬家途中、ASKING 通行且槽表不动&quot;，多 key 部分缺失回 TRYAGAIN；三者处理混淆是迁移期事故最常见的客户端侧根因。</p>
+</li>
+<li class="lvl-2">
+<p>MIGRATE 同步阻塞源与目标两个主线程，大 key 必须迁移前拆解；迁移走低峰、小批量，超时可能留下双写状态，自写脚本要显式处理。</p>
+</li>
+<li class="lvl-2">
+<p>gossip 是最终一致的去中心化元数据协议；cluster-node-timeout 同时决定探活节奏、下线判定与 failover 时机，跨机房部署应调大。</p>
+</li>
+<li class="lvl-2">
+<p>集群只有 db 0、多 key 操作依赖 hash tag 同槽、failover 可能丢毫秒级写入，这三条边界要在选型与评审阶段摊开，而非线上补救。</p>
+</li>
+</ul>
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2025/12/993e8895ae2e46ca8c4d744b312d1491/">Elasticsearch 文档如何落到分片？Routing 原理、路由键与数据倾斜</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/01/4c3bfb375d2e49448ccc3898e4bf57ac/">Redis 大 Key 为何能拖垮整个实例？从主线程阻塞到检测治理的完整闭环</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/12/fb61cae088544f86a4209a47b2ca6a3d/">Redis 数据类型背后是什么？从 Type、Encoding 到底层数据结构</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/09/consistent-hashing/">普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/08/65a671b1723e48818f080dda25a3730f/">Redis 内存满了怎么办？过期删除与淘汰策略如何选择</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/08/redis-cluster-hash-slot/">https://pengline.cn/2026/08/redis-cluster-hash-slot/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E7%BC%93%E5%AD%98/">缓存</a><a class="post-meta__tags" href="/tags/Redis/">Redis</a><a class="post-meta__tags" href="/tags/%E5%A4%A7-Key/">大 Key</a><a class="post-meta__tags" href="/tags/Redis-Cluster/">Redis Cluster</a><a class="post-meta__tags" href="/tags/%E5%93%88%E5%B8%8C%E6%A7%BD/">哈希槽</a><a class="post-meta__tags" href="/tags/%E6%95%B0%E6%8D%AE%E5%88%86%E7%89%87/">数据分片</a><a class="post-meta__tags" href="/tags/CRC16/">CRC16</a><a class="post-meta__tags" href="/tags/hash-tag/">hash tag</a><a class="post-meta__tags" href="/tags/MOVED/">MOVED</a><a class="post-meta__tags" href="/tags/ASK/">ASK</a><a class="post-meta__tags" href="/tags/%E6%A7%BD%E8%BF%81%E7%A7%BB/">槽迁移</a><a class="post-meta__tags" href="/tags/Reshard/">Reshard</a><a class="post-meta__tags" href="/tags/Gossip/">Gossip</a><a class="post-meta__tags" href="/tags/%E6%95%85%E9%9A%9C%E8%BD%AC%E7%A7%BB/">故障转移</a><a class="post-meta__tags" href="/tags/%E4%B8%80%E8%87%B4%E6%80%A7%E5%93%88%E5%B8%8C/">一致性哈希</a><a class="post-meta__tags" href="/tags/Smart-Client/">Smart Client</a><a class="post-meta__tags" href="/tags/%E9%AB%98%E5%8F%AF%E7%94%A8/">高可用</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F/">分布式</a><a class="post-meta__tags" href="/tags/%E6%95%B0%E6%8D%AE%E5%BA%93/">数据库</a><a class="post-meta__tags" href="/tags/%E4%B8%AD%E9%97%B4%E4%BB%B6/">中间件</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/09/02ca2de6ce714cb697d07b3e7f193acd/" title="如何让终端里的编程助手安全地自动完成改动文件与运行命令等任务"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/175196150911175196150968.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">如何让终端里的编程助手安全地自动完成改动文件与运行命令等任务</div></div><div class="info-2"><div class="info-item-1">Claude Code 是终端里的官方命令行编程助手,可读写文件、执行命令、搜索代码库,并集成 Git、MCP 与 Skills。详解安装、CLI 参数、核心指令、项目指南、权限沙箱安全机制、跨会话记忆与 Plan 模式、Hooks 与子代理并行工作流。</div></div></div></a><a class="pagination-related" href="/2026/08/mysql-buffer-pool-flush/" title="MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small074056Vjvny1754869256.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景</div></div><div class="info-2"><div class="info-item-1">几百 GB 的大表跑在只有几十 GB 内存的服务器上，MySQL 为什么敢放心把数据先放在内存里？答案藏在 Buffer Pool、change buffer、redo log 与整套刷盘策略里。本文沿一条 UPDATE 的流转路径展开，讲清缓存页管理与防污染设计、WAL 预写日志与 checkpoint 节奏、双 1 配置的取舍以及 doublewrite 的存在理由，并复盘三个典型故障场景。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/08/consistent-hashing/" title="普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193133vUdYM1755689493.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-08-08</div><div class="info-item-2">普通哈希取模迁移数据为什么痛？一致性哈希的虚拟节点解法</div></div><div class="info-2"><div class="info-item-1">缓存集群从三台扩到四台，普通取模会让四分之三的键换位，命中率随之崩塌。本文从公式推演讲清一致性哈希如何把迁移范围压缩到邻近区段，再借虚拟节点治理倾斜，并对比哈希槽、剖析热点与宕机两大线上事故的处理思路。</div></div></div></a><a class="pagination-related" href="/2025/01/4c3bfb375d2e49448ccc3898e4bf57ac/" title="Redis 大 Key 为何能拖垮整个实例？从主线程阻塞到检测治理的完整闭环"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634265801642163426580161.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-01-07</div><div class="info-item-2">Redis 大 Key 为何能拖垮整个实例？从主线程阻塞到检测治理的完整闭环</div></div><div class="info-2"><div class="info-item-1">剖析 Redis 大 Key 的判定标准与四大危害根因：单线程模型下删除、过期与全量返回为何阻塞主线程，集群倾斜、网络拥堵与持久化写时复制如何放大风险，并结合线上故障场景讲解检测手段、分桶拆分、异步删除与渐进瘦身等治理方案及监控告警设计。</div></div></div></a><a class="pagination-related" href="/2026/09/neotask-embed-quickstart/" title="耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1642747626515164274762647.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-23</div><div class="info-item-2">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</div></div><div class="info-2"><div class="info-item-1">耗时任务排队传统方案要引入 Celery 加 Redis/RabbitMQ 中间件，运维成本高。NeoTask 用纯 Python 异步任务池把调度内嵌进应用：即时、延时、Cron 定时、四级优先级、自动重试开箱即用，内存、SQLite、Redis 三种持久化按需切换。本文覆盖三种使用范式、四种任务类型、背压语义与升级信号。</div></div></div></a><a class="pagination-related" href="/2026/08/mysql-buffer-pool-flush/" title="MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small074056Vjvny1754869256.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-08-15</div><div class="info-item-2">MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景</div></div><div class="info-2"><div class="info-item-1">几百 GB 的大表跑在只有几十 GB 内存的服务器上，MySQL 为什么敢放心把数据先放在内存里？答案藏在 Buffer Pool、change buffer、redo log 与整套刷盘策略里。本文沿一条 UPDATE 的流转路径展开，讲清缓存页管理与防污染设计、WAL 预写日志与 checkpoint 节奏、双 1 配置的取舍以及 doublewrite 的存在理由，并复盘三个典型故障场景。</div></div></div></a><a class="pagination-related" href="/2025/12/fb61cae088544f86a4209a47b2ca6a3d/" title="Redis 数据类型背后是什么？从 Type、Encoding 到底层数据结构"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1744010580430174401058043.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-07</div><div class="info-item-2">Redis 数据类型背后是什么？从 Type、Encoding 到底层数据结构</div></div><div class="info-2"><div class="info-item-1">剖析 Redis 的类型-编码-数据结构三层对象模型，SDS、压缩列表、快速列表、字典与渐进式 rehash、跳表、整数集合等底层结构的原理与适用规模，String/Hash/Set/ZSet/List 在何种规模下触发编码切换并因此节省内存，以及依据访问模式与数据规模做数据结构选型的工程结论与常见内存问题规避。</div></div></div></a><a class="pagination-related" href="/2025/10/d76bb55725a449d6bdd400ff4f058f00/" title="Redis 重启后数据为什么会丢？RDB、AOF 与混合持久化的取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204389694163420438918.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-10-20</div><div class="info-item-2">Redis 重启后数据为什么会丢？RDB、AOF 与混合持久化的取舍</div></div><div class="info-2"><div class="info-item-1">详解 Redis 持久化的三种方案——RDB 快照借助 fork 与写时复制实现，fork 阻塞时长与内存翻倍的代价，AOF 命令追加、fsync 三种同步策略与重写采用的双缓冲机制，混合持久化“RDB 头 + AOF 尾”的文件结构如何兼得快速恢复与最少丢数据，并给出按数据安全等级选型组合方案的工程结论。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E6%A6%82%E8%BF%B0%EF%BC%9A%E5%88%86%E7%89%87%E6%96%B9%E6%A1%88%E8%A6%81%E5%90%8C%E6%97%B6%E5%9B%9E%E7%AD%94%E4%B8%89%E4%B8%AA%E9%97%AE%E9%A2%98"><span class="toc-number">1.</span> <span class="toc-text">一、概述：分片方案要同时回答三个问题</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E5%93%88%E5%B8%8C%E6%A7%BD%EF%BC%9A%E4%B8%BA%E4%BB%80%E4%B9%88%E6%98%AF-16384-%E4%B8%AA"><span class="toc-number">2.</span> <span class="toc-text">二、哈希槽：为什么是 16384 个</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-1-%E6%A7%BD%E6%98%AF%E6%80%8E%E4%B9%88%E7%AE%97%E5%87%BA%E6%9D%A5%E7%9A%84"><span class="toc-number">3.</span> <span class="toc-text">2.1 槽是怎么算出来的</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-2-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E7%94%A8%E4%B8%80%E8%87%B4%E6%80%A7%E5%93%88%E5%B8%8C"><span class="toc-number">4.</span> <span class="toc-text">2.2 为什么不用一致性哈希</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-3-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%81%B0%E5%A5%BD%E6%98%AF-16384"><span class="toc-number">5.</span> <span class="toc-text">2.3 为什么恰好是 16384</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81hash-tag%EF%BC%9A%E5%A4%9A-key-%E6%93%8D%E4%BD%9C%E7%9A%84%E9%80%83%E7%94%9F%E9%97%A8%EF%BC%8C%E4%B9%9F%E6%98%AF%E5%80%BE%E6%96%9C%E7%9A%84%E6%BA%90%E5%A4%B4"><span class="toc-number">6.</span> <span class="toc-text">三、hash tag：多 key 操作的逃生门，也是倾斜的源头</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E5%AE%A2%E6%88%B7%E7%AB%AF%E8%B7%AF%E7%94%B1%EF%BC%9AMOVED%E3%80%81ASK-%E4%B8%8E-smart-client"><span class="toc-number">7.</span> <span class="toc-text">四、客户端路由：MOVED、ASK 与 smart client</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-1-MOVED%EF%BC%9A%E6%A7%BD%E7%9A%84%E5%BD%92%E5%B1%9E%E5%B7%B2%E7%BB%8F%E5%8F%98%E4%BA%86"><span class="toc-number">8.</span> <span class="toc-text">4.1 MOVED：槽的归属已经变了</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-2-ASK%EF%BC%9A%E6%A7%BD%E6%AD%A3%E5%9C%A8%E6%90%AC%E5%AE%B6"><span class="toc-number">9.</span> <span class="toc-text">4.2 ASK：槽正在搬家</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-3-smart-client%EF%BC%9A%E6%8A%8A%E9%87%8D%E5%AE%9A%E5%90%91%E5%8F%98%E6%88%90%E4%BE%8B%E5%A4%96%E8%80%8C%E9%9D%9E%E5%B8%B8%E6%80%81"><span class="toc-number">10.</span> <span class="toc-text">4.3 smart client：把重定向变成例外而非常态</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E8%8A%82%E7%82%B9%E9%97%B4%E9%80%9A%E4%BF%A1%EF%BC%9Agossip-%E5%8D%8F%E8%AE%AE"><span class="toc-number">11.</span> <span class="toc-text">五、节点间通信：gossip 协议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E6%89%A9%E7%BC%A9%E5%AE%B9%EF%BC%9A%E6%A7%BD%E8%BF%81%E7%A7%BB%E7%9A%84%E5%85%A8%E6%B5%81%E7%A8%8B"><span class="toc-number">12.</span> <span class="toc-text">六、扩缩容：槽迁移的全流程</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-1-%E8%BF%81%E7%A7%BB%E4%BA%94%E6%AD%A5"><span class="toc-number">13.</span> <span class="toc-text">6.1 迁移五步</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-2-%E8%BF%81%E7%A7%BB%E4%B8%AD%E7%9A%84%E4%B8%A4%E9%98%B6%E6%AE%B5%E8%AF%B7%E6%B1%82"><span class="toc-number">14.</span> <span class="toc-text">6.2 迁移中的两阶段请求</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-3-%E5%A4%A7-Key%EF%BC%9A%E8%BF%81%E7%A7%BB%E6%9C%80%E5%A4%A7%E7%9A%84%E6%95%8C%E4%BA%BA"><span class="toc-number">15.</span> <span class="toc-text">6.3 大 Key：迁移最大的敌人</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6%E4%B8%8E%E8%87%AA%E5%8A%A8%E6%95%85%E9%9A%9C%E8%BD%AC%E7%A7%BB"><span class="toc-number">16.</span> <span class="toc-text">七、主从复制与自动故障转移</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81%E6%A8%AA%E5%90%91%E5%AF%B9%E6%AF%94%EF%BC%9A%E5%AE%A2%E6%88%B7%E7%AB%AF%E5%88%86%E7%89%87%E3%80%81%E4%BB%A3%E7%90%86%E5%88%86%E7%89%87%E3%80%81%E4%B8%80%E8%87%B4%E6%80%A7%E5%93%88%E5%B8%8C"><span class="toc-number">17.</span> <span class="toc-text">八、横向对比：客户端分片、代理分片、一致性哈希</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B9%9D%E3%80%81%E4%B8%89%E4%B8%AA%E7%9C%9F%E5%AE%9E%E6%95%85%E9%9A%9C%E5%9C%BA%E6%99%AF%E5%A4%8D%E7%9B%98"><span class="toc-number">18.</span> <span class="toc-text">九、三个真实故障场景复盘</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#9-1-%E8%BF%81%E7%A7%BB%E6%9C%9F%E7%9A%84%E9%87%8D%E5%AE%9A%E5%90%91%E9%A3%8E%E6%9A%B4"><span class="toc-number">19.</span> <span class="toc-text">9.1 迁移期的重定向风暴</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#9-2-hash-tag-%E9%80%A0%E6%88%90%E7%9A%84%E6%95%B0%E6%8D%AE%E5%80%BE%E6%96%9C"><span class="toc-number">20.</span> <span class="toc-text">9.2 hash tag 造成的数据倾斜</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#9-3-%E8%BF%81%E7%A7%BB%E4%B8%AD%E6%96%AD%EF%BC%8C%E6%A7%BD%E5%8D%A1%E5%9C%A8%E8%BF%87%E6%B8%A1%E6%80%81"><span class="toc-number">21.</span> <span class="toc-text">9.3 迁移中断，槽卡在过渡态</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8D%81%E3%80%81%E6%80%BB%E7%BB%93%E4%B8%8E%E5%BB%BA%E8%AE%AE"><span class="toc-number">22.</span> <span class="toc-text">十、总结与建议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E7%BB%93%E8%AE%BA"><span class="toc-number">23.</span> <span class="toc-text">工程结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">24.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

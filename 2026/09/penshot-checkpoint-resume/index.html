@@ -1,0 +1,727 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>检查点落了盘，任务为什么还是从头跑？PenShot 断点续传实战复盘 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="多智能体工作流跑一个长剧本要几百次 LLM 调用，中途崩溃从头再跑就是真金白银的浪费。本文以 PenShot 的检查点实现为样本复盘：LangGraph 检查点的最小知识、双模式与自动降级链的设计取舍、ainvoke 与同步 Saver 的排坑现场，以及 thread_id 漂移让检查点&quot;只写不读&quot;。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="检查点落了盘，任务为什么还是从头跑？PenShot 断点续传实战复盘">
+<meta property="og:url" content="https://pengline.cn/2026/09/penshot-checkpoint-resume/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="多智能体工作流跑一个长剧本要几百次 LLM 调用，中途崩溃从头再跑就是真金白银的浪费。本文以 PenShot 的检查点实现为样本复盘：LangGraph 检查点的最小知识、双模式与自动降级链的设计取舍、ainvoke 与同步 Saver 的排坑现场，以及 thread_id 漂移让检查点&quot;只写不读&quot;。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1727147141745172714714181.webp">
+<meta property="article:published_time" content="2026-09-18T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-30T10:22:19.750Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="AI视频">
+<meta property="article:tag" content="Agent">
+<meta property="article:tag" content="LLM">
+<meta property="article:tag" content="LangGraph">
+<meta property="article:tag" content="MemorySaver">
+<meta property="article:tag" content="PenShot">
+<meta property="article:tag" content="SqliteSaver">
+<meta property="article:tag" content="thread_id">
+<meta property="article:tag" content="分镜">
+<meta property="article:tag" content="多智能体">
+<meta property="article:tag" content="实战">
+<meta property="article:tag" content="工作流检查点">
+<meta property="article:tag" content="断点续传">
+<meta property="article:tag" content="智能体工作流">
+<meta property="article:tag" content="状态持久化">
+<meta property="article:tag" content="踩坑">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1727147141745172714714181.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/09/penshot-checkpoint-resume/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '检查点落了盘，任务为什么还是从头跑？PenShot 断点续传实战复盘',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">91</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">781</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1727147141745172714714181.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">检查点落了盘，任务为什么还是从头跑？PenShot 断点续传实战复盘</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">检查点落了盘，任务为什么还是从头跑？PenShot 断点续传实战复盘</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-09-18T16:00:00.000Z" title="发表于 2026-09-19 00:00:00">2026-09-19</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-30T10:22:19.750Z" title="更新于 2026-09-30 18:22:19">2026-09-30</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/PenShot/">PenShot</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>检查点落了盘，任务为什么还是从头跑？PenShot 断点续传实战复盘</h1>
+<p>先描述一个所有做过 LLM 工作流的人都见过的场景：30 场戏的短剧剧本扔进流水线，前四站跑得顺顺利利，四十分钟后在质量审计阶段撞上一次 API 超时，任务失败。重启任务，流水线从第一站重新开始——前面几百次 LLM 调用花的钱和时间，全部作废。</p>
+<p>这不是假想场景，这是 <a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com">PenShot</a> 六节点流水线的真实运行环境：剧本解析、镜头拆分、视频分段、提示词转换、质量审计、连贯性守护，每一站都在调 LLM，总调用次数与剧本规模成正比——30 场戏意味着几百次模型调用。粗略按流水线均分，在第五站失败意味着前四站约八成的调用投入直接清零；失败点越靠后，浪费比例越高。<strong>失败重跑的成本不是&quot;再等几分钟&quot;，而是&quot;再花一遍钱&quot;</strong>。检查点（Checkpoint）机制就是为这个场景准备的：状态落盘，断点续传，从最近一次快照继续跑。</p>
+<p>但我们在 PenShot 的实战里遇到了一个更尴尬的现实：检查点明明每次都在落盘，任务失败后依然从头再跑。本文把这个问题从头到尾复盘一遍——LangGraph 检查点的机制原理、PenShot 的设计取舍、一次 ainvoke 排坑现场，以及最贵的那一课。官方文档中心有一篇源码级的<a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/checkpoint.html">检查点考证</a>，本文不重复源码细节，聚焦<strong>决策为什么这么做、教训是什么、你该怎么避开</strong>。</p>
+<h2 id="一、先算账：多智能体工作流的失败成本">一、先算账：多智能体工作流的失败成本</h2>
+<p>传统 Web 应用的请求失败，重试成本是毫秒级的。多智能体工作流把成本结构彻底改变了：</p>
+<table>
+<thead>
+<tr>
+<th>成本项</th>
+<th>传统请求重试</th>
+<th>多智能体工作流重跑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单次失败重跑耗时</td>
+<td>毫秒</td>
+<td>分钟级（几十秒到几十分钟）</td>
+</tr>
+<tr>
+<td>重跑的直接开销</td>
+<td>几乎为零</td>
+<td>全链路 LLM 调用重新计费</td>
+</tr>
+<tr>
+<td>失败点影响</td>
+<td>与失败点位置无关</td>
+<td>越靠后浪费越多（前面全白跑）</td>
+</tr>
+<tr>
+<td>不可预期因素</td>
+<td>少</td>
+<td>API 限流、网络抖动、模型超时都是常态</td>
+</tr>
+</tbody>
+</table>
+<p>第三行是最容易被低估的：长剧本场景下，流水线越往后走，累计投入越大，而 LLM API 的超时与限流又偏偏是长尾分布的——<strong>跑得越远，撞上一次失败的绝对概率越高，失败的浪费也越大</strong>。这两条曲线叠加起来，让&quot;断点续传&quot;从一个锦上添花的优化项，变成了长剧本场景的必需品。</p>
+<pre><code class="highlight mermaid">flowchart LR
+    subgraph Without[&quot;无检查点：故障即清零&quot;]
+        A1[开始] --&gt; B1[解析] --&gt; C1[拆分] --&gt; D1[分段] --&gt; E1[审计] --&gt; F1[完成]
+        D1 -.-&gt;|故障| X1[从头开始] -.-&gt; A1
+    end
+
+    subgraph With[&quot;有检查点：故障续跑&quot;]
+        A2[开始] --&gt; B2[解析] --&gt; C2[拆分] --&gt; D2[分段] --&gt; E2[审计] --&gt; F2[完成]
+        D2 -.-&gt;|故障| R2[从最近快照恢复] -.-&gt; E2
+    end
+
+    style X1 fill:#ffebee
+    style R2 fill:#f1f8e9</code></pre>
+<p>检查点的价值有三个维度：<strong>断点续传</strong>（失败后从最近快照继续，不重复计费已完成的阶段）、<strong>状态调试</strong>（保留各阶段快照，出问题时可以离线复盘&quot;当时状态长什么样&quot;）、<strong>任务迁移</strong>（理论上检查点允许任务跨节点漂移）。第三个维度在 PenShot 当前的单机方案里属于能力方向而非现状，前两个才是实战里真实要抓的。</p>
+<p>还有一个容易被忽略的隐性收益：<strong>故障现场不再随进程消失</strong>。没有持久化检查点的场景里，任务失败意味着现场清零，排障只能靠日志拼凑；有了快照，服务崩溃后 SQLite 里的历史记录依然完整可查——哪怕续传还没接通，&quot;事后能复盘&quot;这件事本身就在排障中帮上过忙。</p>
+<h2 id="二、五分钟补课：LangGraph-检查点的机制原理">二、五分钟补课：LangGraph 检查点的机制原理</h2>
+<p>要理解后面的问题，先得知道 LangGraph 的检查点是怎么工作的。核心机制三句话：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>什么时候写</strong>：工作流在每个 super-step（一个或数个节点构成的执行步）边界，把完整状态快照自动写入 Checkpointer；</p>
+</li>
+<li class="lvl-3">
+<p><strong>写什么</strong>：状态快照 + 元数据，序列化后落库；不是只存最终结果，而是<strong>过程态</strong>——每个阶段结束时的完整状态都有一条记录。这正是检查点既能支撑断点续传、又能支撑回溯调试的根本原因；</p>
+</li>
+<li class="lvl-3">
+<p><strong>怎么读回来</strong>：以稳定的 <code>thread_id</code> 查询历史检查点，以 <code>None</code> 为输入重新 invoke，LangGraph 从最近的快照继续执行。</p>
+</li>
+</ol>
+<p>检查点记录以 <code>(thread_id, checkpoint_ns, checkpoint_id)</code> 为联合主键。<code>thread_id</code> 是任务隔离维度——<strong>同一个 thread_id 下保留一份完整的历史轨迹；换了 thread_id，等于换了一条全新的时间线</strong>。<code>checkpoint_ns</code> 是子图命名空间（顶层图默认空字符串），<code>checkpoint_id</code> 按执行顺序递增。请记住&quot;换 ID 即换时间线&quot;这句话，它是本文最重要教训的伏笔。</p>
+<p>落到 SQLite 里，<code>SqliteSaver</code> 的真实表结构只有两张表（以 <code>langgraph-checkpoint-sqlite</code> 的 <code>setup()</code> 为准）：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">CREATE TABLE</span> IF <span class="keyword">NOT</span> <span class="keyword">EXISTS</span> checkpoints (</span><br><span class="line">    thread_id TEXT <span class="keyword">NOT NULL</span>,</span><br><span class="line">    checkpoint_ns TEXT <span class="keyword">NOT NULL</span> <span class="keyword">DEFAULT</span> <span class="string">&#x27;&#x27;</span>,</span><br><span class="line">    checkpoint_id TEXT <span class="keyword">NOT NULL</span>,</span><br><span class="line">    parent_checkpoint_id TEXT,</span><br><span class="line">    type TEXT,</span><br><span class="line">    checkpoint <span class="type">BLOB</span>,</span><br><span class="line">    metadata <span class="type">BLOB</span>,</span><br><span class="line">    <span class="keyword">PRIMARY KEY</span> (thread_id, checkpoint_ns, checkpoint_id)</span><br><span class="line">);</span><br><span class="line"><span class="keyword">CREATE TABLE</span> IF <span class="keyword">NOT</span> <span class="keyword">EXISTS</span> writes (</span><br><span class="line">    thread_id TEXT <span class="keyword">NOT NULL</span>,</span><br><span class="line">    checkpoint_ns TEXT <span class="keyword">NOT NULL</span> <span class="keyword">DEFAULT</span> <span class="string">&#x27;&#x27;</span>,</span><br><span class="line">    checkpoint_id TEXT <span class="keyword">NOT NULL</span>,</span><br><span class="line">    task_id TEXT <span class="keyword">NOT NULL</span>,</span><br><span class="line">    idx <span class="type">INTEGER</span> <span class="keyword">NOT NULL</span>,</span><br><span class="line">    channel TEXT <span class="keyword">NOT NULL</span>,</span><br><span class="line">    type TEXT,</span><br><span class="line">    <span class="keyword">value</span> <span class="type">BLOB</span>,</span><br><span class="line">    <span class="keyword">PRIMARY KEY</span> (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)</span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+<p>很多介绍文章会把检查点表画成带 <code>script_id</code>、<code>task_id</code> 业务字段的表——那是错的，业务标识不进表结构，它们只活在 <code>thread_id</code> 的拼装逻辑里。状态数据本身被序列化进 <code>checkpoint</code> 与 <code>metadata</code> 两个 BLOB 列，这是 LangGraph 让 saver 与业务解耦的设计。<code>writes</code> 表值得多看一眼：它的 <code>channel</code>/<code>idx</code>/<code>value</code> 三列存的是&quot;某个 super-step 里各通道的待写入数据&quot;，续传恢复时正是靠重放这些 pending writes 补齐中断瞬间的半成品状态——这也解释了为什么&quot;恢复语义&quot;不只是把状态读回来那么简单，第八节会回到这里。</p>
+<pre><code class="highlight mermaid">sequenceDiagram
+    participant App as 应用
+    participant Graph as LangGraph 工作流
+    participant Saver as Checkpointer
+    participant DB as SQLite
+
+    App-&gt;&gt;Graph: invoke(state, thread_id=T)
+    Graph-&gt;&gt;Saver: 查询 T 的历史检查点
+    Saver-&gt;&gt;DB: SELECT by thread_id
+    alt 存在快照
+        Saver--&gt;&gt;Graph: 返回状态，从断点继续
+    else 无快照
+        Graph-&gt;&gt;Graph: 从头执行
+    end
+    loop 每个 super-step
+        Graph-&gt;&gt;Saver: 写入状态快照
+        Saver-&gt;&gt;DB: INSERT checkpoint
+    end</code></pre>
+<p>这张时序图描述的是<strong>完整</strong>的读写路径。对照它检查 PenShot 的实现，会发现一个关键事实：写路径是通的，读路径——&quot;查历史、恢复执行&quot;那一段——在代码里没有任何调用入口。问题的根源在第五节展开，先把设计决策讲清楚。</p>
+<h2 id="三、PenShot-的设计取舍：双模式与自动降级链">三、PenShot 的设计取舍：双模式与自动降级链</h2>
+<p>PenShot 的检查点模块是一个叫 <code>WorkflowCheckpointer</code> 的门面类，对外交出两样东西：一个给 LangGraph 用的 saver，一份带 <code>thread_id</code> 的运行配置。它支持两种存储模式：</p>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>实现</th>
+<th>定位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MemorySaver</td>
+<td>LangGraph 内置，状态存进程内存</td>
+<td>开发测试、CI；进程重启即丢失</td>
+</tr>
+<tr>
+<td>SqliteSaver</td>
+<td>官方同步版 SQLite 实现</td>
+<td>单机部署持久化；每个任务一个独立 <code>.db</code> 文件</td>
+</tr>
+</tbody>
+</table>
+<p>几个设计决策值得展开，因为它们都带着取舍：</p>
+<p><strong>决策一：每任务一个数据库文件，而不是共享一个库。</strong> 检查点文件按剧本一层目录、任务一层文件组织：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">data/checkpoints/</span><br><span class="line">├── script_001/           # 按剧本ID隔离</span><br><span class="line">│   ├── task_001.db       # 按任务ID隔离</span><br><span class="line">│   └── task_002.db</span><br><span class="line">└── script_002/</span><br><span class="line">    └── task_003.db</span><br></pre></td></tr></table></figure>
+<p>一个剧本可能对应多个任务（多版本重跑），这样既能在剧本维度统一清理，又能避免同剧本并发任务的检查点互相覆盖。注意隔离是靠<strong>文件路径拼装</strong>实现的，不是数据库 schema——<code>script_id</code>/<code>task_id</code> 从未写进表字段。连接建立时还执行了 <code>PRAGMA journal_mode=WAL</code> 与 <code>synchronous=NORMAL</code>，用写前日志换读写并发——顺带一提，<code>langgraph-checkpoint-sqlite</code> 自身的 <code>setup()</code> 也会执行 WAL 设置，项目连接层与库内建行为互为双保险，这类&quot;两层都设&quot;的冗余在持久化基础设施里是惯例而不是疏忽。同实例复用由 <code>CheckpointerFactory</code> 保证（以 <code>script_id_task_id</code> 为缓存键加锁创建，避免重复 new 造成连接泄漏）。</p>
+<p><strong>决策二：auto 模式用&quot;写测&quot;探测环境。</strong> <code>checkpoint_mode</code> 默认 <code>auto</code>，启动时直接在目标目录写一个 <code>.write_test</code> 文件再删掉——用&quot;能不能写&quot;代替&quot;猜环境&quot;：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># _determine_mode 的 auto 分支（逻辑摘录）</span></span><br><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    checkpoint_dir = <span class="built_in">getattr</span>(<span class="variable language_">self</span>.config, <span class="string">&#x27;checkpoint_dir&#x27;</span>, <span class="string">&#x27;data/checkpoints&#x27;</span>)</span><br><span class="line">    os.makedirs(checkpoint_dir, exist_ok=<span class="literal">True</span>)</span><br><span class="line">    test_path = os.path.join(checkpoint_dir, <span class="string">&#x27;.write_test&#x27;</span>)</span><br><span class="line">    <span class="keyword">with</span> <span class="built_in">open</span>(test_path, <span class="string">&#x27;w&#x27;</span>) <span class="keyword">as</span> f:</span><br><span class="line">        f.write(<span class="string">&#x27;test&#x27;</span>)</span><br><span class="line">    os.remove(test_path)</span><br><span class="line">    <span class="keyword">return</span> CheckpointMode.SQLITE</span><br><span class="line"><span class="keyword">except</span> Exception:</span><br><span class="line">    warning(<span class="string">&quot;SQLite 不可用，降级到内存模式&quot;</span>)</span><br><span class="line">    <span class="keyword">return</span> CheckpointMode.MEMORY</span><br></pre></td></tr></table></figure>
+<p>这个探测方式很土但有效，配合依赖缺失时的导入期降级（<code>langgraph-checkpoint-sqlite</code> 未安装时 <code>SqliteSaver = None</code>），形成了两条降级链：<strong>任何环境下都能把图跑起来</strong>是被优先保证的。</p>
+<p>顺带澄清一个容易误读的点：配置注释里写的 <code>postgres</code> 模式在运行时并不存在——<code>CheckpointMode</code> 枚举只有 <code>MEMORY</code> 和 <code>SQLITE</code> 两个成员，<code>postgres_uri</code> 字段全仓库没有任何消费方，传 <code>checkpoint_mode='postgres'</code> 只会静默落入 auto 分支按 SQLite 处理。它是配置层留下的规划残留物，不是能力。</p>
+<p>但这里有一个必须直视的代价：两条降级链都只打 <code>warning</code> 级日志，是<strong>静默降级</strong>——流程照常成功，没有人会被叫醒。降级的共同终点都是&quot;进程重启即丢失&quot;，也就是说，如果你在部署时没注意目录权限、或者忘了装 <code>langgraph-checkpoint-sqlite</code>，你以为的&quot;持久化&quot;会悄悄退化为&quot;内存态&quot;，直到第一次进程崩溃才暴露。所以我们的建议很明确：<strong>生产环境把 <code>checkpoint_mode</code> 显式设为 <code>sqlite</code></strong>——显式模式下目录不可写会在初始化时直接报错，更吵，但更早暴露；同时把那两条 warning 接进告警。真怀疑&quot;检查点全丢&quot;时，排查顺序也是先看日志：在启动日志里搜&quot;langgraph-checkpoint-sqlite 未安装&quot;或&quot;SQLite 不可用，降级到内存模式&quot;这两条 warning，一眼区分是导入期降级还是运行期降级。</p>
+<pre><code class="highlight mermaid">flowchart TD
+    S[启动 checkpoint_mode=auto] --&gt; T&#123;目录写测通过?&#125;
+    T -- 是 --&gt; SQ[SqliteSaver&lt;br/&gt;落盘持久化]
+    T -- 否 --&gt; ME[降级 MemorySaver&lt;br/&gt;仅 warning 一条]
+    S2[启动 依赖缺失] --&gt; ME
+    ME -.-&gt;|进程重启| L[状态全部丢失&lt;br/&gt;且无人告警]
+
+    style SQ fill:#f1f8e9
+    style L fill:#ffebee</code></pre>
+<p><strong>决策三：同步执行，不用 ainvoke。</strong> 这个决策来自一次真实的排坑现场，下一节单独讲。</p>
+<h2 id="四、排坑现场：ainvoke-与同步-Saver-的正面冲突">四、排坑现场：ainvoke 与同步 Saver 的正面冲突</h2>
+<p>代码里留着两处&quot;考古证据&quot;：<code>workflow_pipeline.py</code> 和 <code>workflow_output_fixer.py</code> 各有一行被注释掉的 <code>await self.workflow.ainvoke(...)</code>，紧跟着换成了同步的 <code>workflow.invoke(...)</code>。这说明项目一度以异步方式执行工作流，然后在 <code>SqliteSaver</code> 上撞出了一个经典错误——用 <code>ainvoke</code> 时，LangGraph 会调用 saver 的异步接口（<code>aput</code>/<code>aget_tuple</code>/<code>alist</code>），而同步版 <code>SqliteSaver</code> 对这几个方法一律直接抛错：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">The SqliteSaver does not support async methods. Consider using AsyncSqliteSaver instead.</span><br><span class="line">from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver</span><br><span class="line">Note: AsyncSqliteSaver requires the aiosqlite package to use.</span><br></pre></td></tr></table></figure>
+<p>当时的修复有两个方向：换 <code>AsyncSqliteSaver</code>（引入 <code>aiosqlite</code> 依赖，异步链路全改造），或者把工作流切回同步 <code>invoke</code>。PenShot 选了后者，理由摆在一起看很清楚：</p>
+<table>
+<thead>
+<tr>
+<th>考量因素</th>
+<th>同步模式</th>
+<th>异步模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>代码复杂度</td>
+<td>低</td>
+<td>高（aiosqlite + 事件循环）</td>
+</tr>
+<tr>
+<td>依赖数量</td>
+<td>langgraph-checkpoint-sqlite</td>
+<td>另需 aiosqlite</td>
+</tr>
+<tr>
+<td>调试难度</td>
+<td>简单</td>
+<td>事件循环问题难排查</td>
+</tr>
+<tr>
+<td>并发能力</td>
+<td>调用方线程内顺序执行</td>
+<td>原生协程调度</td>
+</tr>
+</tbody>
+</table>
+<p>剧本分镜场景任务以顺序执行为主，同步完全够用，稳定性优先、改动面最小——代价是放弃了原生协程并发，这在任务量增长后才会显现。</p>
+<p>这条坑留给所有人的通用结论只有一句：<strong>异步链路必须配异步 Saver，同步链路配同步 Saver，不要混搭</strong>。<code>ainvoke</code> + 同步 <code>SqliteSaver</code> 的组合会在第一次写检查点时就抛 <code>NotImplementedError</code>——好消息是这个故障&quot;吵得早&quot;，比那些静默失效的问题友好得多。排查也最简单：报错栈直接指向 saver 的异步接口，装 aiosqlite 或切同步二选一，五分钟内解决。<strong>吵的故障是廉价的，静默的故障才是贵的</strong>——这也是全文反复出现&quot;静默&quot;二字的原因。</p>
+<h2 id="五、最贵的一课：thread-id-漂移，检查点只写不读">五、最贵的一课：thread_id 漂移，检查点只写不读</h2>
+<p>现在讲本文的主角。PenShot 在 <code>MultiAgentPipeline</code> 里的检查点接线一共三处，前两处都对：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 第一处：初始化时创建管理器 —— 正确</span></span><br><span class="line"><span class="variable language_">self</span>.checkpointer = create_checkpointer(<span class="variable language_">self</span>.script_id, <span class="variable language_">self</span>.task_id, config)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 第二处：构建图时把 saver 交给 LangGraph —— 正确</span></span><br><span class="line">saver = <span class="variable language_">self</span>.checkpointer.get_saver()</span><br><span class="line">compiled_graph = orchestrator.graph.<span class="built_in">compile</span>(checkpointer=saver)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 第三处：执行时传入 thread_id —— 问题在这里</span></span><br><span class="line">final_state = workflow.invoke(</span><br><span class="line">    initial_state,</span><br><span class="line">    config=&#123;<span class="string">&quot;configurable&quot;</span>: &#123;<span class="string">&quot;thread_id&quot;</span>: <span class="string">f&quot;process_<span class="subst">&#123;<span class="built_in">id</span>(initial_state)&#125;</span>&quot;</span>&#125;&#125;</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+<p>第三处的 <code>thread_id</code> 用了 <code>f&quot;process_{id(initial_state)}&quot;</code>。<code>id()</code> 是 CPython 对象的内存地址标识——<strong>同一个任务每次运行，<code>initial_state</code> 都是一个新对象，<code>id()</code> 都会得到一个全新的值</strong>。而 <code>WorkflowCheckpointer</code> 明明提供了 <code>get_config()</code> / <code>get_thread_id()</code>，返回稳定的 <code>{script_id}_{task_id}</code>，专门为跨运行命中设计——这两个方法在全仓库没有任何调用方。</p>
+<p>后果可以完整推演成一张断链表：</p>
+<table>
+<thead>
+<tr>
+<th>环节</th>
+<th>设计意图</th>
+<th>实际状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>写入</td>
+<td>每个 super-step 落盘快照</td>
+<td>真实执行，数据完整</td>
+</tr>
+<tr>
+<td>标识</td>
+<td>同一任务固定 thread_id，跨运行命中</td>
+<td>每次运行随机新 ID（内存地址）</td>
+</tr>
+<tr>
+<td>读取</td>
+<td>复用 thread_id 查询、恢复执行</td>
+<td>无任何读取入口</td>
+</tr>
+<tr>
+<td>清理</td>
+<td>定期删旧检查点</td>
+<td>清理方法无调用方</td>
+</tr>
+<tr>
+<td>释放</td>
+<td>任务结束关闭连接</td>
+<td>close 无调用方，且自带 async 陷阱</td>
+</tr>
+</tbody>
+</table>
+<p>也就是说，<strong>检查点成了一本只进不出的账</strong>：写进去的数据是真实、完整、可回溯的（你可以手动打开 <code>.db</code> 文件复盘每次运行的完整状态轨迹），但&quot;断点续传&quot;这条产品能力没有被接通——每次执行都是一条全新 thread 时间线，上一轮存的检查点永远不可能被下一轮命中。现状可以准确概括为一句话：<strong>状态每次都在落盘，任务失败后依然从头再跑</strong>。</p>
+<p>把故障推演成两种世界线会更直观。同一次&quot;质量审计阶段 API 超时&quot;：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>修复前</strong>：重启任务 → 新 thread_id → 所有快照视而不见 → 从剧本解析重新调用几百次 LLM → 旧快照永久躺在库里无人问津；</p>
+</li>
+<li class="lvl-2">
+<p><strong>修复后（thread_id 稳定 + 恢复入口）</strong>：重启任务 → 命中历史时间线 → LangGraph 从最近快照（视频分段完成态）继续 → 只重跑质量审计与其后阶段 → 调用成本与失败点位置成正比，而不是与剧本总规模成正比。</p>
+</li>
+</ul>
+<p>想验证自己的 LangGraph 项目有没有同款问题，一条 SQL 就够了：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> thread_id, <span class="built_in">COUNT</span>(<span class="operator">*</span>) <span class="keyword">FROM</span> checkpoints <span class="keyword">GROUP</span> <span class="keyword">BY</span> thread_id;</span><br></pre></td></tr></table></figure>
+<p>同一个任务下，如果 <code>thread_id</code> 的种类随运行次数增长，就是中招了——每跑一次写一条新时间线，历史快照全在库里躺着，但永远没人读。</p>
+<p>这个 bug 值得单独记一笔的原因不是它难修（修法就一行，见下一节），而是它的<strong>形态</strong>：全程没有任何报错。降级是静默的、标识漂移是静默的、清理缺失也是静默的——系统看起来一切正常，检查点文件在正常增长，日志里没有 ERROR，但核心能力没生效。这类&quot;能力静默缺失&quot;的故障不会出现在监控大盘上，只能靠对&quot;接线完整性&quot;的主动验证来防。</p>
+<h2 id="六、连带的三个静默问题：配置字段存在不等于能力存在">六、连带的三个静默问题：配置字段存在不等于能力存在</h2>
+<p>顺着 thread_id 的缺口往下查，还发现了三个同形态的问题，放在一起看很有代表性：</p>
+<p><strong>其一，清理从未接线。</strong> <code>cleanup_old_checkpoints(keep_count=10)</code> 实现得很完整：glob 出同剧本下所有 <code>task_*.db</code>，按修改时间排序，保留最近 N 个，逐个删除。但它没有任何调用方，<code>max_checkpoints_per_script</code> 配置也从未被读取。真实后果：同一剧本下的 <code>.db</code> 文件只增不减，加上 thread_id 漂移让每个文件都在持续膨胀，长跑场景下磁盘占用线性上涨。</p>
+<p><strong>其二，资源释放链只画了一半。</strong> <code>close()</code> 是 <code>async def</code>，但类又提供同步的 <code>with</code> 支持，<code>__exit__</code> 里直接调用 <code>self.close()</code> 只会创建一个协程对象然后丢弃——连接不会被真正关闭，日志里留下 <code>coroutine 'close' was never awaited</code> 的 RuntimeWarning。工厂类的 <code>close_all()</code> 同样没有调用方，进程生命周期内累积的 SQLite 连接一直存活到退出。短跑测试无感，长跑服务里慢慢变成句柄与内存的滞留。</p>
+<p><strong>其三，六个配置字段只有两个被读取。</strong> <code>ShotConfig</code> 里检查点相关的字段有六个：<code>checkpoint_mode</code>、<code>checkpoint_dir</code>、<code>postgres_uri</code>、<code>max_checkpoints_per_script</code>、<code>checkpoint_max_connections</code>、<code>checkpoint_idle_timeout</code>。真正被消费的只有前两个。后四个描述的是理想中的能力——保留份数、连接池、空闲回收、Postgres 支持——但<strong>配置字段存在，不代表能力存在</strong>。尤其 <code>postgres_uri</code>，注释里写着支持 postgres，运行时传 <code>checkpoint_mode='postgres'</code> 甚至不会报错，只会静默落进 auto 分支按 SQLite 处理。</p>
+<p>把这三个问题跟 thread_id 缺口放在一起，规律很清楚：<strong>骨架都搭了（类、方法、配置、字段一应俱全），但接线没完成（没有调用方、没有消费方、没有验证）</strong>。对使用者的启示是：评估一个功能是否可用，别看配置项和类图，看调用链——从入口到落盘再到读回，每一跳都要有真实的调用方。</p>
+<p>落到日常开发里有两个低成本抓手：其一，<strong>新方法落地的当天就做一次 find usages</strong>——IDE 里数一数调用方，零个就是没接线，趁记忆还热赶紧补；其二，把死代码检测（如 vulture）挂进 CI 报告——<code>get_config</code>、<code>cleanup_old_checkpoints</code> 这类&quot;零调用方法&quot;在报告里一眼可见。静态检查证明不了能力正确，但能以最低成本暴露&quot;骨架有了、电线没接&quot;的中间态。</p>
+<h2 id="七、检查点不是孤岛：容错手段的组合拳">七、检查点不是孤岛：容错手段的组合拳</h2>
+<p>复盘过程中一个常见的误解值得单独纠正：<strong>检查点不是重试的替代品，而是互补品</strong>。多智能体工作流的完整容错体系至少有四层手段，各管一段：</p>
+<table>
+<thead>
+<tr>
+<th>手段</th>
+<th>防什么</th>
+<th>代价</th>
+<th>边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节点内重试</td>
+<td>瞬时故障（单次 API 超时/限流）</td>
+<td>同一阶段重复调用</td>
+<td>阶段内幂等才安全；防不了长故障</td>
+</tr>
+<tr>
+<td>检查点续传</td>
+<td>跨阶段中断（进程崩溃、长故障）</td>
+<td>状态落盘的存储与序列化开销</td>
+<td>依赖稳定 thread_id + 恢复入口</td>
+</tr>
+<tr>
+<td>回退修复</td>
+<td>产出质量问题（审计不达标、漂移）</td>
+<td>回流重生成的时间与 Token</td>
+<td>重试要有上限，防无限烧钱</td>
+</tr>
+<tr>
+<td>人工兜底</td>
+<td>自动修复不了的顽固问题</td>
+<td>人力</td>
+<td>转人工的阈值要先定义</td>
+</tr>
+</tbody>
+</table>
+<p>PenShot 的连贯性守护已经把后两层做进了生产链路：检查发现问题会溯源到产出阶段、回退重试（上限 3 次），超限转人工。而第一层（瞬时故障重试）与第二层（检查点续传）的组合，才是&quot;长剧本不怕断&quot;的完整答案——瞬时抖动当场消化，进程级故障由检查点接管。只有一层手段的系统，任何超出该层设计的故障都会放大成&quot;从头再来&quot;。</p>
+<p>另一个互补关系是<strong>检查点与超长剧本分段输入</strong>。PenShot 当前对超长剧本的官方建议是分段输入：按叙事段落手动切分、逐段调用工作流，靠已接线的记忆与连续性机制保证段内质量。分段输入天然与检查点契合——每一段本身就是一个可恢复单元，段内中断靠检查点续传，段间衔接靠记忆机制。两件事一起做，&quot;任意长度剧本&quot;的工程路径才算闭环。</p>
+<h2 id="八、把断点续传做真的：三步最小修复路径">八、把断点续传做真的：三步最小修复路径</h2>
+<p>坦率说明现状：截至当前版本（v0.3.x），PenShot 的断点续传属于路线图上 v1.5&quot;分布式调度&quot;阶段的规划项，上文的能力缺口如实存在。而检查点写入侧的调试价值是真实的——服务崩溃后 SQLite 里的历史记录可以离线复盘，这在排障时已经帮上过忙。如果你想基于 PenShot 二次开发、或者在自己的 LangGraph 项目里把检查点做完整，最小修复路径是三步：</p>
+<p><strong>第一步：修 thread_id（一行改动）。</strong> 把执行路径的 config 换成 <code>self.checkpointer.get_config()</code>，让同一任务的检查点跨运行可命中。这一步之后，检查点从&quot;每轮新时间线&quot;变成&quot;同一时间线持续追加&quot;，是后续一切的地基。</p>
+<p><strong>第二步：补恢复入口。</strong> LangGraph 支持以 <code>None</code> 为输入、复用同一 <code>thread_id</code> 重新 invoke，从最近检查点继续执行。把任务启动逻辑改成&quot;先查有没有历史快照，有就续跑，没有才从头&quot;，“从头跑&quot;才真正变成&quot;从断点续跑”。注意这一步有两个容易踩的坑：其一，<strong>快照与代码版本的兼容</strong>——状态结构（Pydantic 模型字段）在版本间变化后，旧快照可能反序列化失败，恢复入口要做版本判断或提供&quot;快照不可用则从头&quot;的降级；其二，<strong>恢复语义的确认</strong>——从快照继续意味着重放 writes 里的 pending 写入，哪些副作用允许重放要在业务层想清楚。</p>
+<p><strong>第三步：接清理与释放。</strong> 把 <code>cleanup_old_checkpoints</code> 挂进任务收尾流程（<code>finally</code> 块或定时任务），让 <code>max_checkpoints_per_script</code> 真正生效；把 <code>close_all</code> 挂进服务关闭钩子，顺手把 <code>close()</code> 的 async 陷阱修掉（它内部只是关连接加置空，本就不需要 async）。多进程部署下注意：当前清理只跳过&quot;自己实例的 db&quot;，不检测其他进程是否在写入，先确认无并发任务再执行。</p>
+<p>三步各自都有明确的验证方法：第一步用上文那条 <code>GROUP BY thread_id</code> 的 SQL 验证时间线不再增长；第二步人为制造一次中途失败，验证重启后从断点继续；第三步跑长周期任务验证磁盘水位稳定、句柄不累积。</p>
+<p>其中&quot;人为制造一次中途失败&quot;值得给出一个可照抄的演练脚本，因为<strong>不演练过的续传等于没有续传</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>用一个小剧本跑流水线，等到日志显示进入质量审计阶段时，直接 kill 掉进程（模拟最真实的故障形态——不是优雅退出，是暴毙）；</p>
+</li>
+<li class="lvl-3">
+<p>重启任务，确认启动逻辑命中了同一 <code>thread_id</code>：查库应看到 <code>checkpoint_id</code> 在原有时间线上继续递增，而不是出现第二条时间线；</p>
+</li>
+<li class="lvl-3">
+<p>核对 LLM 调用日志：剧本解析、镜头拆分、视频分段三个阶段不应有任何新的模型调用——有，就说明恢复语义有漏洞（比如某阶段的副作用没被快照覆盖，节点被重放了）；</p>
+</li>
+<li class="lvl-3">
+<p>检查产出与全量重跑的结果是否一致：分镜数量、片段时长分布这些可量化指标应基本对齐；</p>
+</li>
+<li class="lvl-3">
+<p>再演练一次&quot;快照过期&quot;场景：升级代码改动状态模型后用旧快照恢复，确认降级路径是&quot;提示快照不可用、从头执行&quot;，而不是抛一个反序列化异常让任务卡死。</p>
+</li>
+</ol>
+<p>这套演练跑通，断点续传才算从&quot;代码写完了&quot;变成&quot;能力交付了&quot;。</p>
+<h2 id="九、通用自检清单：你的检查点真的接通了吗">九、通用自检清单：你的检查点真的接通了吗</h2>
+<p>把这次的教训泛化成一张清单，适用于任何基于 LangGraph（或类似框架）的多智能体工作流：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>thread_id 稳定且可复现</strong>：用 <code>{业务ID}_{任务ID}</code> 这类业务标识，绝不用对象内存地址、随机数或时间戳——这是断点续传的命门；</p>
+</li>
+<li class="lvl-3">
+<p><strong>saver 接编译，config 接执行</strong>：<code>compile(checkpointer=saver)</code> 与 <code>invoke(..., config=...)</code> 缺一不可，只做前者等于只装了门没装钥匙；</p>
+</li>
+<li class="lvl-3">
+<p><strong>验证写入真的发生</strong>：部署后直接查库 <code>SELECT COUNT(*) FROM checkpoints</code>，比相信日志可靠；</p>
+</li>
+<li class="lvl-3">
+<p><strong>验证读取路径存在</strong>：全链路里必须有一处真实的恢复调用，否则检查点只是记账不是保险；</p>
+</li>
+<li class="lvl-3">
+<p><strong>同步异步配对</strong>：<code>ainvoke</code> 必须配 <code>AsyncSqliteSaver</code>（另装 aiosqlite），<code>invoke</code> 配 <code>SqliteSaver</code>；</p>
+</li>
+<li class="lvl-3">
+<p><strong>降级必须可见</strong>：auto 模式的降级只打 warning，生产环境要么显式指定模式，要么把 warning 接告警；</p>
+</li>
+<li class="lvl-3">
+<p><strong>清理与释放显式接线</strong>：保留策略、连接关闭不会自己生效，挂进任务收尾与进程退出钩子；</p>
+</li>
+<li class="lvl-3">
+<p><strong>认清 Saver 的定位</strong>：<code>SqliteSaver</code> 官方口径是轻量同步场景（demos and small projects），不要按高并发数据库期待它，量大了换 Postgres 后端；</p>
+</li>
+<li class="lvl-3">
+<p><strong>容错分层组合</strong>：瞬时故障交给重试，跨阶段中断交给检查点，质量问题交给回退修复，顽固问题转人工——单层防御撑不起长任务；</p>
+</li>
+<li class="lvl-4">
+<p><strong>用一次真实故障演练收尾</strong>：kill 进程、重启、核对断点——没演练过的续传机制默认视为未接通，演练脚本见第八节。</p>
+</li>
+</ol>
+<h2 id="十、工程结论">十、工程结论</h2>
+<p>三条收尾的判断，比任何细节都值得带走：</p>
+<ol>
+<li class="lvl-3">
+<p><strong>检查点是一本账，有进有出才算账本</strong>。写入只是半个能力——没有稳定的 thread_id 和真实的恢复入口，落盘的数据只是事后可查的日志，不是可续跑的保险。评估任何工作流框架的检查点能力时，先问&quot;读路径在哪&quot;；</p>
+</li>
+<li class="lvl-3">
+<p><strong>配置字段存在不等于能力存在</strong>。注释里的 postgres、预留的连接池参数、实现了却没人调用的清理方法——它们描述的是愿望，不是行为。判断依据永远是从入口到落盘再到读回的完整调用链；</p>
+</li>
+<li class="lvl-3">
+<p><strong>静默降级是长跑系统的慢性病</strong>。&quot;任何环境都能跑起来&quot;和&quot;任何环境都跑得对&quot;是两回事。宁可初始化时大声报错，也不要在半路悄悄退化——这次复盘里所有的问题，没有一个是靠报错发现的。</p>
+</li>
+</ol>
+<p>PenShot 的检查点接线修复在路线图的 v1.5 阶段推进，机制细节与最新进展以官方文档为准。</p>
+<blockquote>
+<p>相关链接：<a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com">PenShot 官网</a> | <a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/">文档中心</a> | <a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/checkpoint.html">检查点文档</a> | <a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">GitHub</a> | <a target="_blank" rel="external nofollow noopener noreferrer" href="https://pypi.org/project/penshot/">PyPI</a></p>
+</blockquote>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2026/09/penshot-long-script-split/">剧本变分镜还要人肉拆？用 PenShot 智能体把长剧本拆成 5 秒级视频片段</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/04/penshot-consistency/">多智能体如何保证 AI 视频分镜一致性</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/09/penshot-review/">PenShot 全面测评：分镜 Agent 的架构成色、工程短板与演进路线</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/09/penclip-human-agent/">说一句话让 AI 剪片？PenClip 多智能体混剪的人机协同机制</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/09/neotask-embed-quickstart/">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/09/penshot-checkpoint-resume/">https://pengline.cn/2026/09/penshot-checkpoint-resume/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/LangGraph/">LangGraph</a><a class="post-meta__tags" href="/tags/Agent/">Agent</a><a class="post-meta__tags" href="/tags/LLM/">LLM</a><a class="post-meta__tags" href="/tags/%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93/">多智能体</a><a class="post-meta__tags" href="/tags/PenShot/">PenShot</a><a class="post-meta__tags" href="/tags/AI%E8%A7%86%E9%A2%91/">AI视频</a><a class="post-meta__tags" href="/tags/%E5%AE%9E%E6%88%98/">实战</a><a class="post-meta__tags" href="/tags/%E7%8A%B6%E6%80%81%E6%8C%81%E4%B9%85%E5%8C%96/">状态持久化</a><a class="post-meta__tags" href="/tags/%E5%88%86%E9%95%9C/">分镜</a><a class="post-meta__tags" href="/tags/%E5%B7%A5%E4%BD%9C%E6%B5%81%E6%A3%80%E6%9F%A5%E7%82%B9/">工作流检查点</a><a class="post-meta__tags" href="/tags/%E6%96%AD%E7%82%B9%E7%BB%AD%E4%BC%A0/">断点续传</a><a class="post-meta__tags" href="/tags/SqliteSaver/">SqliteSaver</a><a class="post-meta__tags" href="/tags/thread-id/">thread_id</a><a class="post-meta__tags" href="/tags/MemorySaver/">MemorySaver</a><a class="post-meta__tags" href="/tags/%E6%99%BA%E8%83%BD%E4%BD%93%E5%B7%A5%E4%BD%9C%E6%B5%81/">智能体工作流</a><a class="post-meta__tags" href="/tags/%E8%B8%A9%E5%9D%91/">踩坑</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1727147141745172714714181.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/09/penclip-human-agent/" title="说一句话让 AI 剪片？PenClip 多智能体混剪的人机协同机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small105211JwvB81759459931.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">说一句话让 AI 剪片？PenClip 多智能体混剪的人机协同机制</div></div><div class="info-2"><div class="info-item-1">剪辑软件学习门槛高，素材查找与片段编排耗时。PenClip 基于 LangGraph 多智能体实现"人导演、AI 剪辑"：星型中枢做意图识别与路由，线性链路承载标准流水线，规划-确认-执行闭环让用户始终掌握主导权。本文拆解双模式架构、上下文感知与能力注册机制，并附人机交互实例。</div></div></div></a><a class="pagination-related" href="/2026/09/ai-token-optimization/" title="AI 应用 Token 优化：从 Prompt 压缩到 Agent 成本控制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1694419571784169441957145.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">AI 应用 Token 优化：从 Prompt 压缩到 Agent 成本控制</div></div><div class="info-2"><div class="info-item-1">从 Prompt、上下文、RAG、Tool Calling、缓存、模型路由和 Agent 循环等多个层面分析 Token 消耗，并通过 Java 示例展示如何在真实 AI 应用中落地 Token 预算、上下文裁剪、Tool 结果压缩和请求缓存。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/09/penshot-long-script-split/" title="剧本变分镜还要人肉拆？用 PenShot 智能体把长剧本拆成 5 秒级视频片段"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755142438681175514243833.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-23</div><div class="info-item-2">剧本变分镜还要人肉拆？用 PenShot 智能体把长剧本拆成 5 秒级视频片段</div></div><div class="info-2"><div class="info-item-1">AI 视频模型只吃短片段，把长剧本拆成连贯分镜是导演级手工活。PenShot 基于 LangGraph 六个顺序执行的智能体节点完成拆解：剧本解析、镜头拆分、视频分段、提示词转换、质量审计、连贯性守护，配合三层记忆压制角色与场景漂移。本文覆盖两条部署路径、一次真实工作流走读与工程边界。</div></div></div></a><a class="pagination-related" href="/2026/09/ai-agent-eval-driven/" title="指标是编的还是测的？从 PenShot、NeoTask、PenClip 看评测驱动开发"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small202824LQTsk1760099304.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-29</div><div class="info-item-2">指标是编的还是测的？从 PenShot、NeoTask、PenClip 看评测驱动开发</div></div><div class="info-2"><div class="info-item-1">AI 应用最容易自欺的地方是"感觉有效"。本文从三个 AI 产品的工程实践里提炼评测驱动开发的三块基石：NeoTask 用基准口径与四层执行器守住性能声明的边界，PenShot 用撤回文化与真机核对揪出静默失效，PenClip 把量化验证写进版本规划。三者拼出评测驱动的最小闭环：口径决定怎么测，诚实决定敢报什么，前置决定何时测。</div></div></div></a><a class="pagination-related" href="/2026/09/penshot-review/" title="PenShot 全面测评：分镜 Agent 的架构成色、工程短板与演进路线"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746446968174574644625.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-14</div><div class="info-item-2">PenShot 全面测评：分镜 Agent 的架构成色、工程短板与演进路线</div></div><div class="info-2"><div class="info-item-1">从源码、依赖与部署配置出发，对 PenShot 进行 30 个维度的工程测评：覆盖 Agent 架构、LangGraph 工作流、RAG 与三层记忆、多模型接入、MCP 生态、Docker 安全、测试体系与商业化潜力，逐项给出评分依据、不足清单与演进路线，所有判断均标注源码。</div></div></div></a><a class="pagination-related" href="/2026/09/penclip-human-agent/" title="说一句话让 AI 剪片？PenClip 多智能体混剪的人机协同机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small105211JwvB81759459931.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-23</div><div class="info-item-2">说一句话让 AI 剪片？PenClip 多智能体混剪的人机协同机制</div></div><div class="info-2"><div class="info-item-1">剪辑软件学习门槛高，素材查找与片段编排耗时。PenClip 基于 LangGraph 多智能体实现"人导演、AI 剪辑"：星型中枢做意图识别与路由，线性链路承载标准流水线，规划-确认-执行闭环让用户始终掌握主导权。本文拆解双模式架构、上下文感知与能力注册机制，并附人机交互实例。</div></div></div></a><a class="pagination-related" href="/2026/07/penclip-overview/" title="如何用一句话让 AI 剪出成片？PenClip 多智能体系统的人机协同机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755142438681175514243833.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-07-15</div><div class="info-item-2">如何用一句话让 AI 剪出成片？PenClip 多智能体系统的人机协同机制</div></div><div class="info-2"><div class="info-item-1">普通人用专业剪辑软件门槛高，素材查找与片段编排耗时。PenClip 基于 LangGraph 多智能体视频混剪系统，以"人导演、AI 剪辑"为理念，指令经中枢意图识别与风险评估后，路由给规划、分析、匹配、合成智能体，配合能力注册机制，用户审核规划即可获得成片。</div></div></div></a><a class="pagination-related" href="/2025/11/0c17e5dc04ae4994b411db081a7c82d6/" title="大模型只会聊天如何变成会检索能调用工具的业务应用"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-06</div><div class="info-item-2">大模型只会聊天如何变成会检索能调用工具的业务应用</div></div><div class="info-2"><div class="info-item-1">LangChain 以模块化抽象加流水线编排的方式,把模型接入、提示词、记忆、检索与工具调用拆成标准组件组装,使大模型从只会聊天升级为可查库、会检索、记得住上下文且能自主决策的业务应用。详解模型管理、链式编排、智能决策、LangGraph 状态图与单多智能体实战案例及选型建议。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">检查点落了盘，任务为什么还是从头跑？PenShot 断点续传实战复盘</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E5%85%88%E7%AE%97%E8%B4%A6%EF%BC%9A%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%9A%84%E5%A4%B1%E8%B4%A5%E6%88%90%E6%9C%AC"><span class="toc-number">1.1.</span> <span class="toc-text">一、先算账：多智能体工作流的失败成本</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E4%BA%94%E5%88%86%E9%92%9F%E8%A1%A5%E8%AF%BE%EF%BC%9ALangGraph-%E6%A3%80%E6%9F%A5%E7%82%B9%E7%9A%84%E6%9C%BA%E5%88%B6%E5%8E%9F%E7%90%86"><span class="toc-number">1.2.</span> <span class="toc-text">二、五分钟补课：LangGraph 检查点的机制原理</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81PenShot-%E7%9A%84%E8%AE%BE%E8%AE%A1%E5%8F%96%E8%88%8D%EF%BC%9A%E5%8F%8C%E6%A8%A1%E5%BC%8F%E4%B8%8E%E8%87%AA%E5%8A%A8%E9%99%8D%E7%BA%A7%E9%93%BE"><span class="toc-number">1.3.</span> <span class="toc-text">三、PenShot 的设计取舍：双模式与自动降级链</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E6%8E%92%E5%9D%91%E7%8E%B0%E5%9C%BA%EF%BC%9Aainvoke-%E4%B8%8E%E5%90%8C%E6%AD%A5-Saver-%E7%9A%84%E6%AD%A3%E9%9D%A2%E5%86%B2%E7%AA%81"><span class="toc-number">1.4.</span> <span class="toc-text">四、排坑现场：ainvoke 与同步 Saver 的正面冲突</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E6%9C%80%E8%B4%B5%E7%9A%84%E4%B8%80%E8%AF%BE%EF%BC%9Athread-id-%E6%BC%82%E7%A7%BB%EF%BC%8C%E6%A3%80%E6%9F%A5%E7%82%B9%E5%8F%AA%E5%86%99%E4%B8%8D%E8%AF%BB"><span class="toc-number">1.5.</span> <span class="toc-text">五、最贵的一课：thread_id 漂移，检查点只写不读</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E8%BF%9E%E5%B8%A6%E7%9A%84%E4%B8%89%E4%B8%AA%E9%9D%99%E9%BB%98%E9%97%AE%E9%A2%98%EF%BC%9A%E9%85%8D%E7%BD%AE%E5%AD%97%E6%AE%B5%E5%AD%98%E5%9C%A8%E4%B8%8D%E7%AD%89%E4%BA%8E%E8%83%BD%E5%8A%9B%E5%AD%98%E5%9C%A8"><span class="toc-number">1.6.</span> <span class="toc-text">六、连带的三个静默问题：配置字段存在不等于能力存在</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81%E6%A3%80%E6%9F%A5%E7%82%B9%E4%B8%8D%E6%98%AF%E5%AD%A4%E5%B2%9B%EF%BC%9A%E5%AE%B9%E9%94%99%E6%89%8B%E6%AE%B5%E7%9A%84%E7%BB%84%E5%90%88%E6%8B%B3"><span class="toc-number">1.7.</span> <span class="toc-text">七、检查点不是孤岛：容错手段的组合拳</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81%E6%8A%8A%E6%96%AD%E7%82%B9%E7%BB%AD%E4%BC%A0%E5%81%9A%E7%9C%9F%E7%9A%84%EF%BC%9A%E4%B8%89%E6%AD%A5%E6%9C%80%E5%B0%8F%E4%BF%AE%E5%A4%8D%E8%B7%AF%E5%BE%84"><span class="toc-number">1.8.</span> <span class="toc-text">八、把断点续传做真的：三步最小修复路径</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B9%9D%E3%80%81%E9%80%9A%E7%94%A8%E8%87%AA%E6%A3%80%E6%B8%85%E5%8D%95%EF%BC%9A%E4%BD%A0%E7%9A%84%E6%A3%80%E6%9F%A5%E7%82%B9%E7%9C%9F%E7%9A%84%E6%8E%A5%E9%80%9A%E4%BA%86%E5%90%97"><span class="toc-number">1.9.</span> <span class="toc-text">九、通用自检清单：你的检查点真的接通了吗</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8D%81%E3%80%81%E5%B7%A5%E7%A8%8B%E7%BB%93%E8%AE%BA"><span class="toc-number">1.10.</span> <span class="toc-text">十、工程结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">1.11.</span> <span class="toc-text">相关阅读</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

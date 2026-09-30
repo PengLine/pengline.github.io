@@ -1,36 +1,27 @@
-<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>JVM 为什么同时保留解释器与 JIT？分层编译如何兼顾启动速度和峰值性能 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="Java 执行引擎由解释器与 JIT 协同，兼顾启动速度与峰值性能。本文拆解模板解释器、双计数器热点探测、分层编译层级迁移，以及方法内联、逃逸分析、锁消除等优化的原理与失效条件，并结合预热失真、去优化回退等故障给出定位思路。">
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>JVM 解释器与 JIT 即时编译器如何协同优化运行性能 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="Java 通过两段编译实现跨平台，运行期由解释器与 JIT 协同决定性能。本文剖析模板解释器逐条翻译与双计数器热点检测机制，展开分层编译、OSR 即时编译与方法内联、逃逸分析、锁消除等优化，解释如何兼顾启动速度与长期运行效率。">
 <meta property="og:type" content="article">
-<meta property="og:title" content="JVM 为什么同时保留解释器与 JIT？分层编译如何兼顾启动速度和峰值性能">
+<meta property="og:title" content="JVM 解释器与 JIT 即时编译器如何协同优化运行性能">
 <meta property="og:url" content="https://pengline.cn/2025/10/13da62f295e44a4a8d67168a5fa03904/">
 <meta property="og:site_name" content="余一叶知秋尽">
-<meta property="og:description" content="Java 执行引擎由解释器与 JIT 协同，兼顾启动速度与峰值性能。本文拆解模板解释器、双计数器热点探测、分层编译层级迁移，以及方法内联、逃逸分析、锁消除等优化的原理与失效条件，并结合预热失真、去优化回退等故障给出定位思路。">
+<meta property="og:description" content="Java 通过两段编译实现跨平台，运行期由解释器与 JIT 协同决定性能。本文剖析模板解释器逐条翻译与双计数器热点检测机制，展开分层编译、OSR 即时编译与方法内联、逃逸分析、锁消除等优化，解释如何兼顾启动速度与长期运行效率。">
 <meta property="og:locale" content="zh_CN">
-<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp">
 <meta property="article:published_time" content="2025-10-07T16:00:00.000Z">
-<meta property="article:modified_time" content="2026-09-28T09:56:36.891Z">
+<meta property="article:modified_time" content="2026-09-28T14:25:14.442Z">
 <meta property="article:author" content="余一叶知秋尽">
-<meta property="article:tag" content="C1">
-<meta property="article:tag" content="C2">
 <meta property="article:tag" content="JIT">
 <meta property="article:tag" content="JVM">
-<meta property="article:tag" content="Java">
-<meta property="article:tag" content="OSR">
-<meta property="article:tag" content="代码缓存">
 <meta property="article:tag" content="分层编译">
 <meta property="article:tag" content="即时编译器">
-<meta property="article:tag" content="去优化">
-<meta property="article:tag" content="回边计数器">
-<meta property="article:tag" content="性能调优">
 <meta property="article:tag" content="方法内联">
-<meta property="article:tag" content="方法调用计数器">
-<meta property="article:tag" content="栈上替换">
 <meta property="article:tag" content="模板解释器">
-<meta property="article:tag" content="热点探测">
+<meta property="article:tag" content="热点检测">
+<meta property="article:tag" content="编译优化">
 <meta property="article:tag" content="解释器">
 <meta property="article:tag" content="逃逸分析">
 <meta property="article:tag" content="锁消除">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/10/13da62f295e44a4a8d67168a5fa03904/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/10/13da62f295e44a4a8d67168a5fa03904/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
     (() => {
       
     const saveToLocal = {
@@ -177,249 +168,129 @@
   },
   autoDarkmode: true
 }</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
-  title: 'JVM 为什么同时保留解释器与 JIT？分层编译如何兼顾启动速度和峰值性能',
+  title: 'JVM 解释器与 JIT 即时编译器如何协同优化运行性能',
   isHighlightShrink: false,
   isToc: true,
   pageType: 'post'
-}</script><link rel="stylesheet" href="/css/font.css"><link rel="stylesheet" href="/css/custom.css"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
 <!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
-</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">88</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">769</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">52</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">JVM 为什么同时保留解释器与 JIT？分层编译如何兼顾启动速度和峰值性能</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">JVM 为什么同时保留解释器与 JIT？分层编译如何兼顾启动速度和峰值性能</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-10-07T16:00:00.000Z" title="发表于 2025-10-08 00:00:00">2025-10-08</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-28T09:56:36.891Z" title="更新于 2026-09-28 17:56:36">2026-09-28</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/">Java</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/JVM/">JVM</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>同一段字节码，在同一个 JVM 进程里，刚启动的第一秒和运行十分钟之后，性能可能相差一个数量级以上（常见现象，具体倍数随负载而定）。代码没有变，变的是<strong>执行方式</strong>：前者大部分时间跑在解释器里，后者已经逐步切换到 JIT 编译出的本地机器码。理解&quot;解释器 + JIT&quot;这套双引擎机制，是看懂 Java 启动曲线、预热行为、甚至一批诡异性能故障的前提。</p>
-<p>本文属于知识总结类文章，结构为：概述 → 关键机制拆解（热点探测、分层编译、去优化、核心优化手段）→ 验证手段 → 故障实战 → 权衡与建议。文中涉及 HotSpot 内部机制的描述基于 64 位 HotSpot 的默认分层编译模式（JDK 8 及之后的主流形态），代码示例均已标注是真实字节码、源码机制的简化描述，还是纯示例代码；涉及数值的地方都给出自验方法，不把估算当实测。</p>
-<h2 id="一、为什么不是-只用解释器-或-只用编译器">一、为什么不是&quot;只用解释器&quot;或&quot;只用编译器&quot;</h2>
-<p>Java 源文件要变成机器指令，要经过<strong>两段编译</strong>：</p>
-<ul class="lvl-0">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">91</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">781</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">JVM 解释器与 JIT 即时编译器如何协同优化运行性能</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">JVM 解释器与 JIT 即时编译器如何协同优化运行性能</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-10-07T16:00:00.000Z" title="发表于 2025-10-08 00:00:00">2025-10-08</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-09-28T14:25:14.442Z" title="更新于 2026-09-28 22:25:14">2026-09-28</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/">Java</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Java/JVM/">JVM</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>JVM（Java Virtual Machine）作为 Java 程序运行的核心，其执行引擎主要包括 <strong>解释器（Interpreter）</strong> 和 <strong>JIT（Just-In-Time）即时编译器</strong>。两者协同工作，兼顾 <strong>启动速度</strong> 与 <strong>运行性能</strong>，是 Java “一次编写，到处运行” 与 “高性能” 并存的关键。</p>
+<h2 id="JVM-解释器">JVM 解释器</h2>
+<p>解释器负责 <strong>逐条读取字节码指令</strong>，并将其 <strong>翻译成对应平台的机器码执行</strong>。它不进行任何优化，直接“边解释边执行”。</p>
+<blockquote>
+<ul class="lvl-1">
 <li class="lvl-2">
-<p><strong>第一段（前端编译）</strong>：<code>javac</code> 把 <code>.java</code> 编译成 <code>.class</code> 字节码。<code>javac</code> 基本不做依赖运行信息的优化，只做少量确定性处理（编译期常量折叠、常量字符串拼接、泛型擦除等语法糖展开）。</p>
+<p>JVM 加载 <code>.class</code> 文件后，得到字节码（bytecode）。</p>
 </li>
 <li class="lvl-2">
-<p><strong>第二段（后端执行）</strong>：字节码在运行期由 JVM 执行引擎处理——先解释执行，热了再被 JIT 编译成机器码。</p>
-</li>
-</ul>
-<p>为什么第二段不干脆一步到位？因为两条极端路线都有硬伤：</p>
-<ul class="lvl-0">
-<li class="lvl-2">
-<p><strong>纯解释器</strong>：实现最简单、启动最快、内存最省，但每条字节码都有&quot;取指—分发—执行&quot;的固定开销，且完全不做跨指令优化（例如两次相邻的内存读取不会被合并）。跑得越久越吃亏。</p>
+<p>解释器从方法的字节码开始，<strong>一条一条地解释执行</strong>。</p>
 </li>
 <li class="lvl-2">
-<p><strong>纯 AOT / 全量预编译</strong>：启动后全程跑机器码，但没有运行时画像（profile）可用——不知道哪个分支更常走、哪个虚方法只有一种实现、哪个对象从不逃逸。而 JIT 最强的那批优化恰恰<strong>依赖运行时数据</strong>。此外 Java 的动态特性（运行期加载类、反射、<code>invokedynamic</code>、动态代理）让&quot;执行前编译一切&quot;在通用场景下难以成立。</p>
+<p>每条字节码指令（如 <code>iload</code>, <code>invokevirtual</code>, <code>iadd</code>）都会被映射为本地机器指令。</p>
 </li>
 </ul>
-<p>混合方案的收益可以粗略量化（<strong>理论分析</strong>）：设编译成本为 $C_{\text{jit}}$，解释执行单次耗时为 $T_{\text{interp}}$，编译后单次耗时为 $T_{\text{jit}}$，某段代码预计执行 $N$ 次，则编译划算的条件是：</p>
-<p>$$<br>
-C_{\text{jit}} + N \times T_{\text{jit}} ;&lt;; N \times T_{\text{interp}}<br>
-\quad\Longleftrightarrow\quad<br>
-N ;&gt;; \frac{C_{\text{jit}}}{T_{\text{interp}} - T_{\text{jit}}}<br>
-$$</p>
-<p>执行次数 $N$ 低于临界值 $N^*$ 时，编译是赔本买卖；超过之后，执行得越多，编译投资回报越高。OpenJDK 团队在自己的博客里也用类似的思路解释分层编译的动机：为一个只执行一次的方法花大量编译周期，等于&quot;编译时间比执行时间还贵&quot;。</p>
-<p>由此自然推出 HotSpot 的形态：<strong>冷代码解释执行，热代码编译执行，&quot;冷热&quot;由运行时热点探测动态判定</strong>。这也解释了为什么 JVM 默认以 <code>mixed mode</code>（混合模式）运行——用 <code>java -version</code> 可以看到 <code>mixed mode, sharing</code> 字样；另外两个手工模式是 <code>-Xint</code>（强制纯解释，用于对照实验）和 <code>-Xcomp</code>（优先编译，解释器只在编译无法进行时兜底，通常只用于压测 JVM 自身）。</p>
-<h2 id="二、JVM-解释器：模板解释器">二、JVM 解释器：模板解释器</h2>
-<h3 id="2-1-职责与执行模型">2.1 职责与执行模型</h3>
-<p>解释器负责逐条读取字节码指令，将其翻译成对应平台的本地操作并执行，同时维护运行时状态：Java 栈帧、局部变量表、操作数栈、程序计数器（PC）等。它不做任何投机优化，语义上严格贴近字节码定义，可以理解为整个执行体系的<strong>语义基准线</strong>。</p>
-<p>一个求和方法（<strong>示例代码</strong>）：</p>
+</blockquote>
+<h3 id="核心职责">核心职责</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>读取字节码</strong>：从 <code>.class</code> 文件加载的字节码指令流中逐条读取。</p>
+</li>
+<li class="lvl-2">
+<p><strong>解释执行</strong>：将每条字节码指令翻译成对应平台的本地机器操作。</p>
+</li>
+<li class="lvl-2">
+<p><strong>维护运行时状态</strong>：管理 Java 栈帧、局部变量表、操作数栈、程序计数器等。</p>
+</li>
+</ul>
+<h3 id="编译的两个阶段">编译的两个阶段</h3>
+<p>一个 Java 源文件要变成可执行的机器指令，需要经过<strong>两段编译</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>第一段</strong>：<code>.java</code> 源文件编译成 <code>.class</code> 字节码（前端编译，<code>javac</code>）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>第二段</strong>：<code>.class</code> 字节码在运行时翻译成机器指令（后端执行，由解释器/JIT 完成）。</p>
+</li>
+</ul>
+<p>在第二编译阶段，JVM 通过解释字节码将其翻译成对应的机器指令，逐条读入、解释翻译。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>动态编译（dynamic compilation）</strong>：指“在运行时进行编译”，与之相对的是事前编译（AOT），也叫静态编译。</p>
+</li>
+<li class="lvl-2">
+<p><strong>JIT 即时编译（just-in-time compilation）</strong>：代码即将第一次执行时才进行编译，因而叫“即时编译”。</p>
+</li>
+<li class="lvl-2">
+<p><strong>自适应动态编译（adaptive dynamic compilation）</strong>：执行时机比 JIT 更晚——先让程序以某种方式运行起来，收集运行信息后再做动态编译，因此能做出更有针对性的优化。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="工作原理">工作原理</h3>
+<p>HotSpot JVM 的解释器主要由 <strong>模板解释器（Template Interpreter）</strong> 实现</p>
+<blockquote>
+<p>为每条字节码指令（如 <code>iload</code>, <code>invokevirtual</code>, <code>iadd</code>）预先生成一段<strong>本地机器码模板</strong>。运行时，解释器通过查表（dispatch table）跳转到对应模板执行。</p>
+<p>相比传统的“switch-case 解释器”，性能更高（减少分支预测失败）。</p>
+</blockquote>
+<p>执行流程示例：</p>
 <figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="type">int</span> <span class="title function_">add</span><span class="params">(<span class="type">int</span> a, <span class="type">int</span> b)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> a + b;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>对应的字节码如下（这段是<strong>真实字节码</strong>，对实例方法而言局部变量槽 0 是 <code>this</code>，<code>a</code>、<code>b</code> 分别占据槽 1、2；可用 <code>javap -c</code> 自行验证）：</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">iload_1   <span class="comment">// 将局部变量 1（a）压入操作数栈</span></span><br><span class="line">iload_2   <span class="comment">// 将局部变量 2（b）压入操作数栈</span></span><br><span class="line">iadd      <span class="comment">// 弹出两个 int，相加，结果压栈</span></span><br><span class="line">ireturn   <span class="comment">// 返回栈顶值</span></span><br></pre></td></tr></table></figure>
-<p>解释执行的过程：</p>
+<p>对应的字节码：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">iload_1   <span class="comment">// 将局部变量1（a）压入操作数栈</span></span><br><span class="line">iload_2   <span class="comment">// 将局部变量2（b）压入操作数栈</span></span><br><span class="line">iadd      <span class="comment">// 弹出两个int，相加，结果压栈</span></span><br><span class="line">ireturn   <span class="comment">// 返回栈顶值</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>解释器执行过程：</p>
+<ol>
+<li class="lvl-3">PC（程序计数器）指向 <code>iload_1</code></li>
+<li class="lvl-3">查找 <code>iload_1</code> 对应的机器码模板，执行（将 a 压栈）</li>
+<li class="lvl-3">PC 增加，指向下一条 <code>iload_2</code>，重复…</li>
+<li class="lvl-3">直到 <code>ireturn</code>，方法返回。</li>
+</ol>
+</blockquote>
+<p>整个过程<strong>无编译</strong>，纯解释执行。</p>
+<h2 id="JIT-即时编译器">JIT 即时编译器</h2>
+<p>JIT 编译器在程序 <strong>运行时</strong> 将 <strong>热点代码（Hot Spot）</strong> 编译为 <strong>本地机器码</strong>，并缓存起来，后续直接执行机器码，大幅提升性能。</p>
+<blockquote>
 <ol>
 <li class="lvl-3">
-<p>PC 指向 <code>iload_1</code>；</p>
+<p><strong>监控执行频率</strong>：JVM 内置计数器，统计方法或代码块的调用次数。</p>
 </li>
 <li class="lvl-3">
-<p>找到 <code>iload_1</code> 对应的本地执行逻辑，执行（把 a 压栈）；</p>
+<p><strong>识别热点代码</strong>：当某段代码执行次数超过阈值（如 10,000 次），被标记为“热点”。</p>
 </li>
 <li class="lvl-3">
-<p>PC 前移，指向 <code>iload_2</code>，重复上述过程；</p>
+<p><strong>触发 JIT 编译</strong>：JIT 编译器将字节码编译为高度优化的本地机器码。</p>
 </li>
 <li class="lvl-3">
-<p>直到 <code>ireturn</code>，方法返回。</p>
+<p><strong>替换执行入口</strong>：后续调用直接跳转到编译后的机器码，不再经过解释器。</p>
 </li>
 </ol>
-<p>整个过程没有编译发生，纯解释执行。</p>
-<h3 id="2-2-模板解释器：查表跳转，而不是-switch-case">2.2 模板解释器：查表跳转，而不是 switch-case</h3>
-<p>HotSpot 的解释器由<strong>模板解释器（Template Interpreter）<strong>实现。其机制可概括为（对 HotSpot 源码机制的简化描述）：JVM 启动时，依据 <code>TemplateTable</code> 为</strong>每一条字节码指令</strong>预生成一段本地机器码&quot;模板&quot;，并把各模板入口地址填入一张分发表（dispatch table）。运行期解释循环只做一件事：取当前字节码 → 查表跳转到对应模板 → 模板执行完毕后自带&quot;取下一条字节码并跳转&quot;的尾部逻辑。</p>
-<p>与传统&quot;一个大 switch-case 的字节码循环&quot;相比，模板解释器把逐条指令的分支判断换成了<strong>一次间接跳转</strong>，减少了每条指令上的分支预测压力，同时模板本身是针对平台手写优化的汇编，这就是 HotSpot 解释器在同侪中较快的原因。JVM 还提供 <code>-XX:+PrintInterpreter</code>（诊断类参数）查看解释器实际生成的模板，有兴趣可以一试。顺带一提，HotSpot 内部还保留了一套 C++ 实现的字节码解释器（以及不依赖汇编的 Zero 解释器），用于无模板生成能力的平台或调试场景，但产品形态默认运行的就是模板解释器——这也是&quot;HotSpot 解释器为什么快&quot;的第一句答案：模板是针对平台手写的汇编，不是通用 C++ 分支循环。</p>
-<p>需要诚实指出：模板解释器只是把&quot;逐条分发&quot;做到较快，<strong>并没有消除逐条分发的本质开销</strong>，也不会做跨指令优化——性能天花板仍然在 JIT 一侧。</p>
-<h3 id="2-3-解释器的不可替代角色">2.3 解释器的不可替代角色</h3>
-<p>除了&quot;启动快&quot;，解释器在现代 HotSpot 里至少还有三个不可替代的职责：</p>
-<ul class="lvl-0">
+</blockquote>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">-XX:+PrintCompilation        <span class="comment"># 打印 JIT 编译日志</span></span><br><span class="line">-XX:+UnlockDiagnosticVMOptions</span><br><span class="line">-XX:+PrintInlining           <span class="comment"># 打印内联决策</span></span><br><span class="line">-XX:+PrintAssembly           <span class="comment"># 打印生成的汇编代码（需 hsdis）</span></span><br><span class="line">-XX:+TraceClassLoading       <span class="comment"># 跟踪类加载</span></span><br></pre></td></tr></table></figure>
+<p><strong>JIT 的核心优化技术</strong>：</p>
+<blockquote>
+<ul class="lvl-1">
 <li class="lvl-2">
-<p><strong>逃生门</strong>：JIT 敢做大量激进优化（投机内联、类型收紧），前提是&quot;假设被打破时能全身而退&quot;。退到哪里？退回解释执行（见第 3.5 节的去优化）。</p>
+<p><strong>方法内联（Method Inlining）</strong>：消除方法调用开销。</p>
 </li>
 <li class="lvl-2">
-<p><strong>画像采集器</strong>：分层编译中，第 0 层和第 3 层的执行会持续收集方法调用次数、分支走向、虚方法类型分布等画像数据，供更高层级编译使用。</p>
+<p><strong>逃逸分析（Escape Analysis）</strong>：判断对象是否逃逸出方法，决定是否栈上分配。</p>
 </li>
 <li class="lvl-2">
-<p><strong>兜底执行</strong>：被标记为&quot;不可编译&quot;的方法、编译尚未完成的方法、编译器整体被禁用（见故障 6.3）时的所有方法，都靠解释器维持运行。</p>
+<p><strong>锁消除（Lock Elimination）</strong>：对不会被多线程访问的对象，去除同步。</p>
+</li>
+<li class="lvl-2">
+<p><strong>循环展开（Loop Unrolling）</strong>：减少循环控制开销。</p>
+</li>
+<li class="lvl-2">
+<p><strong>死代码消除（Dead Code Elimination）</strong>：移除无用代码。</p>
+</li>
+<li class="lvl-2">
+<p><strong>分支预测优化</strong>：基于运行时数据优化 if/else 路径。</p>
 </li>
 </ul>
-<p>一句话：解释器不是&quot;低配替代品&quot;，而是 JIT 激进优化的<strong>安全网</strong>——没有解释器兜底，JIT 不敢激进。</p>
-<h2 id="三、JIT-即时编译器">三、JIT 即时编译器</h2>
-<h3 id="3-1-热点探测：识别-值得编译-的代码">3.1 热点探测：识别&quot;值得编译&quot;的代码</h3>
-<p>JVM 不会盲目编译所有代码。热点探测（Hot Spot Detection）负责回答&quot;哪些代码值得优化&quot;，业界主要有两条路线：</p>
-<ol>
-<li class="lvl-3">
-<p><strong>基于采样的探测</strong>：周期性检查各线程的栈顶，某方法频繁出现在栈顶即判定为热点。实现简单、零侵入，但无法精确度量一个方法的热度，且容易被线程阻塞、锁等待等&quot;停在栈顶&quot;的场景干扰。Oracle JRockit 走的是这条路线（JRockit 干脆没有解释器）。</p>
-</li>
-<li class="lvl-3">
-<p><strong>基于计数的探测</strong>：为每个方法（及代码块）维护计数器，统计执行次数，超过阈值即判定为热点并触发编译。精确、可解释，代价是每次执行都要维护计数器。</p>
-</li>
-</ol>
-<p>HotSpot 采用<strong>基于计数器的探测</strong>，并且沿用了这个项目名的由来思路：程序 80% 的执行时间往往花在 20% 的代码上，只编译那部分&quot;热点（hot spot）&quot;，性价比最高。</p>
-<h3 id="3-2-双计数器：方法调用计数器与回边计数器">3.2 双计数器：方法调用计数器与回边计数器</h3>
-<p>HotSpot 为每个方法维护两类计数器（以下为机制的简化描述，阈值数值均为 64 位 HotSpot 的常见默认值，随版本与架构会变，文末给出实测命令）：</p>
-<ul class="lvl-0">
-<li class="lvl-2">
-<p><strong>方法调用计数器（invocation counter）</strong>：记录方法被调用的次数。它以&quot;一次调用&quot;为粒度增长——一个执行很久才返回的方法，在一次调用内只能让它 +1。</p>
-</li>
-<li class="lvl-2">
-<p><strong>回边计数器（back-edge counter）</strong>：记录方法内循环跳回循环头（back-edge）的次数，用于识别<strong>循环密集型</strong>热点。循环体每迭代一轮，回边计数就增长一次。</p>
-</li>
-</ul>
-<p>两者的触发条件不同：</p>
-<ul class="lvl-0">
-<li class="lvl-2">
-<p><strong>非分层模式（关闭分层编译时）</strong>：经典阈值由 <code>-XX:CompileThreshold</code> 控制，服务端模式默认 10000 次、客户端模式默认 1500 次（<strong>常见默认值</strong>）；回边阈值则按 <code>CompileThreshold × OnStackReplacePercentage / 100</code> 折算（客户端模式该比例约为 933，服务端约为 1400），超过即触发 OSR 编译。</p>
-</li>
-<li class="lvl-2">
-<p><strong>分层模式（默认）</strong>：<code>CompileThreshold</code> 不再生效，取而代之的是一组分层阈值，如 <code>Tier2InvocationThreshold</code>、<code>Tier3InvocationThreshold</code>、<code>Tier3MinInvocationThreshold</code>、<code>Tier3BackEdgeThreshold</code>、<code>Tier4InvocationThreshold</code>、<code>Tier4BackEdgeThreshold</code> 等（均为真实参数名）。以 x86-64 上的常见默认为例：Tier3InvocationThreshold 约为 2000、Tier4InvocationThreshold 约为 15000，同时还有配套的最小调用次数要求（MinInvocationThreshold）与回边阈值，并会按调用速率折算——速率越高，等效阈值越低，越早触发编译。具体数值随 JDK 版本和 CPU 架构变化明显，不要背数字，用下面的命令实测你机器上的值：</p>
-</li>
-</ul>
-<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Windows（PowerShell / cmd）</span></span><br><span class="line">java -XX:+PrintFlagsFinal -version | findstr /i <span class="string">&quot;InvocationThreshold BackEdgeThreshold CompileThreshold&quot;</span></span><br><span class="line"><span class="comment"># Linux</span></span><br><span class="line">java -XX:+PrintFlagsFinal -version | grep -iE <span class="string">&quot;InvocationThreshold|BackEdgeThreshold&quot;</span></span><br></pre></td></tr></table></figure>
-<p>细心的读者会注意到回边阈值比调用阈值大一个数量级，这不是笔误：一次方法调用往往包含成百上千次循环回跳，若两个阈值同量级，任何带循环的方法都会瞬间触发编译，热点判定就失真了。调用计数刻画&quot;被多少次请求需要&quot;，回边计数刻画&quot;单次调用内部有多耗&quot;，两个量纲必须分开标定。</p>
-<p><strong>关于&quot;热度衰减&quot;的考证</strong>：不少资料（包括早期经典书籍）会提到方法调用计数器带半衰期衰减机制——长期不被调用的方法，计数器会周期性衰减，避免&quot;历史热点&quot;长期占用编译资源，对应参数 <code>-XX:-UseCounterDecay</code> 与半衰期参数 <code>CounterHalfLifeTime</code>（后者是 develop 级参数，正式版 JVM 不可调，默认 30 秒，衰减动作在 GC 时顺带进行）。需要修正的是：这套机制是<strong>非分层时代</strong>的设计，且已在现代 HotSpot 中逐步退场——<code>UseCounterDecay</code> 在 JDK 22 被标记 obsolete（JDK-8318480），<code>CounterHalfLifeTime</code> 随后也被移除（JDK-8340273）。分层编译下，热度判定由各层阈值与速率折算主导，不要再把&quot;半衰期&quot;当成可依赖的调优点。</p>
-<h3 id="3-3-OSR：栈上替换">3.3 OSR：栈上替换</h3>
-<p>双计数器并存还有一个工程原因：<strong>长循环问题</strong>。方法调用计数器以&quot;一次调用&quot;为粒度，如果热点位于一个长时间不返回的循环体里（空转等待、计算密集型长循环），只靠调用次数可能迟迟凑不够阈值——这次调用还没结束呢。此时由<strong>回边计数器</strong>兜底：循环每跳回循环头一次就累加计数，超阈值即触发 <strong>OSR（On-Stack Replacement，栈上替换）</strong> 编译。</p>
-<p>OSR 与标准编译的区别在于替换对象：标准编译产物替换的是&quot;方法的入口&quot;，作用于<strong>下一次调用</strong>；OSR 编译产物只服务于&quot;当前还在解释执行的栈帧&quot;，在下一次回边时把解释帧<strong>就地切换</strong>成编译帧，循环剩余部分直接跑机器码，不必等方法自然返回。在编译日志里，OSR 编译任务以 <code>%</code> 标记区分（见第 5.1 节）。</p>
-<p>其完整时序如下（示意图）：</p>
-<pre><code class="highlight mermaid">sequenceDiagram
-    autonumber
-    participant I as 解释器
-    participant Q as 编译队列
-    participant C as JIT编译线程
-    participant F as 正在执行的栈帧
-    Note over I: 循环每跳回循环头一次，回边计数加一
-    I-&gt;&gt;Q: 回边计数超阈值，提交 OSR 编译任务
-    I-&gt;&gt;I: 不阻塞，继续解释执行后续迭代
-    Q-&gt;&gt;C: 后台异步编译该循环所在片段
-    C--&gt;&gt;F: 编译完成，OSR 版本挂到方法上
-    Note over F: 下一次回边时检查到可用版本
-    F-&gt;&gt;F: 栈上替换：解释帧就地切换为编译帧</code></pre>
-<h3 id="3-4-分层编译：0-4-层的升降级">3.4 分层编译：0~4 层的升降级</h3>
-<p>计数器命中后，JIT 并非一步到位生成最高质量机器码，而是采用<strong>分层编译（Tiered Compilation）</strong>，JDK 8 起默认开启。共 5 个层级：</p>
-<table>
-<thead>
-<tr>
-<th>层级</th>
-<th>执行方式</th>
-<th>画像采集</th>
-<th>定位</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>解释执行</td>
-<td>部分（计数）</td>
-<td>起点、逃生门</td>
-</tr>
-<tr>
-<td>1</td>
-<td>C1 编译，无画像</td>
-<td>无</td>
-<td>极小方法的终点，去优化后的稳妥去处</td>
-</tr>
-<tr>
-<td>2</td>
-<td>C1 编译，少量计数</td>
-<td>有限</td>
-<td>过渡层</td>
-</tr>
-<tr>
-<td>3</td>
-<td>C1 编译，全量画像</td>
-<td>完整（分支、类型、虚方法）</td>
-<td>为主层 4 采集画像</td>
-</tr>
-<tr>
-<td>4</td>
-<td>C2 编译</td>
-<td>无（吃现成画像）</td>
-<td>峰值性能所在</td>
-</tr>
-</tbody>
-</table>
-<ul class="lvl-0">
-<li class="lvl-2">
-<p><strong>C1（客户端编译器）</strong>：编译快、优化保守，快速生效止血。</p>
-</li>
-<li class="lvl-2">
-<p><strong>C2（服务端编译器）</strong>：编译慢但优化激进，依赖第 3 层采到的画像做投机优化，是长期运行的峰值来源。</p>
-</li>
-</ul>
-<p>典型路径是 <strong>0 → 3 → 4</strong>：先解释，热度起来后用 C1 全量画像版执行（比解释快得多，同时收集画像），画像成熟后再上 C2。C2 编译队列繁忙时可能先落到 1/2 层过渡；极小方法（如 getter）可能直接 0 → 1 就到头了——不值得为它上 C2。</p>
-<pre><code class="highlight mermaid">flowchart TB
-    T0[&quot;第 0 层：解释执行&quot;] --&gt;|&quot;计数达到 Tier3 阈值&quot;| T3[&quot;第 3 层：C1 全量画像&quot;]
-    T0 -.-&gt;|&quot;极小方法，如 getter&quot;| T1[&quot;第 1 层：C1 无画像快速版&quot;]
-    T3 --&gt;|&quot;画像成熟且达到 Tier4 阈值&quot;| T4[&quot;第 4 层：C2 深度优化&quot;]
-    T3 -.-&gt;|&quot;C2 队列繁忙时先落 1/2 层过渡&quot;| T1
-    T4 -.-&gt;|&quot;假设失效：去优化&quot;| T0</code></pre>
-<p>原文的简化模型仍然成立，把它放在这里对照：</p>
-<pre><code class="highlight mermaid">flowchart LR
-    A[解释执行&lt;br/&gt;Interpreter] --&gt;|调用计数超阈值| B[C1 编译&lt;br/&gt;快速生效]
-    B --&gt;|热度继续升高| C[C2 编译&lt;br/&gt;深度优化]
-    C -.-&gt;|假设失效时回退| A</code></pre>
-<p>几个与之配套的工程事实：</p>
-<ul class="lvl-0">
-<li class="lvl-2">
-<p><strong>编译是异步的</strong>。计数达标只是&quot;提交编译任务&quot;，真正的切换发生在编译完成之后（下一次调用命中新版本，或 OSR 在下一个回边点切换）。编译线程数由 <code>-XX:CICompilerCount</code> 控制（分层下会自动在 C1/C2 间分配，默认随 CPU 核数伸缩，通常至少为 2）；<code>-Xbatch</code> 可强制前台同步编译，用于实验而非生产。</p>
-</li>
-<li class="lvl-2">
-<p><strong>层级可以手动封顶</strong>。<code>-XX:TieredStopAtLevel=1</code> 只用 C1，常见于快速启动的短命进程（如构建工具、单测 JVM），用峰值损失换预热时间。</p>
-</li>
-<li class="lvl-2">
-<p><strong>为什么第 2 层存在</strong>：它是 C1 的&quot;半画像&quot;档位，画像采集比第 3 层便宜得多。当 C2 队列拥堵、方法被迫在 C1 层面多停留时，先用它保持尚可的执行速度，避免在大方法上长期背着全量画像的采集开销。</p>
-</li>
-<li class="lvl-2">
-<p><strong>编译产物（nmethod）存放在代码缓存（Code Cache）</strong>。64 位 HotSpot 分层模式下默认保留约 240MB（常见默认值），JDK 9 起默认分段管理（非方法段、C1 段、C2 段）。这个缓存会被填满，是故障 6.3 的伏笔。</p>
-</li>
-<li class="lvl-2">
-<p><strong>层级切换、编译产物安装都依托安全点（safepoint）机制协调</strong>，这也是 JVM 能保证&quot;换代码不破坏执行一致性&quot;的基础。</p>
-</li>
-</ul>
-<h3 id="3-5-去优化：激进优化的-后悔药">3.5 去优化：激进优化的&quot;后悔药&quot;</h3>
-<p>C2 的很多优化是<strong>投机性的</strong>：假设某虚方法只有一种实现（单态），就按直接调用编译并内联；假设某分支从不走进去，就把它裁掉。假设不成立时，JVM 必须有办法撤销已经装车的编译代码——这就是<strong>去优化（Deoptimization）</strong>。</p>
-<p><strong>什么时候发生</strong>（常见触发原因）：</p>
-<ul class="lvl-0">
-<li class="lvl-2">
-<p>运行中加载了新类，打破&quot;该调用点只有一种实现&quot;的类层次分析（CHA）假设——动态代理、热部署、反射生成类是高发区；</p>
-</li>
-<li class="lvl-2">
-<p>第 3 层类型画像之外的新类型第一次走到该调用点（超多态）；</p>
-</li>
-<li class="lvl-2">
-<p>依赖的类被卸载或重定义；</p>
-</li>
-<li class="lvl-2">
-<p>投机假设的哨兵检查失败（如编译时假定不会为 null、不会越界，运行时却在哨兵分支真的发生了）。</p>
-</li>
-</ul>
-<p><strong>发生了什么、系统如何处理</strong>：编译代码里的假设点预先埋有<strong>罕见陷阱（uncommon trap）</strong>。假设被打破时，执行流进入陷阱，JVM 把该编译方法标记为 <code>made not entrant</code>（新调用不再进入编译版）；正在该方法编译帧里的线程，会在安全点被引导返回去优化入口，由运行时<strong>重建等价的解释器栈帧</strong>，从触发的字节码位置继续解释执行；随后解释器重新计数、重新画像，满足条件后再次编译。旧编译产物在没有任何线程引用后由代码缓存清扫回收，标记为 <code>made zombie</code>。如果同一个方法反复去优化，JVM 会将其标记为<strong>不可编译</strong>（日志中出现 <code>made non-compilable</code>），此后永久停留在解释执行——这是性能长期回退的典型来源（见故障 6.2）。</p>
-<p>完整时序（示意图）：</p>
-<pre><code class="highlight mermaid">sequenceDiagram
-    autonumber
-    participant C2 as C2编译代码
-    participant RT as 运行时
-    participant I as 解释器
-    Note over C2: 编译时假设：该虚方法只有一种实现
-    C2-&gt;&gt;RT: 出现第二种实现，假设被打破，触发 uncommon trap
-    RT-&gt;&gt;RT: 在安全点冻结编译帧，回填真实类型信息
-    RT-&gt;&gt;I: 重建等价解释帧，从触发位置继续
-    I-&gt;&gt;I: 重新计数、重新收集画像
-    I-&gt;&gt;C2: 满足阈值后再次编译，反复失败则标记不可编译</code></pre>
-<h2 id="四、JIT-核心优化逐个拆解（含失效条件）">四、JIT 核心优化逐个拆解（含失效条件）</h2>
+</blockquote>
 <table>
 <thead>
 <tr>
@@ -436,17 +307,17 @@ $$</p>
 </tr>
 <tr>
 <td>内存优化</td>
-<td>逃逸分析、标量替换</td>
+<td>逃逸分析、栈分配、标量替换</td>
 <td>减少 GC、提升缓存</td>
 </tr>
 <tr>
 <td>同步优化</td>
-<td>锁消除、锁粗化</td>
+<td>锁消除</td>
 <td>提升并发性能</td>
 </tr>
 <tr>
 <td>控制流优化</td>
-<td>概率导向分支优化、死代码消除</td>
+<td>分支预测、死代码消除</td>
 <td>精简执行路径</td>
 </tr>
 <tr>
@@ -461,260 +332,318 @@ $$</p>
 </tr>
 </tbody>
 </table>
-<h3 id="4-1-方法内联：一切优化的基石">4.1 方法内联：一切优化的基石</h3>
-<p>内联把被调用方法的指令直接&quot;复制&quot;到调用点，消除栈帧创建、参数传递、返回值处理的开销；更重要的是，它把两个独立的方法体合并成一个编译单元，让常量传播、逃逸分析、死代码消除得以<strong>跨方法</strong>施展。可以说没有内联，后面一多半优化都会失效。</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 示例代码</span></span><br><span class="line"><span class="type">int</span> <span class="title function_">add</span><span class="params">(<span class="type">int</span> a, <span class="type">int</span> b)</span> &#123; <span class="keyword">return</span> a + b; &#125;</span><br><span class="line"><span class="type">int</span> <span class="variable">result</span> <span class="operator">=</span> add(<span class="number">1</span>, <span class="number">2</span>); <span class="comment">// 内联后等价于 result = 1 + 2;</span></span><br></pre></td></tr></table></figure>
-<p>内联决策的主要约束（参数为真实参数名，默认值以常见版本为准）：</p>
-<ul class="lvl-0">
+<h3 id="热点检测">热点检测</h3>
+<p><strong>热点检测（Hot Spot Detection）</strong> 是 JIT编译器决定“哪些代码值得优化”的核心机制。JVM 不会盲目编译所有代码，而是通过运行时监控，识别出<strong>执行频率高</strong>或<strong>占用 CPU 时间长</strong>的“热点代码”，然后交由 JIT 编译器进行深度优化。</p>
+<blockquote>
+<ul class="lvl-1">
 <li class="lvl-2">
-<p><strong>大小限制</strong>：<code>-XX:MaxInlineSize</code>（默认 35 字节码）控制&quot;不热&quot;方法的内联上限；<code>-XX:FreqInlineSize</code>（x86-64 常见默认 325 字节码）控制热方法的内联上限；递归内联深度另有 <code>MaxInlineLevel</code>（默认 9）约束。</p>
+<p><strong>避免过度编译</strong>：只优化真正影响性能的代码。</p>
 </li>
 <li class="lvl-2">
-<p><strong>虚方法分派</strong>：运行时画像显示调用点是<strong>单态（monomorphic）</strong>——只有一种实现——就可以内联（配合类型检查哨兵）；**双态（bimorphic）**可对两种类型做分支预测内联；**超多态（megamorphic）**则退回虚分派表调用，无法内联。</p>
+<p><strong>平衡启动速度与运行性能</strong>：冷代码用解释器快速执行，热代码用 JIT 提升效率。</p>
 </li>
 <li class="lvl-2">
-<p><strong>final/static/private 不是内联保证</strong>。一个常见误解是&quot;加上 final 就能内联&quot;。事实是：这些修饰符只是从语义上消除了部分虚分派的可能，<strong>是否内联仍取决于热度、方法大小与内联预算</strong>；反过来，非 final 的单态调用点同样能投机内联。判定依据永远是编译日志，不是修饰符。</p>
+<p><strong>动态适应程序行为</strong>：根据实际运行负载调整优化策略。</p>
 </li>
 </ul>
-<p><strong>为什么不无限内联</strong>：内联会放大代码体积，过大的方法体会拖累指令缓存命中、挤占代码缓存、拉长编译时间，反而降速。JIT 的内联预算本质上是&quot;调用开销节省 vs 代码膨胀代价&quot;的折中。</p>
-<h3 id="4-2-逃逸分析与标量替换（含一处常见讹误的考证）">4.2 逃逸分析与标量替换（含一处常见讹误的考证）</h3>
-<p>逃逸分析（Escape Analysis）判断对象的作用域是否&quot;逃出&quot;当前方法或线程，HotSpot 的实现将逃逸程度分为三级：</p>
+</blockquote>
+<p>目前主要的热点代码识别方式是热点探测（Hot Spot Detection），有以下两种：</p>
+<ol>
+<li class="lvl-3">
+<p>基于<strong>采样方式</strong>探测</p>
+<p><strong>周期性检测各个线程的栈顶</strong>，若某个方法经常出现在栈顶，就判定为热点方法。</p>
+<p>好处是实现简单，缺点是无法精确确认一个方法的热度。容易受线程阻塞或别的原因干扰热点探测。</p>
+</li>
+<li class="lvl-3">
+<p>基于<strong>计数器</strong>热点探测</p>
+<p>采用这种方法的虚拟机会为每个方法、代码块建立计数器，<strong>统计方法的执行次数</strong>，超过阈值就判定为热点方法并触发 JIT 编译。</p>
+</li>
+</ol>
+<p>HotSpot 虚拟机使用的正是<strong>基于计数器的热点探测</strong>，它为每个方法准备了两类计数器：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>方法调用计数器</strong>：就是记录一个方法被调用次数的计数器，当方法调用次数超过阈值，触发 JIT 编译。</p>
+<p>该计数器具有 <strong>热度衰减（Counter Decay）</strong> 机制： 如果方法长时间未被调用，计数器会周期性衰减（防止“历史热点”长期占用编译资源）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>回边计数器</strong>：记录方法内循环（<code>for</code>/<code>while</code>）跳回循环头的次数，用于识别<strong>循环密集型</strong>的热点代码。</p>
+<p>回边计数超过阈值时触发 <strong>OSR（On-Stack Replacement，栈上替换）</strong>：直接在解释执行的循环体中插入编译版本并切换过去，不必等循环结束。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="分层编译与-OSR">分层编译与 OSR</h3>
+<p>计数器命中后，JIT 并非“一步到位”地生成最高质量的机器码，而是采用<strong>分层编译（Tiered Compilation）</strong>（JDK 8 起默认开启）：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>C1（客户端编译器）</strong>：编译速度快、优化保守，能快速生效，适合作为第一层。</p>
+</li>
+<li class="lvl-2">
+<p><strong>C2（服务端编译器）</strong>：编译慢但优化激进（依赖更多 profiling 数据），是长期运行的峰值性能来源。</p>
+</li>
+<li class="lvl-2">
+<p>代码热度升高时，执行模式按 <strong>解释 → C1 → C2</strong> 逐级升级；若 C2 依赖的优化假设被打破（如类层次变化导致去虚拟化失效），JVM 会<strong>撤销优化（Deoptimization）</strong> 并回退到低层级重新执行。</p>
+</li>
+</ul>
+</blockquote>
+<pre><code class="highlight mermaid">flowchart LR
+    A[解释执行&lt;br/&gt;Interpreter] --&gt;|调用计数超阈值| B[C1 编译&lt;br/&gt;快速生效]
+    B --&gt;|热度继续升高| C[C2 编译&lt;br/&gt;深度优化]
+    C -.-&gt;|假设失效时回退| A</code></pre>
+<blockquote>
+<p><strong>OSR 与标准编译的区别</strong>：方法调用计数器只在方法<strong>返回时</strong>累计，若热点位于<strong>长时间不返回的循环体</strong>内（如空转等待、计算密集型长循环），标准编译永远无法触发。此时由<strong>回边计数器</strong>兜底：循环每次跳回循环头（back-edge）都累加计数，超过阈值即触发 OSR，把正在执行的循环直接替换为编译后的机器码。</p>
+</blockquote>
+<h3 id="方法内联">方法内联</h3>
+<p>消除方法调用开销（栈帧创建、参数传递、返回值处理），并为后续优化（如常量传播、死代码消除）创造条件。</p>
+<blockquote>
+<p>将被调用方法的字节码直接“复制”到调用处。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">add</span><span class="params">(<span class="type">int</span> a, <span class="type">int</span> b)</span> &#123; <span class="keyword">return</span> a + b; &#125;</span><br><span class="line"><span class="type">int</span> <span class="variable">result</span> <span class="operator">=</span> add(<span class="number">1</span>, <span class="number">2</span>); <span class="comment">// 内联后直接变成 result = 1 + 2;</span></span><br></pre></td></tr></table></figure>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>小方法（如 getter/setter）几乎总是内联。</p>
+</li>
+<li class="lvl-2">
+<p>虚方法（virtual）若运行时只有一种实现（monomorphic），也可内联。</p>
+</li>
+<li class="lvl-2">
+<p>支持多态内联（bimorphic/inline caching）：对 2 种类型做分支预测。</p>
+</li>
+</ul>
+<h3 id="逃逸分析">逃逸分析</h3>
+<p>分析对象的作用域，判断其是否“逃逸”出当前方法或线程，从而决定：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>是否可以在<strong>栈上分配</strong>（而非堆）</p>
+</li>
+<li class="lvl-2">
+<p>是否可以<strong>标量替换</strong>（拆解对象为局部变量）</p>
+</li>
+<li class="lvl-2">
+<p>是否可以<strong>消除同步锁</strong></p>
+</li>
+</ul>
+</blockquote>
+<p>优化的目的就是<strong>减少内存堆分配压力</strong>，可避免 GC 压力，提升性能。所以对象和数组并不是都在堆上分配内存的。</p>
+<p>逃逸分析是 Java 虚拟机中较为前沿的优化技术，是一种可以有效<strong>减少同步负载与堆内存分配压力</strong>的跨函数全局数据流分析算法。</p>
+<p>通过逃逸分析，Java Hotspot编译器能够分析出一个新的对象的引用的使用范围从而决定是否要将这个对象分配到堆上。</p>
 <table>
 <thead>
 <tr>
 <th>逃逸级别</th>
 <th>含义</th>
-<th>可行的优化</th>
+<th>是否优化</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>NoEscape</strong></td>
-<td>仅在方法内使用，未被外部引用</td>
-<td>标量替换（消除分配）</td>
+<td>对象仅在方法内使用，未被外部引用</td>
+<td>栈分配、标量替换</td>
 </tr>
 <tr>
 <td><strong>ArgEscape</strong></td>
-<td>作为参数传给其他方法，但未被长期持有或返回</td>
-<td>通常仍需分配；无线程逃逸时同步仍可能消除</td>
+<td>作为参数传递给其他方法，但未被长期持有</td>
+<td>可能部分优化</td>
 </tr>
 <tr>
 <td><strong>GlobalEscape</strong></td>
-<td>被全局引用、返回或存入静态字段</td>
-<td>无法消除分配</td>
+<td>被全局变量引用或返回</td>
+<td>无法优化，必须堆分配</td>
 </tr>
 </tbody>
 </table>
-<p>逃逸分析的基本行为是<strong>分析对象的动态作用域</strong>：定义后若仅在被调用方使用且不存入长生命周期结构，属于方法逃逸的边界情形；若被赋值给类变量、实例字段或可被其他线程访问，则是线程逃逸，优化全部失效。</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 示例代码（经典教材案例的简化）</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> StringBuffer <span class="title function_">createStringBuffer</span><span class="params">(String s1, String s2)</span> &#123;</span><br><span class="line">    <span class="type">StringBuffer</span> <span class="variable">sb</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">StringBuffer</span>();</span><br><span class="line">    sb.append(s1);</span><br><span class="line">    sb.append(s2);</span><br><span class="line">    <span class="keyword">return</span> sb; <span class="comment">// 返回对象本身：方法逃逸，无法消除分配</span></span><br><span class="line">    <span class="comment">// 若改为 return sb.toString();，sb 不逃逸，可被优化</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p><strong>一处需要修正的常见讹误</strong>：很多文章（包括本文旧版）说逃逸分析让对象&quot;在栈上分配&quot;。就 HotSpot 而言，<strong>目前并没有把整个对象整体分配到虚拟机栈上的&quot;真·栈上分配&quot;实现</strong>；“栈上分配&quot;实际是靠**标量替换（Scalar Replacement）**落地的——对象不再作为整体创建，其字段被拆散为若干局部变量，自然地存在于栈帧或寄存器里。术语上区分这两者，有助于解释为什么某些场景&quot;看起来该优化却没优化”（例如对象太大、字段太多、数组长度运行期才确定时，标量替换往往放弃）。</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 示例代码：标量替换后，循环内不再发生堆分配</span></span><br><span class="line"><span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; <span class="number">1000000</span>; i++) &#123;</span><br><span class="line">    alloc();</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">alloc</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">User</span> <span class="variable">user</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">User</span>(); <span class="comment">// user 不逃逸，可能被标量替换，无实际分配</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 示例代码：Point 不逃逸，可能不创建对象，直接用两个局部变量</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">alloc</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">Point</span> <span class="variable">point</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Point</span>(<span class="number">1</span>, <span class="number">2</span>);</span><br><span class="line">    System.out.println(<span class="string">&quot;point.x=&quot;</span> + point.x + <span class="string">&quot;; point.y=&quot;</span> + point.y);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>相关开关：<code>-XX:+DoEscapeAnalysis</code>（默认开启，JDK 6u23 起）、<code>-XX:+EliminateAllocations</code>、<code>-XX:+EliminateLocks</code>。注意逃逸分析本身不跨方法、不跨编译单元，它的分析范围完全依赖内联撑开——<strong>内联失败，逃逸分析大概率失效</strong>，这是该优化的结构性边界。验证是否生效推荐用 JMH 的 <code>-prof gc</code> 观测分配速率（见 5.5 节），比看单个开关可靠。另外，逃逸分析本身并不免费：连接图构建与指针分析消耗编译时间，这也是它只在高层级（第 4 层）启用、对超大方法可能直接放弃分析的原因——优化决策同样要算收益。</p>
-<h3 id="4-3-锁消除与锁粗化">4.3 锁消除与锁粗化</h3>
-<p>动态编译同步块时，JIT 借助逃逸分析判断锁对象是否只被当前线程访问。若是（NoEscape/ArgEscape 且无线程逃逸），同步可安全移除：</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 示例代码</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">f</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">Object</span> <span class="variable">hollis</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Object</span>();</span><br><span class="line">    <span class="keyword">synchronized</span> (hollis) &#123;</span><br><span class="line">        System.out.println(hollis);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// hollis 的生命周期只在 f() 内，不会被其他线程访问，</span></span><br><span class="line"><span class="comment">// JIT 编译后锁被消除，等价于：</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">f</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">Object</span> <span class="variable">hollis</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Object</span>();</span><br><span class="line">    System.out.println(hollis);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-<p>对应地，若逃逸分析认定对象发生线程逃逸（如作为 <code>this</code> 返回、存入集合），锁消除不会发生——这也是&quot;局部变量加锁却没快起来&quot;的常见解释。另一个方向是<strong>锁粗化（Lock Coarsening）</strong>：连续对同一对象反复加锁解锁（如循环里反复调 <code>StringBuffer.append</code>），JIT 会把锁范围合并扩大到整个循环外，减少加锁次数——以放大临界区为代价换锁操作开销，两个方向各有适用面。</p>
-<h3 id="4-4-循环优化">4.4 循环优化</h3>
+<p>逃逸分析的基本行为就是<strong>分析对象动态作用域</strong>：</p>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>循环展开</strong>：将循环体复制多次，减少循环控制（如 i++、条件判断、回边）开销。例如 <code>for (int i = 0; i &lt; 4; i++)</code> 可能展开为 4 条独立语句。</p>
+<p>当一个对象在方法中被定义后，它可能被外部方法所引用，例如作为调用参数传递到其他地方中，称为<strong>方法逃逸</strong>。</p>
 </li>
 <li class="lvl-2">
-<p><strong>循环不变量外提</strong>：把循环体内不随迭代变化的计算移到循环外。</p>
+<p>赋值给类变量或可以在其他线程中访问的实例变量，称为<strong>线程逃逸</strong>。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> StringBuffer <span class="title function_">createStringBuffer</span><span class="params">(String s1, String s2)</span> &#123;</span><br><span class="line">     <span class="type">StringBuffer</span> <span class="variable">sb</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">StringBuffer</span>();</span><br><span class="line">     sb.append(s1);</span><br><span class="line">     sb.append(s2);</span><br><span class="line">     <span class="keyword">return</span> sb; <span class="comment">// 直接返回对象本身：对象被方法外部引用，属于方法逃逸，无法栈上分配或标量替换</span></span><br><span class="line">     <span class="comment">// 若改为 return sb.toString();，则 StringBuffer 对象不逃逸，可被 JIT 优化</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 </li>
 </ul>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; list.size(); i++) &#123; ... &#125;</span><br><span class="line"><span class="comment">// 若 size() 被内联、list 在循环内无别名写入，可等价于：</span></span><br><span class="line"><span class="type">int</span> <span class="variable">len</span> <span class="operator">=</span> list.size();</span><br><span class="line"><span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; len; i++) &#123; ... &#125;</span><br></pre></td></tr></table></figure>
-<p>注意外提的前提是&quot;该计算在循环内无副作用且不被循环体改变&quot;，这依赖内联与别名分析；一旦循环体内有未知调用，JIT 会保守放弃外提。<strong>它还有一个容易出事的反面</strong>：对&quot;每次迭代读一次普通字段&quot;的写法，JIT 会把这个读取当作不变量外提出循环——这正是故障 6.4 的根源。</p>
-<ul class="lvl-0">
+<p>通过JVM参数可指定是否开启逃逸分析，</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">-XX:+DoEscapeAnalysis <span class="comment"># 表示开启逃逸分析</span></span><br><span class="line">-XX:-DoEscapeAnalysis <span class="comment"># 关闭逃逸分析</span></span><br></pre></td></tr></table></figure>
+<p>使用逃逸分析，编译器可以对代码做如下优化：</p>
+<blockquote>
+<ul class="lvl-1">
 <li class="lvl-2">
-<p><strong>关于&quot;死循环消除&quot;的准确表述</strong>：某些资料声称 JIT 会删除&quot;无副作用且结果未使用&quot;的循环，这个说法要谨慎对待。更准确的是两点：其一，循环结构在 C2 中会被规范化为带守卫的主循环（guard）加异常退出的尾循环（post-loop）形式；其二，JMM 之下，对普通字段的空转等待循环，读取被外提后确实可能&quot;永远退不出去&quot;，这是数据竞争下被允许的优化，不是 JVM 的 bug——修复责任在代码，见 6.4。</p>
+<p><strong>同步省略</strong>。如果一个对象被发现只能被一个线程被访问到，那么对于这个对象的操作可以不考虑同步。</p>
+</li>
+<li class="lvl-2">
+<p><strong>将堆分配转化为栈分配</strong>。如果一个对象在子程序中被分配，要使指向该对象的指针永远不会逃逸，对象可能是栈分配的。</p>
+</li>
+<li class="lvl-2">
+<p><strong>分离对象或标量替换</strong>。有的对象可能不需要作为一个连续的内存结构存在也可以被访问到，那么对象的部分（或全部）可以不存储在内存，而是存储在CPU寄存器中。</p>
 </li>
 </ul>
-<h3 id="4-5-死代码消除与常量折叠">4.5 死代码消除与常量折叠</h3>
-<p>移除结果未被使用或不可达的代码。需要区分两层：</p>
+</blockquote>
+<h3 id="锁消除">锁消除</h3>
+<p>动态编译同步块的时候，JIT编译器可以借助逃逸分析来判断同步块所使用的锁对象是否只能够被一个线程访问。</p>
+<blockquote>
+<p>结合逃逸分析：如果一个对象<strong>不会被多线程访问</strong>（如局部对象），则其上的 <code>synchronized</code> 锁可安全移除。</p>
+<p>移除不必要的同步锁，提升并发性能。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">f</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">Object</span> <span class="variable">hollis</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Object</span>();</span><br><span class="line">    <span class="keyword">synchronized</span>(hollis) &#123;</span><br><span class="line">        System.out.println(hollis);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 代码中对hollis这个对象进行加锁，但是hollis对象的生命周期只在f()方法中，并不会被其他线程所访问到，所以在JIT编译阶段就会被优化掉。优化成：</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">f</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">Object</span> <span class="variable">hollis</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Object</span>();</span><br><span class="line">    System.out.println(hollis);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>所以，在使用synchronized的时候，如果JIT经过逃逸分析之后发现并无线程安全问题的话，就会做锁消除。</p>
+<h3 id="循环优化">循环优化</h3>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>javac 层</strong>：<code>if (false) { ... }</code> 这种编译期常量条件在 javac 阶段就不会生成对应字节码（JLS 明确允许这种&quot;条件编译&quot;写法）；<code>static final</code> 编译期常量与常量表达式的折叠也在 javac 完成。</p>
+<p>循环展开</p>
+<p>将循环体复制多次，减少循环控制（如 i++、条件判断）开销。</p>
+<p>例如：<code>for (int i=0; i&lt;4; i++)</code> → 展开为 4 次独立语句。</p>
 </li>
 <li class="lvl-2">
-<p><strong>JIT 层</strong>：更常见于内联与常量传播<strong>之后</strong>——内联后实参恒定，分支被裁剪，死代码随之消亡。</p>
+<p>循环不变量外提</p>
+<p>将循环体内<strong>不随循环变化的计算</strong>移到循环外。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; list.size(); i++) &#123; ... &#125;</span><br><span class="line"><span class="comment">// 优化为：</span></span><br><span class="line"><span class="type">int</span> <span class="variable">len</span> <span class="operator">=</span> list.size();</span><br><span class="line"><span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; len; i++) &#123; ... &#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-2">
+<p>死循环检测与消除</p>
+<p>若循环无副作用且结果未被使用，可能被整个删除。</p>
 </li>
 </ul>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 示例代码</span></span><br><span class="line"><span class="type">int</span> <span class="variable">x</span> <span class="operator">=</span> <span class="number">10</span>;</span><br><span class="line"><span class="comment">// 若 x 后续未被读取且赋值无副作用，这行会在编译产物中消失</span></span><br><span class="line"></span><br><span class="line"><span class="type">int</span> <span class="variable">a</span> <span class="operator">=</span> <span class="number">2</span>;</span><br><span class="line"><span class="type">int</span> <span class="variable">b</span> <span class="operator">=</span> <span class="number">3</span>;</span><br><span class="line"><span class="type">int</span> <span class="variable">c</span> <span class="operator">=</span> a + b; <span class="comment">// 局部变量情形 javac 不折叠，内联/传播后 JIT 可替换为 5</span></span><br></pre></td></tr></table></figure>
-<h3 id="4-6-分支的概率导向优化">4.6 分支的概率导向优化</h3>
-<p>这里也修正一个常见说法：JIT 并不能直接&quot;控制&quot; CPU 的分支预测器——那属于硬件行为。C2 真正做的是<strong>基于运行时画像的概率导向优化</strong>：为每个分支维护跳转频率（如 99% 走 if 分支），据此重排代码块布局让热路径连续、对概率极端的分支做投机裁剪（配合去优化哨兵兜底）、把异常处理等冷路径放到代码末尾。CPU 分支预测与指令缓存命中率的改善，是这些布局变化的间接收益。</p>
-<h2 id="五、验证手段：让-JIT-自己说话">五、验证手段：让 JIT 自己说话</h2>
-<p>调优的第一原则是先测量。以下日志参数均可直接用于本地验证，注意其中&quot;示例日志&quot;格式随版本略有差异。</p>
-<h3 id="5-1-XX-PrintCompilation：编译流水账">5.1 -XX:+PrintCompilation：编译流水账</h3>
-<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">-XX:+PrintCompilation        <span class="comment"># 打印 JIT 编译日志</span></span><br><span class="line">-XX:+UnlockDiagnosticVMOptions</span><br><span class="line">-XX:+PrintInlining           <span class="comment"># 打印内联决策（需配合上一行解锁诊断参数）</span></span><br><span class="line">-XX:+PrintAssembly           <span class="comment"># 打印生成的汇编代码（需 hsdis 反汇编插件）</span></span><br></pre></td></tr></table></figure>
-<p>旧式的 <code>-XX:+TraceClassLoading</code> 这类跟踪参数在 JDK 9 起迁移到统一日志（如 <code>-Xlog:class+load</code>），JDK 16 起彻底废弃；但 <strong><code>PrintCompilation</code> 与 <code>PrintInlining</code> 本身在新版本 JDK 中依然有效</strong>，不需要换用新语法也能用。</p>
-<p>输出示例（<strong>示例日志</strong>，JDK 17 风格，字段有省略）：</p>
-<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">2690  664 %     4  com.example.Demo::compute @ 12 (58 bytes)</span><br><span class="line">2701  665       4  com.example.Demo::compute (58 bytes)</span><br><span class="line">3104  664 %     4  com.example.Demo::compute @ 12 (58 bytes)   made not entrant</span><br></pre></td></tr></table></figure>
-<ul class="lvl-0">
+<h3 id="死代码消除">死代码消除</h3>
+<p>移除永远不会执行或结果未被使用的代码。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (<span class="literal">false</span>) &#123;</span><br><span class="line">    expensiveOperation(); <span class="comment">// 被完全删除</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="type">int</span> <span class="variable">x</span> <span class="operator">=</span> <span class="number">10</span>;</span><br><span class="line"><span class="comment">// 如果 x 后续未被使用，整行可能被删除</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
 <li class="lvl-2">
-<p>第一列：虚拟机启动以来的毫秒时间戳；第二列：编译任务 ID。</p>
+<p>常量折叠后出现不可达分支</p>
 </li>
 <li class="lvl-2">
-<p><code>%</code> 表示这是一次 <strong>OSR 编译</strong>；<code>@ 12</code> 是 OSR 进入的字节码偏移。</p>
-</li>
-<li class="lvl-2">
-<p>数字 <code>4</code> 是<strong>分层级别</strong>（1~4），一眼就能看出方法走到哪一层。</p>
-</li>
-<li class="lvl-2">
-<p>标记含义：<code>s</code> 方法含同步块、<code>!</code> 含异常处理器、<code>b</code> 阻塞式编译、<code>n</code> 本地方法包装。</p>
-</li>
-<li class="lvl-2">
-<p><code>made not entrant</code> 是<strong>去优化</strong>的痕迹；反复出现时，方法可能被标记 <code>made non-compilable</code>，性能长期回落到解释执行。</p>
+<p>变量未被读取（无副作用）</p>
 </li>
 </ul>
-<h3 id="5-2-XX-PrintInlining：内联决策">5.2 -XX:+PrintInlining：内联决策</h3>
-<p>输出示例（<strong>示例日志</strong>）：</p>
-<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">@ 8   com/example/Demo::add (9 bytes)   inline</span><br><span class="line">@ 18  com/example/Demo::big (600 bytes)   too big</span><br><span class="line">@ 30  com/example/Ifc::call (5 bytes)   not inlineable (megamorphic)</span><br></pre></td></tr></table></figure>
-<p>每一条调用点给出内联与否及原因（<code>too big</code>、<code>hot method too big</code>、<code>megamorphic</code>、<code>already compiled into a big method</code> 等，措辞随版本有差异）。排查&quot;方法很热却不内联&quot;时，先看这里的 reason，再决定是重构方法体还是动参数。</p>
-<h3 id="5-3-统一日志语法（JDK-9-）">5.3 统一日志语法（JDK 9+）</h3>
-<p>JDK 9 引入统一日志后，JIT 相关日志逐步也有了 <code>-Xlog</code> 版本，可作为更现代的替代（可重定向文件、控制格式、异步输出）：</p>
-<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">-Xlog:jit+compilation=debug    <span class="comment"># 编译记录，等价于 PrintCompilation 的信息</span></span><br><span class="line">-Xlog:jit+inlining=debug       <span class="comment"># 内联决策</span></span><br><span class="line">-Xlog:codecache                <span class="comment"># 代码缓存水位与事件</span></span><br></pre></td></tr></table></figure>
-<p>说明：<code>jit+compilation</code>、<code>jit+inlining</code> 是官方统一日志标签（OpenJDK 邮件列表与缺陷库可查证），JDK 15 前后的日志内容与层级有差异（JDK 24 前后基本日志被提升到 info 级）；<code>-Xlog:codecache</code> 亦是官方标签。版本差异较大时，以 <code>java -Xlog:help</code> 列出的标签为准。</p>
-<h3 id="5-4-更深一层：LogCompilation、PrintAssembly-与-JITWatch">5.4 更深一层：LogCompilation、PrintAssembly 与 JITWatch</h3>
-<ul class="lvl-0">
+</blockquote>
+<h3 id="常量传播与折叠">常量传播与折叠</h3>
+<p>在编译期计算常量表达式，减少运行时计算。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="variable">a</span> <span class="operator">=</span> <span class="number">2</span>;</span><br><span class="line"><span class="type">int</span> <span class="variable">b</span> <span class="operator">=</span> <span class="number">3</span>;</span><br><span class="line"><span class="type">int</span> <span class="variable">c</span> <span class="operator">=</span> a + b; <span class="comment">// → JIT 直接替换为 int c = 5;</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>原本是变量的值变成常量。</p>
+</blockquote>
+<h3 id="分支预测与条件优化">分支预测与条件优化</h3>
+<p>基于运行时数据，优化 if/else 或 switch 的执行路径。</p>
+<blockquote>
+<ul class="lvl-1">
 <li class="lvl-2">
-<p><code>-XX:+UnlockDiagnosticVMOptions -XX:+LogCompilation</code>：把编译活动以 XML 详细记录到 <code>hotspot_*.log</code>，包含每次编译的决策、去优化原因、内联树，是离线分析的主力数据源。</p>
+<p>记录分支跳转频率（如 99% 走 if 分支）。</p>
 </li>
 <li class="lvl-2">
-<p><code>-XX:+PrintAssembly</code>：输出最终机器码的汇编（需安装 hsdis 反汇编库），用于确认循环展开、SIMD 向量化是否真的发生。</p>
+<p>将<strong>高概率路径</strong>放在代码前面（CPU 分支预测更准）。</p>
 </li>
 <li class="lvl-2">
-<p><strong>JITWatch</strong>：开源工具，可直接解析 LogCompilation 的 XML，把编译层级、内联树、缺失的内联原因可视化，适合系统性分析。</p>
-</li>
-</ul>
-<h3 id="5-5-用-JMH-验证-看不见-的优化">5.5 用 JMH 验证&quot;看不见&quot;的优化</h3>
-<p>标量替换、锁消除这类优化没有直接的打印开关覆盖所有路径，推荐用 JMH（Java Microbenchmark Harness）的 <code>-prof gc</code> 分析器验证：正常堆分配在 JMH 报告里体现为 <code>gc.alloc.rate.norm</code>（每次操作的分配字节数）。若&quot;看起来不逃逸的对象分配&quot;被标量替换掉，该指标会显著下降乃至归零——<strong>这是可复现的观测方法，本文不给出具体数值，请以你机器上的实测为准</strong>。反过来，压测吞吐类结论必须用 JMH 或全链路压测并充分预热，否则测到的多半是解释执行阶段的失真数据。</p>
-<h2 id="六、故障实战">六、故障实战</h2>
-<p>下面五个场景均按&quot;现象 → 发生了什么 → 系统如何处理 → 恢复与预防&quot;展开。除 6.1 引用的公开复盘案例外，均为机制层面的分析，不含编造的实测数据。</p>
-<h3 id="6-1-压测初期-P99-虚高：预热不足">6.1 压测初期 P99 虚高：预热不足</h3>
-<ul class="lvl-0">
-<li class="lvl-2">
-<p><strong>现象</strong>：服务刚启动就压测，P99 比稳定期高出数倍；持续跑一段时间后自行回落。</p>
-</li>
-<li class="lvl-2">
-<p><strong>发生了什么</strong>：三层因素叠加。其一，大量代码还停在 0 层解释执行，天然慢一个数量级；其二，编译线程与业务线程<strong>抢 CPU</strong>，大任务编译被频繁上下文切换，机器码&quot;交付&quot;得更晚；其三，编译任务排队（C2 队列繁忙时方法先落 1/2 层过渡），加上 GC 尚未进入稳态。</p>
-</li>
-<li class="lvl-2">
-<p><strong>系统如何处理</strong>：JVM 自动逐层升级，最终到达第 4 层峰值态，但这个过程需要真实流量喂出来。</p>
-</li>
-<li class="lvl-2">
-<p><strong>恢复与预防</strong>：压测前用接近真实的流量预热（常见做法 5~10 分钟起步，具体以吞吐曲线走平为准，这是经验值不是定值）；自动化流量网关按权重渐进放量。这里有一个被 Red Hat 工程师公开复盘过的<strong>真实案例</strong>：他们对 PetClinic 做预热测试，发现打开一个&quot;不应影响行为&quot;的日志参数后，预热时间从约 14 分钟缩到约 4 分钟——根因正是该参数的 I/O 让应用线程频繁挂起，反而让编译线程拿到了 CPU；最终解法是在预热期压低请求速率、再逐步加压，避免业务线程饿死编译线程。这个案例说明：<strong>预热期的并发度本身就是预热速度的变量</strong>，而不是与预热无关的配置。验证预热是否完成，可在压测环境临时挂上 <code>-XX:+PrintCompilation</code> 观察：当第 4 层编译的增速明显放缓、不再有新的大方法进入编译时，基本可判定 JIT 进入稳态；生产环境则以 JFR 指标与吞吐曲线走平作为信号。</p>
+<p>对低概率路径（如异常处理）做“冷代码”处理，甚至不编译。</p>
 </li>
 </ul>
-<h3 id="6-2-频繁去优化：性能偶发回退与-made-non-compilable">6.2 频繁去优化：性能偶发回退与 made non-compilable</h3>
-<ul class="lvl-0">
+</blockquote>
+<h3 id="栈上分配">栈上分配</h3>
+<p>在某个方法中定义一个对象，但是并没有在方法外部引用他。这个对象并不会逃逸到方法外部。经过JIT的逃逸分析之后，就可以对其内存分配进行优化，在栈上分配。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; <span class="number">1000000</span>; i++) &#123;</span><br><span class="line">    alloc(); <span class="comment">// 该对象没有逃逸出方法， User对象在栈上分配</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">alloc</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">User</span> <span class="variable">user</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">User</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
 <li class="lvl-2">
-<p><strong>现象</strong>：长稳压测中吞吐周期性小幅下跌又恢复；打开编译日志后看到大量 <code>uncommon trap</code>、<code>made not entrant</code>；极端时某方法直接 <code>made non-compilable</code>，吞吐再也没回到过峰值。</p>
+<p>堆内存中分配的对象减少</p>
 </li>
 <li class="lvl-2">
-<p><strong>发生了什么</strong>：C2 编译时的投机假设被运行期打破——最常见的是单态调用点突然出现新类型（动态代理逐个生成新类、热部署替换类、反射创建子类），编译代码被撤销。</p>
-</li>
-<li class="lvl-2">
-<p><strong>系统如何处理</strong>：偶发去优化是分层编译的正常代价：编译版标记 <code>not entrant</code>，在执行的线程安全点回退到解释器重新画像，随后重编译，吞吐短暂回落后恢复。但若同一方法反复去优化，JVM 会将其标记为不可编译，<strong>永久停留解释执行</strong>——回退不再有恢复路径。</p>
-</li>
-<li class="lvl-2">
-<p><strong>恢复与预防</strong>：少量 uncommon trap 不必干预；频繁发生时排查运行期类生成行为（热部署、无界动态代理、脚本引擎反复定义类），从源头收敛；对已被标记 non-compilable 的方法，确认是否在热路径上，必要时调整代码结构（减少对该调用点的类型多态）再观察。</p>
+<p>GC次数减少</p>
 </li>
 </ul>
-<h3 id="6-3-运行数小时后吞吐断崖：代码缓存耗尽">6.3 运行数小时后吞吐断崖：代码缓存耗尽</h3>
-<ul class="lvl-0">
+</blockquote>
+<h3 id="标量替换">标量替换</h3>
+<p>将对象“打散”为若干基本类型变量，避免对象分配。</p>
+<blockquote>
+<p>标量是指一个无法再分解成更小的数据的数据。Java中的原始数据类型就是标量。相对的，那些还可以分解的数据叫做聚合量（Aggregate），Java中的对象就是聚合量，因为他可以分解成其他聚合量和标量。</p>
+<p>在JIT阶段，如果经过逃逸分析，发现一个对象不会被外界访问的话，那么经过JIT优化，就会把这个对象拆解成若干个其中包含的若干个成员变量来代替。这个过程就是标量替换。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// point对象并没有逃逸出alloc方法，并且point对象是可以拆解成标量的。</span></span><br><span class="line"><span class="comment">// 若 p 不逃逸，JIT 可能不创建 Point 对象，而是直接用两个局部变量 x 和 y。</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">alloc</span><span class="params">()</span> &#123;</span><br><span class="line">   <span class="type">Point</span> <span class="variable">point</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Point</span>(<span class="number">1</span>, <span class="number">2</span>);</span><br><span class="line">   System.out.println(<span class="string">&quot;point.x=&quot;</span>+point.x+<span class="string">&quot;; point.y=&quot;</span>+point.y);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
 <li class="lvl-2">
-<p><strong>现象</strong>：进程平稳运行一段时间后性能阶梯式下滑，GC 日志正常，堆内存无压力；日志出现 <code>CodeCache is full. Compiler has been disabled.</code>（JVM 真实告警文案）。</p>
+<p>减少堆分配</p>
 </li>
 <li class="lvl-2">
-<p><strong>发生了什么</strong>：编译产物全部存放在代码缓存（64 位分层模式常见默认约 240MB）。大量动态生成代码——脚本引擎、Groovy、字节码框架、无界动态代理——会让编译产物持续增长直至填满缓存。</p>
+<p>提升缓存局部性</p>
 </li>
 <li class="lvl-2">
-<p><strong>系统如何处理</strong>：默认开启的代码缓存清扫（<code>-XX:+UseCodeCacheFlushing</code>）会回收长时间不活跃的编译产物腾出空间；一旦生成速度超过清扫速度，缓存告满，<strong>JVM 直接停用全部 JIT 编译器</strong>，新方法只能解释执行——性能从此断崖。</p>
-</li>
-<li class="lvl-2">
-<p><strong>恢复与预防</strong>：短期调大 <code>-XX:ReservedCodeCacheSize</code>；用 <code>-Xlog:codecache</code> 观察水位趋势；根治手段是给动态代码生成设上限（缓存脚本编译结果、复用代理类）。这个故障的特征是&quot;堆没问题但系统变慢&quot;，很容易被误判为 GC 或业务问题，看到该告警文案基本可以一锤定音。</p>
-</li>
-</ul>
-<h3 id="6-4-空转循环停不下来：普通字段的读取外提">6.4 空转循环停不下来：普通字段的读取外提</h3>
-<ul class="lvl-0">
-<li class="lvl-2">
-<p><strong>现象</strong>：用一个普通 boolean 字段做线程间停止标记（<strong>示例代码</strong>）：</p>
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 错误示范</span></span><br><span class="line"><span class="type">boolean</span> <span class="variable">running</span> <span class="operator">=</span> <span class="literal">true</span>;            <span class="comment">// 普通（非 volatile）字段</span></span><br><span class="line"><span class="comment">// 线程 B：</span></span><br><span class="line"><span class="keyword">while</span> (running) &#123; <span class="comment">/* 空转 */</span> &#125;     <span class="comment">// 运行一段时间后，即使线程 A 把 running 改为 false 也停不下来</span></span><br></pre></td></tr></table></figure>
-</li>
-<li class="lvl-2">
-<p><strong>发生了什么</strong>：JIT 编译该循环时，发现循环体内没有人修改 <code>running</code>，就把字段读取按&quot;循环不变量&quot;外提到循环外——循环体等价于&quot;读一次，若为 true 则无限空转&quot;。这符合 Java 内存模型：对普通字段的数据竞争下，JVM 允许这样的优化，不是 bug。</p>
-</li>
-<li class="lvl-2">
-<p><strong>系统如何处理</strong>：不会处理。这是&quot;优化让错误代码的正确性问题暴露&quot;的典型案例：JIT 编译前靠每次真的读内存，侥幸掩盖了缺少 happens-before 的事实；一旦编译，侥幸消失。</p>
-</li>
-<li class="lvl-2">
-<p><strong>恢复与预防</strong>：跨线程可见性必须显式声明——<code>volatile</code> 字段、<code>AtomicBoolean</code>、锁或阻塞原语（<code>park</code>、队列取任务）。另外，&quot;忙等&quot;本身就该用阻塞等待替代，既修正确性又省 CPU。</p>
+<p>便于寄存器分配</p>
 </li>
 </ul>
-<h3 id="6-5-C2-编译崩溃：hs-err-与-exclude-兜底（罕见）">6.5 C2 编译崩溃：hs_err 与 exclude 兜底（罕见）</h3>
+</blockquote>
+<h2 id="实践中的问题与解决方案">实践中的问题与解决方案</h2>
+<h3 id="问题-1：接口第一次调用特别慢（冷启动）">问题 1：接口第一次调用特别慢（冷启动）</h3>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>现象</strong>：进程突然消失，工作目录出现 <code>hs_err_pid&lt;pid&gt;.log</code>，错误帧指向 C2 编译线程（CompilerThread）。</p>
+<p><strong>现象</strong>：应用启动后前几分钟接口延迟偏高，之后趋于平稳。</p>
 </li>
 <li class="lvl-2">
-<p><strong>发生了什么</strong>：JIT 编译器自身缺陷或特定字节码模式/内在函数触发的边界问题。与解释执行不同，编译线程崩溃时 JVM 选择 fail-fast 直接终止——编译期的一致性状态不值得冒险维持。</p>
+<p><strong>原因</strong>：热点代码需要累计执行次数才会被 JIT 编译，启动初期大量代码处于解释执行状态，C2 的深度优化也需要时间。</p>
 </li>
 <li class="lvl-2">
-<p><strong>系统如何处理</strong>：hs_err 文件会记录崩溃线程、正在编译的方法（Current CompileTask）、寄存器与栈帧。</p>
-</li>
-<li class="lvl-2">
-<p><strong>恢复与预防</strong>：绝大多数 JIT 缺陷随 JDK update 版本修复，优先升级补丁版本；临时缓解可用 <code>-XX:CompileCommand=exclude,&lt;类名&gt;::&lt;方法名&gt;</code> 把肇事方法排除出编译（退回解释执行，用性能换稳定），或极端情况下 <code>-XX:TieredStopAtLevel=1</code> 只用 C1。这两者都是止血手段，不是终点。</p>
+<p><strong>方案</strong>：压测前先<strong>预热</strong>（用接近真实的流量跑 5~10 分钟再采样），启动后对关键路径主动发起一轮“热身请求”，避免刚启动就统计 P99。</p>
 </li>
 </ul>
-<h2 id="七、设计权衡与实现边界">七、设计权衡与实现边界</h2>
+<h3 id="问题-2：想确认方法是否被编译-内联，参数却失效">问题 2：想确认方法是否被编译 / 内联，参数却失效</h3>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p><strong>为什么 C1、C2 两级而不是单级</strong>：单级高质量编译器意味着长预热（C2 首次编译慢）；单级低质量编译器意味着低峰值。两级结构让&quot;快速生效&quot;与&quot;深度优化&quot;解耦，且第 3 层的 C1 顺便承担画像采集，一举两得。</p>
+<p><strong>现象</strong>：网上抄的 <code>-XX:+PrintCompilation</code>、<code>-XX:+PrintInlining</code> 在 JDK 9+ 上部分不生效。</p>
 </li>
 <li class="lvl-2">
-<p><strong>为什么不做全量 AOT</strong>：核心是画像缺失与动态特性。作为对照，GraalVM Native Image 是现实的 AOT 路线：启动快、内存占用低，但受封闭世界假设约束（构建期必须枚举反射/动态代理配置），且多数负载下不做画像引导优化（PGO）时峰值一般低于充分预热的 C2。两条路线是不同取舍，不是简单替代。</p>
+<p><strong>原因</strong>：JDK 9 起日志框架统一为 Unified Logging，旧参数陆续被移除。</p>
 </li>
 <li class="lvl-2">
-<p><strong>为什么不无限内联</strong>：见 4.1，代码膨胀的负面效应（指令缓存、代码缓存、编译时间）会反噬收益。</p>
-</li>
-<li class="lvl-2">
-<p><strong>HotSpot 实现本身的不足</strong>（宁指出不足，不粉饰）：</p>
-<ol>
-<li class="lvl-5">没有真·栈上分配，逃逸分析的分配消除完全依赖标量替换，大对象与运行期定长数组难以覆盖；</li>
-<li class="lvl-5">逃逸分析不跨编译单元，命脉被内联拿捏，内联失败则整条优化链失效；</li>
-<li class="lvl-5">画像驱动的投机优化让性能与运行历史耦合——同一方法在不同负载下的编译形态不同，测试环境难以精确复现生产行为；</li>
-<li class="lvl-5">早期宣传的计数器半衰期机制已随版本演进退场，老书籍的相应章节不宜直接套用。</li>
-</ol>
-</li>
-<li class="lvl-2">
-<p><strong>编译线程数与各层阈值不建议跟风调整</strong>：<code>CICompilerCount</code> 与 Tier 阈值系列的默认组合经过了大量场景打磨，多数业务服务的收益来自预热和代码结构，而不是这些旋钮；确要调整，必须在同一负载下 A/B 复测，并确认调整后去优化行为没有恶化。</p>
-</li>
-<li class="lvl-2">
-<p><strong>适用边界</strong>：本文机制描述以 64 位 HotSpot 默认分层编译为准（JDK 8~21 为主）。OpenJ9、GraalVM JIT、Android ART 的热点探测与编译层级设计各不相同，结论不可平移；文中所有默认值请用 <code>PrintFlagsFinal</code> 在目标 JDK 上实测。</p>
+<p><strong>方案</strong>：改用 <code>-Xlog:jit+compilation=debug</code> 查看编译记录、<code>-Xlog:jit+inlining=trace</code> 查看内联决策；需要看汇编时用 <code>-XX:+PrintAssembly</code>（需先安装 hsdis 插件）。</p>
 </li>
 </ul>
-<h2 id="八、总结与建议">八、总结与建议</h2>
+<h3 id="问题-3：方法很热，却迟迟未被编译或内联">问题 3：方法很热，却迟迟未被编译或内联</h3>
 <ul class="lvl-0">
 <li class="lvl-2">
-<p>JVM 执行引擎 = <strong>解释器（启动快、内存省、语义基准、JIT 的安全网）+ JIT（热代码高性能）</strong>，由双计数器热点探测驱动、按 0~4 层分级升降。</p>
+<p><strong>现象</strong>：高频调用的小方法（如 getter/setter）没有内联，方法调用开销居高不下。</p>
 </li>
 <li class="lvl-2">
-<p>三条主线贯穿全文：<strong>热点探测</strong>（方法调用 + 回边双计数器、OSR 兜底长循环）→ <strong>分层编译</strong>（C1 快速生效与 C2 深度优化的分工、编译队列与代码缓存）→ <strong>核心优化</strong>（内联是基石，逃逸分析与锁消除依附于它，投机优化必然伴随去优化）。</p>
+<p><strong>原因</strong>：方法体字节码超过内联大小上限（默认 <code>-XX:MaxInlineSize=35</code> 字节）；或调用次数未达到编译阈值（服务端默认 10,000 次、客户端默认 1,500 次）。</p>
 </li>
 <li class="lvl-2">
-<p>性能层面没有&quot;免费的优化&quot;：每一项 JIT 优化都有失效条件（内联有大小与多态边界、逃逸分析怕逃逸、外提怕副作用、投机假设怕新类型），失效时系统能自愈（去优化回解释），但自愈不无限（non-compilable 不可逆、代码缓存满编译器停摆）。</p>
+<p><strong>方案</strong>：先用 <code>-Xlog:jit+compilation</code> 确认未编译的真实原因；确属关键路径时可 <code>-XX:CompileCommand=inline,com.example.HotService::method</code> 强制内联，但这只是兜底手段，优先考虑<strong>重构缩小方法体</strong>。</p>
+</li>
+</ul>
+<h3 id="问题-4：日志里出现大量反优化，性能偶发回退">问题 4：日志里出现大量反优化，性能偶发回退</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>现象</strong>：运行期频繁出现 uncommon trap / deoptimization，对应代码段短暂回到解释执行。</p>
 </li>
 <li class="lvl-2">
-<p>实践清单：</p>
-<ol>
-<li class="lvl-5">压测与容量评估<strong>必须预热</strong>，并控制预热期并发度，别让业务线程饿死编译线程；</li>
-<li class="lvl-5">调优先看证据：<code>-XX:+PrintCompilation</code>、<code>-XX:+PrintInlining</code>（或 <code>-Xlog:jit+compilation</code> / <code>-Xlog:jit+inlining</code>）与 JMH <code>-prof gc</code>；</li>
-<li class="lvl-5">跨线程正确性永远显式声明（volatile/原子类/锁），不要赌 JIT 的行为；</li>
-<li class="lvl-5">长期运行且含动态代码生成的服务，把代码缓存水位纳入监控；</li>
-<li class="lvl-5">默认参数通常已是最优组合，改阈值前先用 <code>PrintFlagsFinal</code> 确认真实默认值，并 A/B 实测，而不是照抄文章数字——包括本文。</li>
-</ol>
+<p><strong>原因</strong>：C2 编译时做了激进假设（如“该虚方法只有一种实现”），运行中假设被打破（新类加载、反射生成代理、热部署替换类）时触发撤销优化。</p>
+</li>
+<li class="lvl-2">
+<p><strong>方案</strong>：少量反优化属正常机制，不必干预；若频繁发生，重点排查是否在运行期<strong>大量动态加载/重定义类</strong>（如反复热部署），必要时减少类卸载与重新定义次数。</p>
+</li>
+</ul>
+<h2 id="总结">总结</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>JVM 执行引擎 = <strong>解释器（启动快、内存省）+ JIT（热代码高性能）</strong>，两者由热度驱动动态切换。</p>
+</li>
+<li class="lvl-2">
+<p>三条主线：<strong>热点检测</strong>（采样 vs 计数器）→ <strong>分层编译</strong>（C1/C2 + OSR）→ <strong>核心优化</strong>（方法内联、逃逸分析、锁消除、循环优化等）。</p>
+</li>
+<li class="lvl-2">
+<p>性能调优遵循“先测量、再定位、后调参”：关注预热、编译日志与内联决策，而不是盲目堆参数。</p>
+</li>
+</ul>
+<h2 id="工程边界与验证">工程边界与验证</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>运行环境</strong>：JDK、GC、操作系统和容器资源限制都会影响实际行为。</p>
+</li>
+<li class="lvl-2">
+<p><strong>性能结论</strong>：涉及吞吐、延迟、CPU 或内存时，应使用目标版本和接近真实负载的数据复测。</p>
+</li>
+<li class="lvl-2">
+<p><strong>故障定位</strong>：优先保留线程栈、GC 日志、慢查询、指标和请求链路等证据，再决定优化方向。</p>
 </li>
 </ul>
 <!-- related-posts -->
@@ -736,7 +665,7 @@ $$</p>
 <p><a href="/2025/10/012c8567dfc94aec8d01c55acdf98396/">分布式锁为何需要看门狗：Redis、ZK 与 Etcd 实现甄析</a></p>
 </li>
 </ul>
-</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/10/13da62f295e44a4a8d67168a5fa03904/">https://pengline.cn/2025/10/13da62f295e44a4a8d67168a5fa03904/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/JVM/">JVM</a><a class="post-meta__tags" href="/tags/%E8%A7%A3%E9%87%8A%E5%99%A8/">解释器</a><a class="post-meta__tags" href="/tags/JIT/">JIT</a><a class="post-meta__tags" href="/tags/%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8/">即时编译器</a><a class="post-meta__tags" href="/tags/%E6%A8%A1%E6%9D%BF%E8%A7%A3%E9%87%8A%E5%99%A8/">模板解释器</a><a class="post-meta__tags" href="/tags/%E7%83%AD%E7%82%B9%E6%8E%A2%E6%B5%8B/">热点探测</a><a class="post-meta__tags" href="/tags/%E6%96%B9%E6%B3%95%E8%B0%83%E7%94%A8%E8%AE%A1%E6%95%B0%E5%99%A8/">方法调用计数器</a><a class="post-meta__tags" href="/tags/%E5%9B%9E%E8%BE%B9%E8%AE%A1%E6%95%B0%E5%99%A8/">回边计数器</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B1%82%E7%BC%96%E8%AF%91/">分层编译</a><a class="post-meta__tags" href="/tags/C1/">C1</a><a class="post-meta__tags" href="/tags/C2/">C2</a><a class="post-meta__tags" href="/tags/OSR/">OSR</a><a class="post-meta__tags" href="/tags/%E6%A0%88%E4%B8%8A%E6%9B%BF%E6%8D%A2/">栈上替换</a><a class="post-meta__tags" href="/tags/%E6%96%B9%E6%B3%95%E5%86%85%E8%81%94/">方法内联</a><a class="post-meta__tags" href="/tags/%E9%80%83%E9%80%B8%E5%88%86%E6%9E%90/">逃逸分析</a><a class="post-meta__tags" href="/tags/%E9%94%81%E6%B6%88%E9%99%A4/">锁消除</a><a class="post-meta__tags" href="/tags/%E5%8E%BB%E4%BC%98%E5%8C%96/">去优化</a><a class="post-meta__tags" href="/tags/%E4%BB%A3%E7%A0%81%E7%BC%93%E5%AD%98/">代码缓存</a><a class="post-meta__tags" href="/tags/%E6%80%A7%E8%83%BD%E8%B0%83%E4%BC%98/">性能调优</a><a class="post-meta__tags" href="/tags/Java/">Java</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/10/5f8f419bb4f8425abe2b4e895588d561/" title="MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small102614pbz4m1758680774.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC</div></div><div class="info-2"><div class="info-item-1">深入解析 InnoDB 多版本并发控制的底层机制，undo log 版本链如何承载历史版本、Read View 的快照可见性如何判定，厘清 MVCC 与 RC、RR 隔离级别及当前读与快照读的分工，理解读操作为何几乎不加锁、读写互不阻塞，并给出长事务、undo 膨胀与隔离级别选型的工程取舍。</div></div></div></a><a class="pagination-related" href="/2025/10/099db28b68ff4caeaaaaad53129a6b57/" title="JVM 垃圾收集：如何判定存活与分代治理堆内存"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small162627wjXnR1759047987.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">JVM 垃圾收集：如何判定存活与分代治理堆内存</div></div><div class="info-2"><div class="info-item-1">理解 GC 原理是 Java 性能调优与系统稳定性的关键。本文从对象存活判定讲起，剖析可达性分析与根枚举，展开标记清除、标记复制与标记整理的各自代价，梳理分代收集、安全点与 GC 类型，并结合调参给出提升内存效率的工程建议。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/11/bbd3588b364c411b9d216db736b34a97/" title="JVM 垃圾收集器演进：从串行并行到 CMS、G1 与 ZGC 的暂停取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small230155Wg8Hm1760194915.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-29</div><div class="info-item-2">JVM 垃圾收集器演进：从串行并行到 CMS、G1 与 ZGC 的暂停取舍</div></div><div class="info-2"><div class="info-item-1">大堆与低延迟场景下，收集器选型直接影响停顿与吞吐。本文横向对比 Serial、Parallel 到 CMS、G1、ZGC、Shenandoah 的工作模式、STW 停顿、压缩与区域管理，剖析并发并行差异，并给出面向吞吐量、响应时间和大堆内存的选型调优建议。</div></div></div></a><a class="pagination-related" href="/2025/10/099db28b68ff4caeaaaaad53129a6b57/" title="JVM 垃圾收集：如何判定存活与分代治理堆内存"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small162627wjXnR1759047987.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-10-06</div><div class="info-item-2">JVM 垃圾收集：如何判定存活与分代治理堆内存</div></div><div class="info-2"><div class="info-item-1">理解 GC 原理是 Java 性能调优与系统稳定性的关键。本文从对象存活判定讲起，剖析可达性分析与根枚举，展开标记清除、标记复制与标记整理的各自代价，梳理分代收集、安全点与 GC 类型，并结合调参给出提升内存效率的工程建议。</div></div></div></a><a class="pagination-related" href="/2025/09/12fcec526d85480c91adb7dc237cd547/" title="Java 锁体系：乐观悲观、自旋与升级消除机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204470553163420447079.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-16</div><div class="info-item-2">Java 锁体系：乐观悲观、自旋与升级消除机制</div></div><div class="info-2"><div class="info-item-1">并发编程中锁的选用直接影响性能与正确性。本文从乐观悲观、可重入、公平与否等维度分类 Java 锁，剖析 synchronized 的偏向与轻量级升级路径、锁消除与锁粗化优化，对比 Atomic 的 CAS 自旋与 Lock 的灵活控制，给出分场景选型与死锁防范结论。</div></div></div></a><a class="pagination-related" href="/2026/09/snowflake-id/" title="分布式系统为什么需要雪花 ID？时钟回拨与位分配的工程取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-28</div><div class="info-item-2">分布式系统为什么需要雪花 ID？时钟回拨与位分配的工程取舍</div></div><div class="info-2"><div class="info-item-1">解析雪花算法 64 位结构的位分配与容量推导，对比 UUID、号段与 Redis 自增等分布式 ID 方案的取舍，分析时钟回拨的根因与处理策略、workerId 分配的工程难题，以及位数定制与典型故障场景的应对建议。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E6%98%AF-%E5%8F%AA%E7%94%A8%E8%A7%A3%E9%87%8A%E5%99%A8-%E6%88%96-%E5%8F%AA%E7%94%A8%E7%BC%96%E8%AF%91%E5%99%A8"><span class="toc-number">1.</span> <span class="toc-text">一、为什么不是&quot;只用解释器&quot;或&quot;只用编译器&quot;</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81JVM-%E8%A7%A3%E9%87%8A%E5%99%A8%EF%BC%9A%E6%A8%A1%E6%9D%BF%E8%A7%A3%E9%87%8A%E5%99%A8"><span class="toc-number">2.</span> <span class="toc-text">二、JVM 解释器：模板解释器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-%E8%81%8C%E8%B4%A3%E4%B8%8E%E6%89%A7%E8%A1%8C%E6%A8%A1%E5%9E%8B"><span class="toc-number">2.1.</span> <span class="toc-text">2.1 职责与执行模型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E6%A8%A1%E6%9D%BF%E8%A7%A3%E9%87%8A%E5%99%A8%EF%BC%9A%E6%9F%A5%E8%A1%A8%E8%B7%B3%E8%BD%AC%EF%BC%8C%E8%80%8C%E4%B8%8D%E6%98%AF-switch-case"><span class="toc-number">2.2.</span> <span class="toc-text">2.2 模板解释器：查表跳转，而不是 switch-case</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-%E8%A7%A3%E9%87%8A%E5%99%A8%E7%9A%84%E4%B8%8D%E5%8F%AF%E6%9B%BF%E4%BB%A3%E8%A7%92%E8%89%B2"><span class="toc-number">2.3.</span> <span class="toc-text">2.3 解释器的不可替代角色</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81JIT-%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8"><span class="toc-number">3.</span> <span class="toc-text">三、JIT 即时编译器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-%E7%83%AD%E7%82%B9%E6%8E%A2%E6%B5%8B%EF%BC%9A%E8%AF%86%E5%88%AB-%E5%80%BC%E5%BE%97%E7%BC%96%E8%AF%91-%E7%9A%84%E4%BB%A3%E7%A0%81"><span class="toc-number">3.1.</span> <span class="toc-text">3.1 热点探测：识别&quot;值得编译&quot;的代码</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-%E5%8F%8C%E8%AE%A1%E6%95%B0%E5%99%A8%EF%BC%9A%E6%96%B9%E6%B3%95%E8%B0%83%E7%94%A8%E8%AE%A1%E6%95%B0%E5%99%A8%E4%B8%8E%E5%9B%9E%E8%BE%B9%E8%AE%A1%E6%95%B0%E5%99%A8"><span class="toc-number">3.2.</span> <span class="toc-text">3.2 双计数器：方法调用计数器与回边计数器</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-OSR%EF%BC%9A%E6%A0%88%E4%B8%8A%E6%9B%BF%E6%8D%A2"><span class="toc-number">3.3.</span> <span class="toc-text">3.3 OSR：栈上替换</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-4-%E5%88%86%E5%B1%82%E7%BC%96%E8%AF%91%EF%BC%9A0-4-%E5%B1%82%E7%9A%84%E5%8D%87%E9%99%8D%E7%BA%A7"><span class="toc-number">3.4.</span> <span class="toc-text">3.4 分层编译：0~4 层的升降级</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-5-%E5%8E%BB%E4%BC%98%E5%8C%96%EF%BC%9A%E6%BF%80%E8%BF%9B%E4%BC%98%E5%8C%96%E7%9A%84-%E5%90%8E%E6%82%94%E8%8D%AF"><span class="toc-number">3.5.</span> <span class="toc-text">3.5 去优化：激进优化的&quot;后悔药&quot;</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81JIT-%E6%A0%B8%E5%BF%83%E4%BC%98%E5%8C%96%E9%80%90%E4%B8%AA%E6%8B%86%E8%A7%A3%EF%BC%88%E5%90%AB%E5%A4%B1%E6%95%88%E6%9D%A1%E4%BB%B6%EF%BC%89"><span class="toc-number">4.</span> <span class="toc-text">四、JIT 核心优化逐个拆解（含失效条件）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E6%96%B9%E6%B3%95%E5%86%85%E8%81%94%EF%BC%9A%E4%B8%80%E5%88%87%E4%BC%98%E5%8C%96%E7%9A%84%E5%9F%BA%E7%9F%B3"><span class="toc-number">4.1.</span> <span class="toc-text">4.1 方法内联：一切优化的基石</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-%E9%80%83%E9%80%B8%E5%88%86%E6%9E%90%E4%B8%8E%E6%A0%87%E9%87%8F%E6%9B%BF%E6%8D%A2%EF%BC%88%E5%90%AB%E4%B8%80%E5%A4%84%E5%B8%B8%E8%A7%81%E8%AE%B9%E8%AF%AF%E7%9A%84%E8%80%83%E8%AF%81%EF%BC%89"><span class="toc-number">4.2.</span> <span class="toc-text">4.2 逃逸分析与标量替换（含一处常见讹误的考证）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-%E9%94%81%E6%B6%88%E9%99%A4%E4%B8%8E%E9%94%81%E7%B2%97%E5%8C%96"><span class="toc-number">4.3.</span> <span class="toc-text">4.3 锁消除与锁粗化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-4-%E5%BE%AA%E7%8E%AF%E4%BC%98%E5%8C%96"><span class="toc-number">4.4.</span> <span class="toc-text">4.4 循环优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-5-%E6%AD%BB%E4%BB%A3%E7%A0%81%E6%B6%88%E9%99%A4%E4%B8%8E%E5%B8%B8%E9%87%8F%E6%8A%98%E5%8F%A0"><span class="toc-number">4.5.</span> <span class="toc-text">4.5 死代码消除与常量折叠</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-6-%E5%88%86%E6%94%AF%E7%9A%84%E6%A6%82%E7%8E%87%E5%AF%BC%E5%90%91%E4%BC%98%E5%8C%96"><span class="toc-number">4.6.</span> <span class="toc-text">4.6 分支的概率导向优化</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E9%AA%8C%E8%AF%81%E6%89%8B%E6%AE%B5%EF%BC%9A%E8%AE%A9-JIT-%E8%87%AA%E5%B7%B1%E8%AF%B4%E8%AF%9D"><span class="toc-number">5.</span> <span class="toc-text">五、验证手段：让 JIT 自己说话</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#5-1-XX-PrintCompilation%EF%BC%9A%E7%BC%96%E8%AF%91%E6%B5%81%E6%B0%B4%E8%B4%A6"><span class="toc-number">5.1.</span> <span class="toc-text">5.1 -XX:+PrintCompilation：编译流水账</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-2-XX-PrintInlining%EF%BC%9A%E5%86%85%E8%81%94%E5%86%B3%E7%AD%96"><span class="toc-number">5.2.</span> <span class="toc-text">5.2 -XX:+PrintInlining：内联决策</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-3-%E7%BB%9F%E4%B8%80%E6%97%A5%E5%BF%97%E8%AF%AD%E6%B3%95%EF%BC%88JDK-9-%EF%BC%89"><span class="toc-number">5.3.</span> <span class="toc-text">5.3 统一日志语法（JDK 9+）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-4-%E6%9B%B4%E6%B7%B1%E4%B8%80%E5%B1%82%EF%BC%9ALogCompilation%E3%80%81PrintAssembly-%E4%B8%8E-JITWatch"><span class="toc-number">5.4.</span> <span class="toc-text">5.4 更深一层：LogCompilation、PrintAssembly 与 JITWatch</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-5-%E7%94%A8-JMH-%E9%AA%8C%E8%AF%81-%E7%9C%8B%E4%B8%8D%E8%A7%81-%E7%9A%84%E4%BC%98%E5%8C%96"><span class="toc-number">5.5.</span> <span class="toc-text">5.5 用 JMH 验证&quot;看不见&quot;的优化</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E6%95%85%E9%9A%9C%E5%AE%9E%E6%88%98"><span class="toc-number">6.</span> <span class="toc-text">六、故障实战</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#6-1-%E5%8E%8B%E6%B5%8B%E5%88%9D%E6%9C%9F-P99-%E8%99%9A%E9%AB%98%EF%BC%9A%E9%A2%84%E7%83%AD%E4%B8%8D%E8%B6%B3"><span class="toc-number">6.1.</span> <span class="toc-text">6.1 压测初期 P99 虚高：预热不足</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-2-%E9%A2%91%E7%B9%81%E5%8E%BB%E4%BC%98%E5%8C%96%EF%BC%9A%E6%80%A7%E8%83%BD%E5%81%B6%E5%8F%91%E5%9B%9E%E9%80%80%E4%B8%8E-made-non-compilable"><span class="toc-number">6.2.</span> <span class="toc-text">6.2 频繁去优化：性能偶发回退与 made non-compilable</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-3-%E8%BF%90%E8%A1%8C%E6%95%B0%E5%B0%8F%E6%97%B6%E5%90%8E%E5%90%9E%E5%90%90%E6%96%AD%E5%B4%96%EF%BC%9A%E4%BB%A3%E7%A0%81%E7%BC%93%E5%AD%98%E8%80%97%E5%B0%BD"><span class="toc-number">6.3.</span> <span class="toc-text">6.3 运行数小时后吞吐断崖：代码缓存耗尽</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-4-%E7%A9%BA%E8%BD%AC%E5%BE%AA%E7%8E%AF%E5%81%9C%E4%B8%8D%E4%B8%8B%E6%9D%A5%EF%BC%9A%E6%99%AE%E9%80%9A%E5%AD%97%E6%AE%B5%E7%9A%84%E8%AF%BB%E5%8F%96%E5%A4%96%E6%8F%90"><span class="toc-number">6.4.</span> <span class="toc-text">6.4 空转循环停不下来：普通字段的读取外提</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-5-C2-%E7%BC%96%E8%AF%91%E5%B4%A9%E6%BA%83%EF%BC%9Ahs-err-%E4%B8%8E-exclude-%E5%85%9C%E5%BA%95%EF%BC%88%E7%BD%95%E8%A7%81%EF%BC%89"><span class="toc-number">6.5.</span> <span class="toc-text">6.5 C2 编译崩溃：hs_err 与 exclude 兜底（罕见）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81%E8%AE%BE%E8%AE%A1%E6%9D%83%E8%A1%A1%E4%B8%8E%E5%AE%9E%E7%8E%B0%E8%BE%B9%E7%95%8C"><span class="toc-number">7.</span> <span class="toc-text">七、设计权衡与实现边界</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81%E6%80%BB%E7%BB%93%E4%B8%8E%E5%BB%BA%E8%AE%AE"><span class="toc-number">8.</span> <span class="toc-text">八、总结与建议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">9.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/10/13da62f295e44a4a8d67168a5fa03904/">https://pengline.cn/2025/10/13da62f295e44a4a8d67168a5fa03904/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/JVM/">JVM</a><a class="post-meta__tags" href="/tags/%E8%A7%A3%E9%87%8A%E5%99%A8/">解释器</a><a class="post-meta__tags" href="/tags/JIT/">JIT</a><a class="post-meta__tags" href="/tags/%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8/">即时编译器</a><a class="post-meta__tags" href="/tags/%E6%A8%A1%E6%9D%BF%E8%A7%A3%E9%87%8A%E5%99%A8/">模板解释器</a><a class="post-meta__tags" href="/tags/%E7%83%AD%E7%82%B9%E6%A3%80%E6%B5%8B/">热点检测</a><a class="post-meta__tags" href="/tags/%E5%88%86%E5%B1%82%E7%BC%96%E8%AF%91/">分层编译</a><a class="post-meta__tags" href="/tags/%E6%96%B9%E6%B3%95%E5%86%85%E8%81%94/">方法内联</a><a class="post-meta__tags" href="/tags/%E9%80%83%E9%80%B8%E5%88%86%E6%9E%90/">逃逸分析</a><a class="post-meta__tags" href="/tags/%E9%94%81%E6%B6%88%E9%99%A4/">锁消除</a><a class="post-meta__tags" href="/tags/%E7%BC%96%E8%AF%91%E4%BC%98%E5%8C%96/">编译优化</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/10/5f8f419bb4f8425abe2b4e895588d561/" title="MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860420693163886042042.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC</div></div><div class="info-2"><div class="info-item-1">深入解析 InnoDB 多版本并发控制的底层机制，undo log 版本链如何承载历史版本、Read View 的快照可见性如何判定，厘清 MVCC 与 RC、RR 隔离级别及当前读与快照读的分工，理解读操作为何几乎不加锁、读写互不阻塞，并给出长事务、undo 膨胀与隔离级别选型的工程取舍。</div></div></div></a><a class="pagination-related" href="/2025/10/099db28b68ff4caeaaaaad53129a6b57/" title="JVM 垃圾收集：如何判定存活与分代治理堆内存"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1712590480744171259048056.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">JVM 垃圾收集：如何判定存活与分代治理堆内存</div></div><div class="info-2"><div class="info-item-1">理解 GC 原理是 Java 性能调优与系统稳定性的关键。本文从对象存活判定讲起，剖析可达性分析与根枚举，展开标记清除、标记复制与标记整理的各自代价，梳理分代收集、安全点与 GC 类型，并结合调参给出提升内存效率的工程建议。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/11/bbd3588b364c411b9d216db736b34a97/" title="JVM 垃圾收集器演进：从串行并行到 CMS、G1 与 ZGC 的暂停取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204644701163420464439.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-29</div><div class="info-item-2">JVM 垃圾收集器演进：从串行并行到 CMS、G1 与 ZGC 的暂停取舍</div></div><div class="info-2"><div class="info-item-1">大堆与低延迟场景下，收集器选型直接影响停顿与吞吐。本文横向对比 Serial、Parallel 到 CMS、G1、ZGC、Shenandoah 的工作模式、STW 停顿、压缩与区域管理，剖析并发并行差异，并给出面向吞吐量、响应时间和大堆内存的选型调优建议。</div></div></div></a><a class="pagination-related" href="/2025/10/099db28b68ff4caeaaaaad53129a6b57/" title="JVM 垃圾收集：如何判定存活与分代治理堆内存"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1712590480744171259048056.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-10-06</div><div class="info-item-2">JVM 垃圾收集：如何判定存活与分代治理堆内存</div></div><div class="info-2"><div class="info-item-1">理解 GC 原理是 Java 性能调优与系统稳定性的关键。本文从对象存活判定讲起，剖析可达性分析与根枚举，展开标记清除、标记复制与标记整理的各自代价，梳理分代收集、安全点与 GC 类型，并结合调参给出提升内存效率的工程建议。</div></div></div></a><a class="pagination-related" href="/2025/09/12fcec526d85480c91adb7dc237cd547/" title="Java 锁体系：乐观悲观、自旋与升级消除机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-16</div><div class="info-item-2">Java 锁体系：乐观悲观、自旋与升级消除机制</div></div><div class="info-2"><div class="info-item-1">并发编程中锁的选用直接影响性能与正确性。本文从乐观悲观、可重入、公平与否等维度分类 Java 锁，剖析 synchronized 的偏向与轻量级升级路径、锁消除与锁粗化优化，对比 Atomic 的 CAS 自旋与 Lock 的灵活控制，给出分场景选型与死锁防范结论。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#JVM-%E8%A7%A3%E9%87%8A%E5%99%A8"><span class="toc-number">1.</span> <span class="toc-text">JVM 解释器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%B8%E5%BF%83%E8%81%8C%E8%B4%A3"><span class="toc-number">1.1.</span> <span class="toc-text">核心职责</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%96%E8%AF%91%E7%9A%84%E4%B8%A4%E4%B8%AA%E9%98%B6%E6%AE%B5"><span class="toc-number">1.2.</span> <span class="toc-text">编译的两个阶段</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86"><span class="toc-number">1.3.</span> <span class="toc-text">工作原理</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#JIT-%E5%8D%B3%E6%97%B6%E7%BC%96%E8%AF%91%E5%99%A8"><span class="toc-number">2.</span> <span class="toc-text">JIT 即时编译器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%83%AD%E7%82%B9%E6%A3%80%E6%B5%8B"><span class="toc-number">2.1.</span> <span class="toc-text">热点检测</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E5%B1%82%E7%BC%96%E8%AF%91%E4%B8%8E-OSR"><span class="toc-number">2.2.</span> <span class="toc-text">分层编译与 OSR</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%96%B9%E6%B3%95%E5%86%85%E8%81%94"><span class="toc-number">2.3.</span> <span class="toc-text">方法内联</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%80%83%E9%80%B8%E5%88%86%E6%9E%90"><span class="toc-number">2.4.</span> <span class="toc-text">逃逸分析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%94%81%E6%B6%88%E9%99%A4"><span class="toc-number">2.5.</span> <span class="toc-text">锁消除</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BE%AA%E7%8E%AF%E4%BC%98%E5%8C%96"><span class="toc-number">2.6.</span> <span class="toc-text">循环优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%AD%BB%E4%BB%A3%E7%A0%81%E6%B6%88%E9%99%A4"><span class="toc-number">2.7.</span> <span class="toc-text">死代码消除</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%B8%E9%87%8F%E4%BC%A0%E6%92%AD%E4%B8%8E%E6%8A%98%E5%8F%A0"><span class="toc-number">2.8.</span> <span class="toc-text">常量传播与折叠</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E6%94%AF%E9%A2%84%E6%B5%8B%E4%B8%8E%E6%9D%A1%E4%BB%B6%E4%BC%98%E5%8C%96"><span class="toc-number">2.9.</span> <span class="toc-text">分支预测与条件优化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%88%E4%B8%8A%E5%88%86%E9%85%8D"><span class="toc-number">2.10.</span> <span class="toc-text">栈上分配</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%87%E9%87%8F%E6%9B%BF%E6%8D%A2"><span class="toc-number">2.11.</span> <span class="toc-text">标量替换</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E8%B7%B5%E4%B8%AD%E7%9A%84%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">3.</span> <span class="toc-text">实践中的问题与解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%AE%E9%A2%98-1%EF%BC%9A%E6%8E%A5%E5%8F%A3%E7%AC%AC%E4%B8%80%E6%AC%A1%E8%B0%83%E7%94%A8%E7%89%B9%E5%88%AB%E6%85%A2%EF%BC%88%E5%86%B7%E5%90%AF%E5%8A%A8%EF%BC%89"><span class="toc-number">3.1.</span> <span class="toc-text">问题 1：接口第一次调用特别慢（冷启动）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%AE%E9%A2%98-2%EF%BC%9A%E6%83%B3%E7%A1%AE%E8%AE%A4%E6%96%B9%E6%B3%95%E6%98%AF%E5%90%A6%E8%A2%AB%E7%BC%96%E8%AF%91-%E5%86%85%E8%81%94%EF%BC%8C%E5%8F%82%E6%95%B0%E5%8D%B4%E5%A4%B1%E6%95%88"><span class="toc-number">3.2.</span> <span class="toc-text">问题 2：想确认方法是否被编译 &#x2F; 内联，参数却失效</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%AE%E9%A2%98-3%EF%BC%9A%E6%96%B9%E6%B3%95%E5%BE%88%E7%83%AD%EF%BC%8C%E5%8D%B4%E8%BF%9F%E8%BF%9F%E6%9C%AA%E8%A2%AB%E7%BC%96%E8%AF%91%E6%88%96%E5%86%85%E8%81%94"><span class="toc-number">3.3.</span> <span class="toc-text">问题 3：方法很热，却迟迟未被编译或内联</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%AE%E9%A2%98-4%EF%BC%9A%E6%97%A5%E5%BF%97%E9%87%8C%E5%87%BA%E7%8E%B0%E5%A4%A7%E9%87%8F%E5%8F%8D%E4%BC%98%E5%8C%96%EF%BC%8C%E6%80%A7%E8%83%BD%E5%81%B6%E5%8F%91%E5%9B%9E%E9%80%80"><span class="toc-number">3.4.</span> <span class="toc-text">问题 4：日志里出现大量反优化，性能偶发回退</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">4.</span> <span class="toc-text">总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E8%BE%B9%E7%95%8C%E4%B8%8E%E9%AA%8C%E8%AF%81"><span class="toc-number">5.</span> <span class="toc-text">工程边界与验证</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">6.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
   mermaid.initialize({
     startOnLoad: true,
     theme: '[object Object]',
@@ -913,4 +842,4 @@ $$</p>
   } else {
     window.loadOtherComment = loadGiscus
   }
-})()</script></div><script src="/js/custom/sun_moon.js" defer></script><script src="/js/custom/auto_dark.js" defer></script><script src="/js/custom/mermaid_zoom.js" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
