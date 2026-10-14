@@ -1,0 +1,680 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>Python 回调为何泄漏内存：weakref 弱引用的解绑机制揭底 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="回调把完成后要做什么参数化，但容器或调度器持有回调时会顺带给监听对象续命，导致其永不回收，这是内存泄漏的常见来源。文章先讲回调实现与参数绑定，再深入弱引用的解绑机制，结合异步工作流场景给出防泄漏的正确姿势。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Python 回调为何泄漏内存：weakref 弱引用的解绑机制揭底">
+<meta property="og:url" content="https://pengline.cn/2025/09/python-weakref-callback/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="回调把完成后要做什么参数化，但容器或调度器持有回调时会顺带给监听对象续命，导致其永不回收，这是内存泄漏的常见来源。文章先讲回调实现与参数绑定，再深入弱引用的解绑机制，结合异步工作流场景给出防泄漏的正确姿势。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small231205PbwhI1753715525.webp">
+<meta property="article:published_time" content="2025-09-21T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-10-14T08:00:44.155Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Python">
+<meta property="article:tag" content="WeakMethod">
+<meta property="article:tag" content="finalize">
+<meta property="article:tag" content="weakref">
+<meta property="article:tag" content="事件驱动">
+<meta property="article:tag" content="内存泄漏">
+<meta property="article:tag" content="回调函数">
+<meta property="article:tag" content="垃圾回收">
+<meta property="article:tag" content="异步编程">
+<meta property="article:tag" content="弱引用">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small231205PbwhI1753715525.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/09/python-weakref-callback/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'Python 回调为何泄漏内存：weakref 弱引用的解绑机制揭底',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">91</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">781</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small231205PbwhI1753715525.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">Python 回调为何泄漏内存：weakref 弱引用的解绑机制揭底</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">Python 回调为何泄漏内存：weakref 弱引用的解绑机制揭底</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-09-21T16:00:00.000Z" title="发表于 2025-09-22 00:00:00">2025-09-22</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-10-14T08:00:44.155Z" title="更新于 2026-10-14 16:00:44">2026-10-14</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/">Python</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/%E5%9B%9E%E8%B0%83%E5%87%BD%E6%95%B0/">回调函数</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>后台轮询线程注册了回调之后，任务早就结束，监听对象却迟迟不被回收——内存曲线只涨不降，排查到最后往往是回调链上的强引用在给对象“续命”。这是 Python 事件驱动与异步代码里最常见的泄漏形态，解法就是弱引用。</p>
+<p>Python 里“回调”与“弱引用”常常成对出现：<strong>回调函数</strong>把“事情完成后做什么”参数化，供事件循环、异步任务按需触发；<strong>弱引用</strong>则解决回调链里最常见的隐患——容器、调度器在持有回调的同时，无意中给监听对象“续了命”，导致对象永不回收。本文先讲清回调函数的实现方式与参数绑定，再深入 <code>weakref</code> 的 <code>ref</code> 回调、<code>WeakMethod</code>、<code>finalize</code> 等机制，最后用一个异步工作流的真实回调场景把两者串起来。</p>
+<pre><code class="highlight mermaid">flowchart TB
+    CB[&quot;回调函数&lt;br/&gt;行为参数化，事件/异步完成时触发&quot;]
+    HOLD[&quot;强引用持有&lt;br/&gt;监听者被回调链续命，无法回收&quot;]
+    WR[&quot;弱引用&lt;br/&gt;观察对象但不阻止回收&quot;]
+    CW[&quot;弱引用回调&lt;br/&gt;对象回收即失效，自动解绑&quot;]
+    CB --&gt; HOLD --&gt; WR --&gt; CW</code></pre>
+<h2 id="回调函数">回调函数</h2>
+<p><strong>回调函数（Callback Function）</strong> 是一种编程模式，指的是将一个函数作为参数传递给另一个函数，并在特定时机（如事件触发、异步操作完成、条件满足等）被调用执行。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>实现<strong>异步操作</strong>（如网络请求、文件读写完成后的处理）</p>
+</li>
+<li class="lvl-2">
+<p>实现<strong>事件驱动</strong>（如 GUI 中按钮点击、定时器触发）</p>
+</li>
+<li class="lvl-2">
+<p>提高代码<strong>灵活性和复用性</strong>（不同场景传入不同回调函数）</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>优点</strong>：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>灵活性高</strong>：行为可动态配置</p>
+</li>
+<li class="lvl-2">
+<p><strong>解耦</strong>：调用者和被调用者无需直接依赖</p>
+</li>
+<li class="lvl-2">
+<p><strong>适合事件/异步模型</strong></p>
+</li>
+</ul>
+</blockquote>
+<p><strong>缺点</strong>：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>回调地狱（Callback Hell）</strong>：多层嵌套回调导致代码难以阅读和维护</p>
+</li>
+<li class="lvl-2">
+<p><strong>错误处理复杂</strong>：异常传播困难</p>
+</li>
+<li class="lvl-2">
+<p><strong>调试困难</strong>：调用栈不直观</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="实现方式">实现方式</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>基础回调</strong></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 需要回调的函数</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">greet</span>(<span class="params">name</span>):</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">f&quot;Hello, <span class="subst">&#123;name&#125;</span>!&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 主函数，将回调函数作为参数</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">process_user</span>(<span class="params">name, callback</span>):</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;Processing user...&quot;</span>)</span><br><span class="line">    callback(name)  <span class="comment"># 回调！</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 调用主函数</span></span><br><span class="line">process_user(<span class="string">&quot;Alice&quot;</span>, greet)</span><br><span class="line"><span class="comment"># 输出：</span></span><br><span class="line"><span class="comment"># Processing user...</span></span><br><span class="line"><span class="comment"># Hello, Alice!</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-2">
+<p>带返回值的回调</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">square</span>(<span class="params">x</span>):</span><br><span class="line">    <span class="keyword">return</span> x * x</span><br><span class="line"></span><br><span class="line"><span class="comment"># 调用回调函数计算</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">apply_operation</span>(<span class="params">numbers, operation</span>):</span><br><span class="line">    <span class="keyword">return</span> [operation(num) <span class="keyword">for</span> num <span class="keyword">in</span> numbers]</span><br><span class="line"></span><br><span class="line"><span class="comment"># 输出结果</span></span><br><span class="line">result = apply_operation([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>], square)</span><br><span class="line"><span class="built_in">print</span>(result)  <span class="comment"># [1, 4, 9, 16]</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-2">
+<p>匿名函数（lambda）的回调</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">numbers = [<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>]</span><br><span class="line">result = <span class="built_in">list</span>(<span class="built_in">map</span>(<span class="keyword">lambda</span> x: x ** <span class="number">2</span>, numbers))</span><br><span class="line"><span class="built_in">print</span>(result)  <span class="comment"># [1, 4, 9, 16, 25]</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-2">
+<p>事件驱动回调</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Button</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="variable language_">self</span>.click_callbacks = []</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">on_click</span>(<span class="params">self, callback</span>):</span><br><span class="line">        <span class="variable language_">self</span>.click_callbacks.append(callback)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">click</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">&quot;Button clicked!&quot;</span>)</span><br><span class="line">        <span class="keyword">for</span> callback <span class="keyword">in</span> <span class="variable language_">self</span>.click_callbacks:</span><br><span class="line">            callback()</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">say_hello</span>():</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;Hello from callback!&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">log_click</span>():</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;Button was clicked at some time.&quot;</span>)</span><br><span class="line"></span><br><span class="line">btn = Button()</span><br><span class="line">btn.on_click(say_hello)</span><br><span class="line">btn.on_click(log_click)</span><br><span class="line"></span><br><span class="line">btn.click()</span><br><span class="line"><span class="comment"># 输出：</span></span><br><span class="line"><span class="comment"># Button clicked!</span></span><br><span class="line"><span class="comment"># Hello from callback!</span></span><br><span class="line"><span class="comment"># Button was clicked at some time.</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="异步回调">异步回调</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>使用 threading 的异步回调</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> threading</span><br><span class="line"><span class="keyword">import</span> time</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">async_task</span>(<span class="params">callback</span>):</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">worker</span>():</span><br><span class="line">        time.sleep(<span class="number">2</span>)  <span class="comment"># 模拟耗时操作</span></span><br><span class="line">        result = <span class="string">&quot;Task completed!&quot;</span></span><br><span class="line">        callback(result)</span><br><span class="line">        <span class="comment"># 异步执行</span></span><br><span class="line">    thread = threading.Thread(target=worker)</span><br><span class="line">    thread.start()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 回调函数</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">handle_result</span>(<span class="params">result</span>):</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">f&quot;Received result: <span class="subst">&#123;result&#125;</span>&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;Starting async task...&quot;</span>)</span><br><span class="line">async_task(handle_result)</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-2">
+<p>回调 + 参数绑定（functools）</p>
+<p>回调函数需要额外参数，但调用方只允许传入无参函数</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> functools <span class="keyword">import</span> partial</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">notify_user</span>(<span class="params">user_id, message</span>):</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">f&quot;User <span class="subst">&#123;user_id&#125;</span>: <span class="subst">&#123;message&#125;</span>&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 绑定部分参数</span></span><br><span class="line">callback = partial(notify_user, <span class="number">123</span>, <span class="string">&quot;Your task is done!&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 模拟触发</span></span><br><span class="line">callback()  <span class="comment"># 输出: User 123: Your task is done!</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="弱引用">弱引用</h2>
+<p><strong>弱引用（Weak Reference）</strong> 是一种特殊的引用方式，它<strong>不会增加对象的引用计数</strong>，因此不会阻止对象被垃圾回收机制回收。</p>
+<blockquote>
+<p>Python 使用<strong>引用计数</strong>作为主要的垃圾回收机制。当一个对象的引用计数变为 0 时，它就会被自动回收。</p>
+<p>但在某些场景下，我们需要“观察”或“缓存”一个对象，又不希望因为自己的引用而阻止它被回收——弱引用就是为这类需求设计的。</p>
+</blockquote>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>强引用（Strong Reference）</strong>：普通的变量赋值、容器存储等，会增加引用计数。</p>
+</li>
+<li class="lvl-2">
+<p><strong>弱引用（Weak Reference）</strong>：不会增加引用计数，对象可被正常回收。</p>
+</li>
+<li class="lvl-2">
+<p>弱引用指向的对象一旦被回收，弱引用会自动失效（变成 <code>None</code> 或抛出异常）。</p>
+</li>
+</ul>
+<p>不是所有对象都支持弱引用！<strong>只有支持弱引用协议的对象才可以</strong>。</p>
+<p>如何判断一个对象能否被弱引用：看它是否实现了弱引用协议——实例上有没有 <code>__weakref__</code> 属性，<code>hasattr(obj, &quot;__weakref__&quot;)</code> 即可探测。</p>
+<p>支持弱引用的对象：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>用户自定义类的实例</strong>（默认支持，每个实例自带 <code>__weakref__</code> 槽）</p>
+</li>
+<li class="lvl-2">
+<p>函数、模块、类对象等</p>
+</li>
+<li class="lvl-2">
+<p>内置类型的<strong>用户自定义子类</strong>实例（如 <code>class MyList(list): pass</code>），子类实例默认拥有弱引用能力</p>
+</li>
+</ul>
+</blockquote>
+<p>不支持弱引用的对象：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><code>int</code>、<code>str</code>、<code>tuple</code>、<code>float</code>、<code>list</code>、<code>dict</code>、<code>set</code>、<code>bytes</code> 等内置类型<strong>本身及其直接实例</strong>——这是 CPython 出于性能与实现细节的设计，与 Python 版本无关；想弱引用它们，唯一的正道是定义子类</p>
+</li>
+<li class="lvl-2">
+<p>未开放弱引用支持的 C 扩展对象（可用 <code>hasattr</code> 探测确认）</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="使用-weakref">使用 weakref</h3>
+<p>Python 提供了标准库 <code>weakref</code> 来创建和管理弱引用。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> sys</span><br><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">MyClass</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, name</span>):</span><br><span class="line">        <span class="variable language_">self</span>.name = name</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__del__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;<span class="subst">&#123;self.name&#125;</span> 被销毁了&quot;</span>)</span><br><span class="line"></span><br><span class="line">obj = MyClass(<span class="string">&quot;TestObject&quot;</span>)</span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;引用计数:&quot;</span>, sys.getrefcount(obj) - <span class="number">1</span>)  <span class="comment"># 减1是因为getrefcount本身也引用了一次</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 创建弱引用</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">weak_obj = weakref.ref(obj)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;弱引用指向的对象:&quot;</span>, weak_obj())  <span class="comment"># &lt;__main__.MyClass object at 0x...&gt;</span></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;是否存活:&quot;</span>, weak_obj() <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>)  <span class="comment"># True</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 删除强引用</span></span><br><span class="line"><span class="keyword">del</span> obj</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;弱引用指向的对象:&quot;</span>, weak_obj())  <span class="comment"># None</span></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;是否存活:&quot;</span>, weak_obj() <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>)  <span class="comment"># False</span></span><br></pre></td></tr></table></figure>
+<h3 id="带回调的弱引用">带回调的弱引用</h3>
+<p>可以在对象被回收时触发一个回调函数：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">callback</span>(<span class="params">ref</span>):</span><br><span class="line">    <span class="built_in">print</span>(<span class="string">&quot;对象已被回收，弱引用失效！&quot;</span>)</span><br><span class="line"></span><br><span class="line">obj = MyClass(<span class="string">&quot;CallbackObject&quot;</span>)</span><br><span class="line">weak_obj = weakref.ref(obj, callback)  <span class="comment"># 注册回调</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">del</span> obj  <span class="comment"># 触发回收和回调</span></span><br><span class="line"><span class="comment"># 输出：</span></span><br><span class="line"><span class="comment"># CallbackObject 被销毁了</span></span><br><span class="line"><span class="comment"># 对象已被回收，弱引用失效！</span></span><br></pre></td></tr></table></figure>
+<h3 id="绑定方法与-WeakMethod">绑定方法与 WeakMethod</h3>
+<p>绑定方法（bound method）有一个隐蔽特性：<strong>每次通过实例访问方法都会新建一个临时方法对象</strong>——<code>obj.method is obj.method</code> 恒为 <code>False</code>。若直接对这样的临时对象建弱引用，它随表达式结束就被回收，弱引用立即失效。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Handler</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">handle</span>(<span class="params">self, msg</span>):</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">&quot;handle:&quot;</span>, msg)</span><br><span class="line"></span><br><span class="line">h = Handler()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 直接对绑定方法建弱引用：h.handle 是临时对象，ref 到手即失效</span></span><br><span class="line">ref = weakref.ref(h.handle)</span><br><span class="line"><span class="built_in">print</span>(ref())          <span class="comment"># None —— 立即失效</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 正解：WeakMethod 把“实例 + 函数名”分开保存，实例存活期间随时可取回可用的绑定方法</span></span><br><span class="line">wm = weakref.WeakMethod(h.handle)</span><br><span class="line">cb = wm()</span><br><span class="line">cb(<span class="string">&quot;hello&quot;</span>)          <span class="comment"># 输出 handle: hello</span></span><br></pre></td></tr></table></figure>
+<p><code>WeakMethod</code> 的典型场景：观察者注册表、事件总线保存监听者的方法——实例被回收后 <code>wm()</code> 返回 <code>None</code>，触发方检查后跳过即可，不会因回调握着已死对象而崩溃，也不会给监听者“续命”。</p>
+<h3 id="弱引用字典">弱引用字典</h3>
+<ul class="lvl-0">
+<li class="lvl-3">
+<p><code>WeakKeyDictionary</code>：键是弱引用（键可被回收）</p>
+</li>
+</ul>
+  <figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Key</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, name</span>):</span><br><span class="line">        <span class="variable language_">self</span>.name = name</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__repr__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="keyword">return</span> <span class="string">f&quot;Key(<span class="subst">&#123;self.name&#125;</span>)&quot;</span></span><br><span class="line"></span><br><span class="line">key1 = Key(<span class="string">&quot;A&quot;</span>)</span><br><span class="line">key2 = Key(<span class="string">&quot;B&quot;</span>)</span><br><span class="line"></span><br><span class="line">weak_dict = weakref.WeakKeyDictionary()</span><br><span class="line">weak_dict[key1] = <span class="string">&quot;value1&quot;</span></span><br><span class="line">weak_dict[key2] = <span class="string">&quot;value2&quot;</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;当前字典:&quot;</span>, <span class="built_in">dict</span>(weak_dict))  <span class="comment"># &#123;Key(A): &#x27;value1&#x27;, Key(B): &#x27;value2&#x27;&#125;</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">del</span> key1</span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;删除 key1 后:&quot;</span>, <span class="built_in">dict</span>(weak_dict))  <span class="comment"># &#123;Key(B): &#x27;value2&#x27;&#125;</span></span><br></pre></td></tr></table></figure>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>WeakValueDictionary</code>：值是弱引用（值可被回收）</p>
+<p><strong>值必须支持弱引用</strong>（值对象一旦被回收，对应条目自动删除）；<strong>键只需可哈希</strong>（<code>str</code>、<code>int</code> 都能当键）。<code>list</code>、<code>dict</code> 之类既不可哈希也不可弱引用，键值两不靠。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">weak_val_dict = weakref.WeakValueDictionary()</span><br><span class="line">obj1 = MyClass(<span class="string">&quot;Obj1&quot;</span>)</span><br><span class="line">obj2 = MyClass(<span class="string">&quot;Obj2&quot;</span>)</span><br><span class="line"></span><br><span class="line">weak_val_dict[<span class="string">&quot;a&quot;</span>] = obj1</span><br><span class="line">weak_val_dict[<span class="string">&quot;b&quot;</span>] = obj2</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;当前字典:&quot;</span>, <span class="built_in">dict</span>(weak_val_dict))</span><br><span class="line"></span><br><span class="line"><span class="keyword">del</span> obj1</span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;删除 obj1 后:&quot;</span>, <span class="built_in">dict</span>(weak_val_dict))  <span class="comment"># 只剩 &#x27;b&#x27;: obj2</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="弱引用集合">弱引用集合</h3>
+<p>类似 <code>set</code>，但元素是弱引用：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">weak_set = weakref.WeakSet()</span><br><span class="line"></span><br><span class="line">obj1 = MyClass(<span class="string">&quot;SetObj1&quot;</span>)</span><br><span class="line">obj2 = MyClass(<span class="string">&quot;SetObj2&quot;</span>)</span><br><span class="line"></span><br><span class="line">weak_set.add(obj1)</span><br><span class="line">weak_set.add(obj2)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;当前集合:&quot;</span>, <span class="built_in">list</span>(weak_set))</span><br><span class="line"></span><br><span class="line"><span class="keyword">del</span> obj1</span><br><span class="line"><span class="built_in">print</span>(<span class="string">&quot;删除 obj1 后:&quot;</span>, <span class="built_in">list</span>(weak_set))  <span class="comment"># 只剩 obj2</span></span><br></pre></td></tr></table></figure>
+<h3 id="weakref-finalize：回收时的清理动作">weakref.finalize：回收时的清理动作</h3>
+<p><code>weakref.finalize(obj, func, *args, **kwargs)</code> 为对象登记一个“后事处理”：对象被回收时自动调用 <code>func(*args, **kwargs)</code>。相比 <code>ref</code> 的回调（只能收到 ref 对象本身这一个参数），finalize 可以直接携带参数，更像一张析构登记表。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> os</span><br><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">TempFile</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, path</span>):</span><br><span class="line">        <span class="variable language_">self</span>.path = path</span><br><span class="line">        <span class="built_in">open</span>(path, <span class="string">&quot;w&quot;</span>).close()</span><br><span class="line">        <span class="comment"># finalize 强持 func 与参数，但对被观察对象只持弱引用，不会阻止回收</span></span><br><span class="line">        <span class="variable language_">self</span>._cleaner = weakref.finalize(<span class="variable language_">self</span>, os.remove, path)</span><br><span class="line"></span><br><span class="line">t = TempFile(<span class="string">&quot;/tmp/weakref_demo.tmp&quot;</span>)</span><br><span class="line"><span class="built_in">print</span>(os.path.exists(<span class="string">&quot;/tmp/weakref_demo.tmp&quot;</span>))    <span class="comment"># True</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">del</span> t                                              <span class="comment"># 实例回收 → 自动执行 os.remove</span></span><br><span class="line"><span class="built_in">print</span>(os.path.exists(<span class="string">&quot;/tmp/weakref_demo.tmp&quot;</span>))    <span class="comment"># False</span></span><br></pre></td></tr></table></figure>
+<p>补充三点：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>finalize 对象强持有 <code>func</code> 与参数，但对被监听对象只持弱引用，不会形成循环引用；</p>
+</li>
+<li class="lvl-2">
+<p>想提前取消清理，调用 <code>.detach()</code>（返回剩余参数）；用 <code>.alive</code> 属性可判断清理动作是否已执行；</p>
+</li>
+<li class="lvl-2">
+<p><code>func</code> 抛出的异常只打印告警，不影响解释器继续运行。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="应用场景">应用场景</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>缓存系统，避免内存泄漏</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">DataCache</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="variable language_">self</span>._cache = weakref.WeakValueDictionary()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">get</span>(<span class="params">self, key</span>):</span><br><span class="line">        <span class="keyword">return</span> <span class="variable language_">self</span>._cache.get(key)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">set</span>(<span class="params">self, key, value</span>):</span><br><span class="line">        <span class="variable language_">self</span>._cache[key] = value</span><br><span class="line"></span><br><span class="line">cache = DataCache()</span><br><span class="line">big_data = MyClass(<span class="string">&quot;BigData&quot;</span>)</span><br><span class="line">cache.<span class="built_in">set</span>(<span class="string">&quot;data1&quot;</span>, big_data)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(cache.get(<span class="string">&quot;data1&quot;</span>))  <span class="comment"># 存在</span></span><br><span class="line"><span class="keyword">del</span> big_data</span><br><span class="line"><span class="built_in">print</span>(cache.get(<span class="string">&quot;data1&quot;</span>))  <span class="comment"># None —— 自动清理！</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-2">
+<p>观察者模式 / 事件监听器，避免循环引用</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Subject</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="variable language_">self</span>._observers = weakref.WeakSet()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">add_observer</span>(<span class="params">self, observer</span>):</span><br><span class="line">        <span class="variable language_">self</span>._observers.add(observer)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">notify</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="keyword">for</span> obs <span class="keyword">in</span> <span class="variable language_">self</span>._observers:</span><br><span class="line">            obs.update()</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Observer</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">update</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">&quot;收到通知！&quot;</span>)</span><br><span class="line"></span><br><span class="line">subject = Subject()</span><br><span class="line">observer = Observer()</span><br><span class="line">subject.add_observer(observer)</span><br><span class="line">subject.notify()  <span class="comment"># 收到通知！</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">del</span> observer  <span class="comment"># observer 被回收，自动从 WeakSet 中移除</span></span><br><span class="line">subject.notify()  <span class="comment"># 无输出，不会报错</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-2">
+<p>父子对象引用，避免循环引用导致内存泄漏</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Parent</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, name</span>):</span><br><span class="line">        <span class="variable language_">self</span>.name = name</span><br><span class="line">        <span class="variable language_">self</span>.children = []</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Child</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, name, parent</span>):</span><br><span class="line">        <span class="variable language_">self</span>.name = name</span><br><span class="line">        <span class="variable language_">self</span>.parent = weakref.ref(parent)  <span class="comment"># 弱引用父对象，避免循环引用</span></span><br><span class="line"></span><br><span class="line">p = Parent(<span class="string">&quot;Parent1&quot;</span>)</span><br><span class="line">c = Child(<span class="string">&quot;Child1&quot;</span>, p)</span><br><span class="line">p.children.append(c)</span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(c.parent().name)  <span class="comment"># Parent1</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">del</span> p  <span class="comment"># 父对象可被正常回收</span></span><br><span class="line"><span class="built_in">print</span>(c.parent())       <span class="comment"># None</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="系统中的应用">系统中的应用</h2>
+<p>以“异步工作流任务的状态回调”为场景串起全文：长任务（如 AI 工作流）被提交给外部引擎执行，调度器在后台线程轮询引擎状态，任务完成、失败或超时时调用回调处理器，把结果回写进任务对象。回调处理器与任务一一对应，<strong>任务结束即应释放</strong>——若轮询线程在回调链里强引用着处理器，它会被无限“续命”，任务一多内存只涨不降，这正是需要弱引用介入的地方。</p>
+<h3 id="基础版：回调处理器与任务对象">基础版：回调处理器与任务对象</h3>
+<p>任务与回调处理器各司其职。注意处理器方法需要携带任务上下文（<code>task_id</code>、<code>prompt_id</code>、结果消息等），是多参数回调的典型形态：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Task</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;任务上下文：一次工作流执行的状态与结果&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, task_id, prompt_id, max_retry=<span class="number">3</span></span>):</span><br><span class="line">        <span class="variable language_">self</span>.task_id = task_id</span><br><span class="line">        <span class="variable language_">self</span>.prompt_id = prompt_id</span><br><span class="line">        <span class="variable language_">self</span>.status = <span class="string">&quot;QUEUED&quot;</span>          <span class="comment"># QUEUED / RUNNING / SUCCESS / FAILED</span></span><br><span class="line">        <span class="variable language_">self</span>.msg = <span class="string">&quot;&quot;</span></span><br><span class="line">        <span class="variable language_">self</span>.execution_count = <span class="number">0</span></span><br><span class="line">        <span class="variable language_">self</span>.max_retry = max_retry</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">mark</span>(<span class="params">self, status, msg</span>):</span><br><span class="line">        <span class="variable language_">self</span>.status = status</span><br><span class="line">        <span class="variable language_">self</span>.msg = msg</span><br><span class="line">        <span class="keyword">if</span> status == <span class="string">&quot;FAILED&quot;</span>:</span><br><span class="line">            <span class="variable language_">self</span>.execution_count += <span class="number">1</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">TaskCallbackHandler</span>:</span><br><span class="line">    <span class="string">&quot;&quot;&quot;回调处理器：把引擎结果回写进任务对象&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, task</span>):</span><br><span class="line">        <span class="variable language_">self</span>.task = task</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">on_complete</span>(<span class="params">self, task_id, success, msg</span>):</span><br><span class="line">        <span class="variable language_">self</span>.task.mark(<span class="string">&quot;SUCCESS&quot;</span> <span class="keyword">if</span> success <span class="keyword">else</span> <span class="string">&quot;FAILED&quot;</span>, msg)</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;[on_complete] 任务 <span class="subst">&#123;task_id&#125;</span>: <span class="subst">&#123;self.task.status&#125;</span> - <span class="subst">&#123;msg&#125;</span>&quot;</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">on_timeout</span>(<span class="params">self, task_id, msg</span>):</span><br><span class="line">        <span class="variable language_">self</span>.task.mark(<span class="string">&quot;FAILED&quot;</span>, msg)</span><br><span class="line">        <span class="built_in">print</span>(<span class="string">f&quot;[on_timeout] 任务 <span class="subst">&#123;task_id&#125;</span>: <span class="subst">&#123;self.task.status&#125;</span> - <span class="subst">&#123;msg&#125;</span>&quot;</span>)</span><br></pre></td></tr></table></figure>
+<h3 id="执行函数：后台轮询并触发回调">执行函数：后台轮询并触发回调</h3>
+<p>调度函数接收“处理器 + 任务 + 引擎查询函数”，在后台线程中轮询；引擎给出终态后调用 <code>on_complete</code>，超时则调用 <code>on_timeout</code>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> threading</span><br><span class="line"><span class="keyword">import</span> time</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">check_workflow_status_async</span>(<span class="params">handler, task, query_engine, timeout=<span class="number">5</span></span>):</span><br><span class="line">    <span class="string">&quot;&quot;&quot;后台轮询引擎状态，结束时派发回调（handler 由调用方保证存活）&quot;&quot;&quot;</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_poll</span>():</span><br><span class="line">        deadline = time.time() + timeout</span><br><span class="line">        <span class="keyword">while</span> time.time() &lt; deadline:</span><br><span class="line">            done, msg = query_engine(task)      <span class="comment"># done=None 表示仍在执行</span></span><br><span class="line">            <span class="keyword">if</span> done <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">                handler.on_complete(task.task_id, done, msg)</span><br><span class="line">                <span class="keyword">return</span></span><br><span class="line">            time.sleep(<span class="number">1</span>)</span><br><span class="line">        handler.on_timeout(task.task_id, <span class="string">&quot;轮询超时，任务未完成&quot;</span>)</span><br><span class="line"></span><br><span class="line">    threading.Thread(target=_poll, daemon=<span class="literal">True</span>).start()</span><br><span class="line">    <span class="keyword">return</span> task.task_id</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">fake_engine</span>(<span class="params">task</span>):</span><br><span class="line">    <span class="string">&quot;&quot;&quot;演示用引擎：任务提交 3 秒后判定成功&quot;&quot;&quot;</span></span><br><span class="line">    started = <span class="built_in">getattr</span>(task, <span class="string">&quot;_started&quot;</span>, time.time())</span><br><span class="line">    <span class="keyword">if</span> time.time() - started &gt;= <span class="number">3</span>:</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">True</span>, <span class="string">&quot;工作流执行成功&quot;</span></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">None</span>, <span class="string">&quot;&quot;</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">task = Task(<span class="string">&quot;T-1001&quot;</span>, <span class="string">&quot;P-88&quot;</span>)</span><br><span class="line">handler = TaskCallbackHandler(task)</span><br><span class="line">task._started = time.time()</span><br><span class="line">check_workflow_status_async(handler, task, fake_engine)</span><br><span class="line"><span class="comment"># 约 3 秒后输出：</span></span><br><span class="line"><span class="comment"># [on_complete] 任务 T-1001: SUCCESS - 工作流执行成功</span></span><br></pre></td></tr></table></figure>
+<h3 id="弱引用版：处理器被回收后回调自动失效">弱引用版：处理器被回收后回调自动失效</h3>
+<p>需求升级：处理器可能被业务方提前删除（用户取消任务、超时清理等）。此时轮询线程的闭包里仍强引用着 <code>handler</code>，任务虽已删除，处理器却因回调链“多活”到线程结束——若处理器还攥着数据库连接，这就是实打实的泄漏。把观察动作换成 <code>WeakMethod</code>，处理器一旦被回收，回调自动跳过：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">check_workflow_status_weak</span>(<span class="params">handler, task, query_engine, timeout=<span class="number">5</span></span>):</span><br><span class="line">    <span class="comment"># WeakMethod 只观察不持有：处理器存活时可取回绑定方法，被回收后返回 None</span></span><br><span class="line">    on_complete = weakref.WeakMethod(handler.on_complete)</span><br><span class="line">    on_timeout = weakref.WeakMethod(handler.on_timeout)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">_poll</span>():</span><br><span class="line">        deadline = time.time() + timeout</span><br><span class="line">        <span class="keyword">while</span> time.time() &lt; deadline:</span><br><span class="line">            done, msg = query_engine(task)</span><br><span class="line">            <span class="keyword">if</span> done <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">                cb = on_complete()</span><br><span class="line">                <span class="keyword">if</span> cb <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:            <span class="comment"># 处理器仍存活 → 正常回调</span></span><br><span class="line">                    cb(task.task_id, done, msg)</span><br><span class="line">                <span class="keyword">else</span>:                          <span class="comment"># 已被回收 → 静默跳过，不崩也不泄漏</span></span><br><span class="line">                    <span class="built_in">print</span>(<span class="string">&quot;回调处理器已被回收，跳过回调&quot;</span>)</span><br><span class="line">                <span class="keyword">return</span></span><br><span class="line">            time.sleep(<span class="number">1</span>)</span><br><span class="line">        cb = on_timeout()</span><br><span class="line">        <span class="keyword">if</span> cb <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:</span><br><span class="line">            cb(task.task_id, <span class="string">&quot;轮询超时，任务未完成&quot;</span>)</span><br><span class="line"></span><br><span class="line">    threading.Thread(target=_poll, daemon=<span class="literal">True</span>).start()</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><strong>核心心法</strong>：弱引用不负责让对象存活，只负责“对象死亡后，我这边不碍事”。回调链上必须有一处强引用当“根”（任务队列、调度器、事件循环），其余环节才可以用弱引用做“观察”。</p>
+</blockquote>
+<h3 id="复盘：原工程示例的三个致命错误">复盘：原工程示例的三个致命错误</h3>
+<p>一种常见写法是“partial 绑定全部参数 + 对 partial 建弱引用”，思路对了一半，却藏着三处致命错误——它们也是弱引用回调最常见的翻车点：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> functools</span><br><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="comment"># 错误 1：对局部 partial 建弱引用——函数返回即失效，回调永不执行</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">callback_with_complete</span>(<span class="params">task_id, on_complete</span>):</span><br><span class="line">    callback_with_args = functools.partial(on_complete, task_id, <span class="string">&quot;执行完成&quot;</span>)</span><br><span class="line">    weak_callback = weakref.ref(callback_with_args)   <span class="comment"># 局部变量已无强引用</span></span><br><span class="line">    <span class="keyword">if</span> weak_callback() <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span>:                   <span class="comment"># 恒为 False，回调永不触发</span></span><br><span class="line">        weak_callback()()</span><br></pre></td></tr></table></figure>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>对“局部 partial”建弱引用</strong>：<code>partial</code> 对象是局部变量，函数一返回强引用就没了，<code>weakref.ref</code> 拿到手时对象已死，回调永远不触发。弱引用只“跟随”对象生死，不能替你把对象“养”活——绑定好参数的回调必须交给某个容器强引用持有。</p>
+</li>
+<li class="lvl-3">
+<p><strong>回调处理器没有强引用根</strong>：若处理器只存在于回调链中，而链上全是弱引用，它会在第一次 GC 时就被回收。上文说的“强引用根”必须真实存在（任务队列、调度器、事件循环任选其一）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>残缺代码直接当示例</strong>：<code>if true:</code> 恒真分支让失败处理永不执行；<code>task</code>、<code>lock</code>、<code>file_names</code>、<code>output_name</code> 等变量未定义；<code>functools</code>/<code>weakref</code>/<code>Callable</code> 未导入；tab 混排缩进——照着抄的读者会在运行期收到一串 NameError / IndentationError。</p>
+</li>
+</ol>
+</blockquote>
+<p>各工具的正确分工：</p>
+<table>
+<thead>
+<tr>
+<th>需求</th>
+<th>工具</th>
+<th>注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>回调必须触发，生命周期由业务方管理</td>
+<td>容器强引用 + <code>functools.partial</code></td>
+<td>partial 会强持被绑定对象，记得显式移除</td>
+</tr>
+<tr>
+<td>处理器被回收后回调自动失效</td>
+<td><code>weakref.WeakMethod</code></td>
+<td>绑定方法不可直接弱引用，必须用它</td>
+</tr>
+<tr>
+<td>对象回收时执行一次性清理</td>
+<td><code>weakref.finalize</code></td>
+<td>强持清理函数，弱持对象本体</td>
+</tr>
+<tr>
+<td>缓存、观察、监听且不延长寿命</td>
+<td><code>WeakValueDictionary</code>/<code>WeakSet</code>/<code>WeakKeyDictionary</code></td>
+<td>键/值/元素须支持弱引用（键仅需可哈希）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="实践中的问题与解决方案">实践中的问题与解决方案</h2>
+<ol>
+<li class="lvl-3">
+<p><strong>对 <code>list</code>、<code>dict</code> 等内置类型建弱引用抛 TypeError</strong></p>
+<p><code>list</code>/<code>dict</code>/<code>set</code>/<code>int</code>/<code>str</code>/<code>tuple</code>/<code>float</code> 等内置类型不支持弱引用，任何 Python 版本皆如此。若确需弱引用“包装”它们，定义子类即可——子类实例默认支持弱引用：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> weakref</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">MyList</span>(<span class="title class_ inherited__">list</span>):        <span class="comment"># 子类实例默认获得 __weakref__ 槽</span></span><br><span class="line">    <span class="keyword">pass</span></span><br><span class="line"></span><br><span class="line">weakref.ref(MyList([<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>]))   <span class="comment"># 正常</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>绑定方法建弱引用立即失效（返回 None）</strong></p>
+<p>每次访问 <code>obj.method</code> 都新建临时方法对象，<code>weakref.ref(obj.method)</code> 到手即死。必须用 <code>weakref.WeakMethod(obj.method)</code>——它把“实例 + 函数名”分开保存，实例存活期间随时能取回可调用的绑定方法（详见上文“绑定方法与 WeakMethod”一节）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>对局部 <code>partial</code> 建弱引用，回调永不触发</strong></p>
+<p>与第 2 点同源：<code>partial</code> 若只是函数内的局部变量，函数返回即被回收。需要把绑定好的回调交给类实例、列表等<strong>强引用容器</strong>持有；弱引用只适合观察“本来就被别人持有”的对象。</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>WeakValueDictionary</code> 当缓存时值“神秘消失”</strong></p>
+<p>它的语义是“值存活期间可查”：值一旦失去全部外部强引用，条目自动被清除。它适合对象池、按对象登记元数据等场景，<strong>不适合做纯缓存</strong>——缓存里的大对象只要没人用就被回收，下次访问还得重建。想要“驻留式缓存”，请用强引用容器 + 淘汰策略（如 LRU）。</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>__slots__</code> 类无法建弱引用</strong></p>
+<p>定义了 <code>__slots__</code> 的类默认没有 <code>__weakref__</code> 槽，对其实例调用 <code>weakref.ref</code> 会抛 TypeError。需要弱引用时在 <code>__slots__</code> 中显式声明：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Light</span>:</span><br><span class="line">    __slots__ = (<span class="string">&quot;data&quot;</span>, <span class="string">&quot;__weakref__&quot;</span>)   <span class="comment"># 显式开启弱引用支持</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>在回调里做重活，或以为回调“稍后”执行</strong></p>
+<p><code>weakref.ref(obj, callback)</code> 的回调在对象引用计数归零的<strong>现场同步执行</strong>（所在线程就是最后一次释放引用的线程）；若回调抛异常，解释器只打印告警、不崩溃。因此回调应保持轻量（打日志、清状态），重量级清理（关连接、删文件）交给 <code>weakref.finalize</code>。</p>
+</li>
+</ol>
+<h2 id="总结">总结</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>回调函数</strong>把“行为”参数化；多参数回调用 <code>partial</code> 绑定；绑定方法“每次访问都是新对象”的特性决定了它必须走 <code>WeakMethod</code>。</p>
+</li>
+<li class="lvl-2">
+<p><code>weakref</code> 家族各司其职：<code>ref</code>（+回调）观察单个对象，<code>WeakKeyDictionary</code>/<code>WeakValueDictionary</code>/<code>WeakSet</code> 管理“不续命”的容器，<code>WeakMethod</code> 观察绑定方法，<code>finalize</code> 登记回收时的清理动作。</p>
+</li>
+<li class="lvl-2">
+<p>心法三句：<strong>弱引用不阻止回收，也不负责存活</strong>；回调链必须有一处强引用当根；凡是“观察、缓存、监听”且不希望影响对象生死的引用，都换成 weakref——内存泄漏往往就藏在“忘了换”的那一处。</p>
+</li>
+</ul>
+<h2 id="工程结论">工程结论</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>回调链上必须有一处强引用当“根”（任务队列、调度器、事件循环任选其一），其余观察环节才适合换弱引用；链上全是弱引用的对象会在第一次 GC 就被回收。</p>
+</li>
+<li class="lvl-2">
+<p>绑定方法不能用 <code>weakref.ref</code> 直接观察——<code>obj.method</code> 每次访问都是临时对象，必须用 <code>WeakMethod</code>；<code>partial</code> 绑好参数后要交给强引用容器持有。</p>
+</li>
+<li class="lvl-2">
+<p><code>WeakValueDictionary</code> 不适合做缓存：值失去外部强引用即被清除；要驻留式缓存用强引用容器加 LRU 淘汰策略。</p>
+</li>
+<li class="lvl-2">
+<p>内置类型实例不支持弱引用，包一层子类即可；定义了 <code>__slots__</code> 的类要显式声明 <code>&quot;__weakref__&quot;</code>。</p>
+</li>
+<li class="lvl-2">
+<p><code>ref</code> 的回收回调在释放引用的线程里同步执行，只做打日志、清状态这类轻活；关连接、删文件交给 <code>finalize</code>。</p>
+</li>
+</ul>
+<h2 id="边界与验证">边界与验证</h2>
+<p>本文中的示例主要用于解释机制。涉及版本、默认参数、性能和故障行为的结论，应在目标环境中通过最小可复现实验或官方文档进一步确认。</p>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2026/09/neotask-embed-quickstart/">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/04/neotask-overview/">轻量耗时任务排队为何要选嵌入式任务池？NeoTask 调度与分布式原理实现</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/04/neotask-vs-celery/">为什么我不用 Celery 做轻量任务调度：NeoTask vs Celery 选型实录</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/05/neotask-ha-pool/">如何从零构建高可用任务调度池：分层的教程式构建指南</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/09/python-weakref-callback/">https://pengline.cn/2025/09/python-weakref-callback/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6/">垃圾回收</a><a class="post-meta__tags" href="/tags/Python/">Python</a><a class="post-meta__tags" href="/tags/%E5%9B%9E%E8%B0%83%E5%87%BD%E6%95%B0/">回调函数</a><a class="post-meta__tags" href="/tags/weakref/">weakref</a><a class="post-meta__tags" href="/tags/WeakMethod/">WeakMethod</a><a class="post-meta__tags" href="/tags/finalize/">finalize</a><a class="post-meta__tags" href="/tags/%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F/">内存泄漏</a><a class="post-meta__tags" href="/tags/%E5%BC%B1%E5%BC%95%E7%94%A8/">弱引用</a><a class="post-meta__tags" href="/tags/%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8/">事件驱动</a><a class="post-meta__tags" href="/tags/%E5%BC%82%E6%AD%A5%E7%BC%96%E7%A8%8B/">异步编程</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small231205PbwhI1753715525.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/09/rocketmq-load-balance/" title="RocketMQ 生产与消费侧如何各自做负载均衡：Queue 分片与再平衡机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">RocketMQ 生产与消费侧如何各自做负载均衡：Queue 分片与再平衡机制</div></div><div class="info-2"><div class="info-item-1">RocketMQ 的负载均衡分发送与消费两翼：发送侧追求写均匀，消费侧追求读均匀，二者都建立在主题的队列分片模型上，队列内天然串行。文章剖析生产端轮询与故障规避、消费端再平衡的触发、平均分配策略及演进陷阱，揭示写均匀与读均匀背后的取舍。</div></div></div></a><a class="pagination-related" href="/2025/09/hexo-icon-style/" title="Hexo 与 Butterfly 主题的图标速查：如何在配置里引用字符图标"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small220807fLgw21759154887.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">Hexo 与 Butterfly 主题的图标速查：如何在配置里引用字符图标</div></div><div class="info-2"><div class="info-item-1">Hexo 与 Butterfly 主题的菜单和文章常要放图标，很多人直接引链接当精灵图，其实大多用配置与模板类名即可。本文收录一份可用字符图标速查表，讲清配置写名前缀、模板写类名两种引用方式及差异，方便快速检索与使用。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/05/rabbitmq-storage-engine/" title="RabbitMQ 的消息存在哪里？从 msg_store 到队列索引的落盘机制"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-05-05</div><div class="info-item-2">RabbitMQ 的消息存在哪里？从 msg_store 到队列索引的落盘机制</div></div><div class="info-2"><div class="info-item-1">RabbitMQ 把消息体与队列索引拆成两层独立落盘结构：消息体进共享段文件，索引记录位置与偏移，小消息直接内嵌索引。本文拆解写入与读取路径、段文件合并回收、惰性队列取舍与磁盘流控，并复盘磁盘写满、存储膨胀等故障的处置方法。</div></div></div></a><a class="pagination-related" href="/2026/09/neotask-lock-watchdog/" title="同一任务被执行两次才是事故：NeoTask 分布式锁与看门狗实战"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small222033hPqw01758118833.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-26</div><div class="info-item-2">同一任务被执行两次才是事故：NeoTask 分布式锁与看门狗实战</div></div><div class="info-2"><div class="info-item-1">分布式任务调度里最隐蔽的事故不是丢任务，而是同一任务被执行两次。本文以 NeoTask 的实现为蓝本拆解防重复执行的三层防线：SET NX EX 与 Lua 原子释放、看门狗为长任务续命的 1/3 续期节奏、锁续期失败后任务的真实去向、回收器与死信队列的兜底链路，以及"出队"与"加锁"为什么要分开。</div></div></div></a><a class="pagination-related" href="/2026/09/neotask-embed-quickstart/" title="耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small081407qOyN61757549647.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-23</div><div class="info-item-2">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</div></div><div class="info-2"><div class="info-item-1">耗时任务排队传统方案要引入 Celery 加 Redis/RabbitMQ 中间件，运维成本高。NeoTask 用纯 Python 异步任务池把调度内嵌进应用：即时、延时、Cron 定时、四级优先级、自动重试开箱即用，内存、SQLite、Redis 三种持久化按需切换。本文覆盖三种使用范式、四种任务类型、背压语义与升级信号。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9E%E8%B0%83%E5%87%BD%E6%95%B0"><span class="toc-number">1.</span> <span class="toc-text">回调函数</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%9E%E7%8E%B0%E6%96%B9%E5%BC%8F"><span class="toc-number">1.1.</span> <span class="toc-text">实现方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BC%82%E6%AD%A5%E5%9B%9E%E8%B0%83"><span class="toc-number">1.2.</span> <span class="toc-text">异步回调</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BC%B1%E5%BC%95%E7%94%A8"><span class="toc-number">2.</span> <span class="toc-text">弱引用</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8-weakref"><span class="toc-number">2.1.</span> <span class="toc-text">使用 weakref</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B8%A6%E5%9B%9E%E8%B0%83%E7%9A%84%E5%BC%B1%E5%BC%95%E7%94%A8"><span class="toc-number">2.2.</span> <span class="toc-text">带回调的弱引用</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BB%91%E5%AE%9A%E6%96%B9%E6%B3%95%E4%B8%8E-WeakMethod"><span class="toc-number">2.3.</span> <span class="toc-text">绑定方法与 WeakMethod</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BC%B1%E5%BC%95%E7%94%A8%E5%AD%97%E5%85%B8"><span class="toc-number">2.4.</span> <span class="toc-text">弱引用字典</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BC%B1%E5%BC%95%E7%94%A8%E9%9B%86%E5%90%88"><span class="toc-number">2.5.</span> <span class="toc-text">弱引用集合</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#weakref-finalize%EF%BC%9A%E5%9B%9E%E6%94%B6%E6%97%B6%E7%9A%84%E6%B8%85%E7%90%86%E5%8A%A8%E4%BD%9C"><span class="toc-number">2.6.</span> <span class="toc-text">weakref.finalize：回收时的清理动作</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BA%94%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">2.7.</span> <span class="toc-text">应用场景</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%B3%BB%E7%BB%9F%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8"><span class="toc-number">3.</span> <span class="toc-text">系统中的应用</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9F%BA%E7%A1%80%E7%89%88%EF%BC%9A%E5%9B%9E%E8%B0%83%E5%A4%84%E7%90%86%E5%99%A8%E4%B8%8E%E4%BB%BB%E5%8A%A1%E5%AF%B9%E8%B1%A1"><span class="toc-number">3.1.</span> <span class="toc-text">基础版：回调处理器与任务对象</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%A7%E8%A1%8C%E5%87%BD%E6%95%B0%EF%BC%9A%E5%90%8E%E5%8F%B0%E8%BD%AE%E8%AF%A2%E5%B9%B6%E8%A7%A6%E5%8F%91%E5%9B%9E%E8%B0%83"><span class="toc-number">3.2.</span> <span class="toc-text">执行函数：后台轮询并触发回调</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BC%B1%E5%BC%95%E7%94%A8%E7%89%88%EF%BC%9A%E5%A4%84%E7%90%86%E5%99%A8%E8%A2%AB%E5%9B%9E%E6%94%B6%E5%90%8E%E5%9B%9E%E8%B0%83%E8%87%AA%E5%8A%A8%E5%A4%B1%E6%95%88"><span class="toc-number">3.3.</span> <span class="toc-text">弱引用版：处理器被回收后回调自动失效</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A4%8D%E7%9B%98%EF%BC%9A%E5%8E%9F%E5%B7%A5%E7%A8%8B%E7%A4%BA%E4%BE%8B%E7%9A%84%E4%B8%89%E4%B8%AA%E8%87%B4%E5%91%BD%E9%94%99%E8%AF%AF"><span class="toc-number">3.4.</span> <span class="toc-text">复盘：原工程示例的三个致命错误</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E8%B7%B5%E4%B8%AD%E7%9A%84%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">4.</span> <span class="toc-text">实践中的问题与解决方案</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">5.</span> <span class="toc-text">总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E7%BB%93%E8%AE%BA"><span class="toc-number">6.</span> <span class="toc-text">工程结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%BE%B9%E7%95%8C%E4%B8%8E%E9%AA%8C%E8%AF%81"><span class="toc-number">7.</span> <span class="toc-text">边界与验证</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">8.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

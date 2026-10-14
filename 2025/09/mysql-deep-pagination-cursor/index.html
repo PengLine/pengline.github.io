@@ -1,0 +1,997 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="剖析海量数据下 LIMIT offset 深分页越翻越慢的根源，filesort 外部排序、逐行回表与结果丢弃叠加成的三层浪费，其代价正比于偏移量而非页大小；对比游标分页、覆盖索引与 search_after、scroll 等方案的原理与适用场景，并给出 MySQL 与 Elasticsearch 场景选型及随机跳页的工程建议。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案">
+<meta property="og:url" content="https://pengline.cn/2025/09/mysql-deep-pagination-cursor/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="剖析海量数据下 LIMIT offset 深分页越翻越慢的根源，filesort 外部排序、逐行回表与结果丢弃叠加成的三层浪费，其代价正比于偏移量而非页大小；对比游标分页、覆盖索引与 search_after、scroll 等方案的原理与适用场景，并给出 MySQL 与 Elasticsearch 场景选型及随机跳页的工程建议。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp">
+<meta property="article:published_time" content="2025-09-04T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-10-14T07:50:52.408Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="LIMIT">
+<meta property="article:tag" content="MySQL">
+<meta property="article:tag" content="search_after">
+<meta property="article:tag" content="分页性能">
+<meta property="article:tag" content="深度分页">
+<meta property="article:tag" content="游标分页">
+<meta property="article:tag" content="覆盖索引">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/09/mysql-deep-pagination-cursor/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">91</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">781</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">海量数据为何越翻越慢？MySQL 深分页的三层代价与游标方案</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-09-04T16:00:00.000Z" title="发表于 2025-09-05 00:00:00">2025-09-05</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-10-14T07:50:52.408Z" title="更新于 2026-10-14 15:50:52">2026-10-14</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5/">深度分页</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h2 id="深度分页的概念和场景">深度分页的概念和场景</h2>
+<p><strong>深度分页</strong>指的是在数据库或搜索引擎中，当需要访问结果集中非常靠后的数据页时（例如第 1000 页，每页 10 条，即第 10000 条记录之后），系统性能会显著下降的现象。</p>
+<p><strong>核心问题在于：</strong> 大多数数据库的实现方式并不是直接跳到第 N 页，而是需要先获取并跳过前 (N-1) * SIZE 条记录，这会导致巨大的资源消耗。</p>
+<p>以 MySQL 的 <code>LIMIT</code> 偏移查询为例：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"># 跳过前 <span class="number">10000</span> 条，再取 <span class="number">10</span> 条（每页 <span class="number">10</span> 条的深分页）</span><br><span class="line"><span class="operator">&gt;</span> <span class="operator">*</span><span class="operator">*</span>本文定位<span class="operator">*</span><span class="operator">*</span>：这不是参数清单，而是围绕一个工程问题解释“为什么这样设计、什么时候会失效、应该如何验证”。文中的示例代码用于说明机制；涉及版本、默认值和性能的数据，请在你的目标版本与真实数据集上复测。</span><br><span class="line"></span><br><span class="line">## 先给结论</span><br><span class="line"></span><br><span class="line">深分页慢并不是简单的“数据库不支持大 <span class="keyword">offset</span>”，而是 <span class="keyword">offset</span> 越大，系统需要为“已经被跳过的数据”付出的工作越多。本文以 MySQL 为主线，从排序、扫描、回表和结果丢弃几个环节解释成本如何累积，再把游标分页、覆盖索引和搜索引擎方案放到统一的选型框架中。</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> test <span class="keyword">ORDER</span> <span class="keyword">BY</span> created_at <span class="keyword">DESC</span> LIMIT <span class="number">10000</span>, <span class="number">10</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>查询到硬盘</strong>：根据 <code>WHERE</code> 条件和 <code>ORDER BY</code> 排序，去硬盘读取满足条件的记录。</p>
+</li>
+<li class="lvl-3">
+<p><strong>构建完整结果集</strong>：在服务器端，MySQL 需要先构建一个包含 <code>(10000 + 10)</code> 条记录的<strong>临时结果集</strong>。</p>
+</li>
+<li class="lvl-3">
+<p><strong>跳过偏移量</strong>：MySQL 会顺序遍历这个临时结果集，<strong>前 10000 条记录会被直接丢弃</strong>，不返回给客户端。</p>
+</li>
+<li class="lvl-3">
+<p><strong>返回最终数据</strong>：从第 10001 条开始，取 10 条记录返回给客户端。</p>
+</li>
+</ol>
+<p><strong>性能瓶颈</strong>：<code>OFFSET</code> 越大，需要读取和丢弃的数据就越多，计算和 I/O 成本就越高，性能自然急剧下降。</p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>巨大的浪费</strong>：只想要 10 条数据，但 MySQL 服务端需要<strong>准备、排序、然后丢弃前面 10000 条数据</strong>——这是一个 <code>O(N)</code> 的线性扫描过程，<code>OFFSET</code> 越大，需要跳过的记录就越多，IO 和 CPU 消耗就越大；</p>
+</li>
+<li class="lvl-2">
+<p><strong>IO 压力</strong>：如果表很大或无法有效使用索引，这个“准备”过程可能涉及大量的磁盘随机读写。</p>
+</li>
+</ul>
+</blockquote>
+<pre><code class="highlight mermaid">flowchart TD
+    A[SELECT ... LIMIT 10000, 10] --&gt; B[按 WHERE 收集候选行]
+    B --&gt; C&#123;ORDER BY 字段 / 是否在索引上?&#125;
+    C --&gt;|否| D[filesort 全量外部排序 / 数据量大时落盘临时表]
+    C --&gt;|是| E[索引天然有序 / 免去排序阶段]
+    D --&gt; F[逐行回表取完整行 / 产生大量随机 IO]
+    E --&gt; F
+    F --&gt; G[服务层维持 10010 条缓冲 / 顺序丢弃前 10000 条]
+    G --&gt; H[仅返回最后 10 条]
+
+    style D fill:#fff3e0,stroke:#ff9800
+    style G fill:#ffebee,stroke:#f44336</code></pre>
+<blockquote>
+<p><strong>深分页慢的本质是“三层浪费”叠加，代价正比于 <code>offset + size</code> 而非 <code>size</code></strong>：<br>
+① <strong>排序层</strong>——<code>ORDER BY</code> 字段不在索引上时，全部满足条件的行都要参与 filesort，<code>LIMIT</code> 无法提前截断排序；<br>
+② <strong>回表层</strong>——二级索引不含非索引列，取完整行必须逐行回聚簇索引，前 10000 次回表全部是“白做”的随机 IO；<br>
+③ <strong>丢弃层</strong>——服务层仍要维持 <code>offset + size</code> 的结果缓冲，并逐行丢弃前 offset 行。</p>
+<p>对比之下，游标分页每一页都“从游标位置继续”，代价恒定在 O(size)——这就是两类方案的本质差距。</p>
+</blockquote>
+<h2 id="深度分页常用解决方案">深度分页常用解决方案</h2>
+<p>以 MySQL 为例，各方案横向对比：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">方案</th>
+<th style="text-align:left">原理</th>
+<th style="text-align:left">优点</th>
+<th style="text-align:left">缺点</th>
+<th style="text-align:left">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>游标分页</strong></td>
+<td style="text-align:left">记录上一页末尾的位置作为起点</td>
+<td style="text-align:left"><strong>性能最好</strong>，数据一致</td>
+<td style="text-align:left">无法跳页</td>
+<td style="text-align:left"><strong>无限滚动、流式数据</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>子查询</strong></td>
+<td style="text-align:left">覆盖索引的优化，不需要二次查询</td>
+<td style="text-align:left">简单高效</td>
+<td style="text-align:left">连表查询，不稳定</td>
+<td style="text-align:left">数据量少的简单可跳页查询</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>覆盖索引</strong></td>
+<td style="text-align:left">通过索引避免回表，减少I/O</td>
+<td style="text-align:left">比纯<code>LIMIT</code>快</td>
+<td style="text-align:left">优化有限，需两次查询</td>
+<td style="text-align:left">查询数据少的简单分页</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>限制深度</strong></td>
+<td style="text-align:left">业务上不允许访问太深的页</td>
+<td style="text-align:left">简单有效</td>
+<td style="text-align:left">功能受限</td>
+<td style="text-align:left">搜索引擎、后台管理系统</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>ES <code>search_after</code></strong></td>
+<td style="text-align:left">类似游标分页</td>
+<td style="text-align:left">专业引擎原生支持</td>
+<td style="text-align:left">引擎特定</td>
+<td style="text-align:left">Elasticsearch/Solr</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>对于新项目或需要高性能的场景，<strong>强烈推荐使用游标分页</strong>。虽然牺牲了直接跳转页码的功能，但换来了稳定且高效的性能，非常适合现代应用（如手机APP）的交互方式。如果必须支持页码跳转，可以考虑将<strong>游标分页与限制最大分页深度</strong>结合使用。</p>
+</blockquote>
+<h3 id="游标分页（推荐）">游标分页（推荐）</h3>
+<p>游标分页（Cursor-based Pagination），也叫“键集分页”，是解决深度分页最有效的方法。它不记录页码，而是记录上一页最后一条记录的位置，并以此为起点获取下一页。</p>
+<p>比如数据根据ID倒序排列，点击下一页时，携带上一页中最小的ID，作为下一页最大值的过滤值。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> </span><br><span class="line">	<span class="keyword">FROM</span> user_order </span><br><span class="line">	<span class="keyword">WHERE</span> id <span class="operator">&lt;</span> #&#123;minId&#125; <span class="keyword">AND</span> create_time<span class="operator">&gt;</span><span class="string">&#x27;2020-8-5 00:00:00&#x27;</span> </span><br><span class="line">    <span class="keyword">ORDER</span> <span class="keyword">BY</span> id LIMIT <span class="number">10</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>minId就是上一页中的最小主键Id。</p>
+<p><strong>注意事项：</strong></p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>必须排序</strong>：要求结果集有稳定的排序顺序。通常使用自增主键 <code>id</code> 或时间戳 <code>create_time</code> 等唯一或高区分度的列。</p>
+</li>
+<li class="lvl-2">
+<p><strong>多列排序</strong>：为了确保顺序绝对唯一，避免因排序字段值相同导致分页记录重复或丢失，最好使用组合排序，如 <code>ORDER BY create_time DESC, id DESC</code>。对应的 <code>WHERE</code> 条件也要处理多列。</p>
+</li>
+<li class="lvl-2">
+<p><strong>前端配合</strong>：前端需要记住“上一页最后一条记录的游标”（即排序字段的值），并在请求下一页时传给后端。它不支持直接跳到任意页码，只能“上一页”、“下一页”。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>优点：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>性能极佳</strong>：无论翻到第几页，查询速度都一样快，因为 <code>WHERE id &lt; 1000</code> 可以利用索引快速定位，无需扫描和跳过之前的记录。</p>
+</li>
+<li class="lvl-2">
+<p><strong>数据一致性</strong>：适合实时性高的数据流（如社交媒体动态），在分页过程中即使有新增或删除数据，也不会出现重复或丢失记录的问题（传统 LIMIT 分页可能会）。</p>
+</li>
+</ul>
+<p><strong>缺点：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>无法直接跳转到指定页码</strong>：用户只能“上一页”或“下一页”地浏览，不能直接跳到第 100 页。</p>
+</li>
+<li class="lvl-2">
+<p><strong>需要客户端配合</strong>：客户端需要维护 <code>cursor</code> 状态。</p>
+</li>
+</ul>
+<blockquote>
+<p><strong>适用场景：</strong> 无限滚动（Infinite Scroll）的列表、新闻流、时间线等。</p>
+</blockquote>
+<h3 id="子查询（常用）">子查询（常用）</h3>
+<p>先根据条件分页查询出id（覆盖索引），再根据id连表查询出所需数据。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> d.<span class="operator">*</span></span><br><span class="line">    <span class="keyword">FROM</span> user_order d</span><br><span class="line">    <span class="keyword">JOIN</span> (<span class="keyword">SELECT</span> id <span class="keyword">FROM</span> user_order</span><br><span class="line">          <span class="keyword">WHERE</span> create_time <span class="operator">&gt;</span> <span class="string">&#x27;2020-8-5 00:00:00&#x27;</span></span><br><span class="line">          <span class="keyword">ORDER</span> <span class="keyword">BY</span> create_time, id LIMIT <span class="number">60000</span>, <span class="number">20</span>) dd</span><br><span class="line">      <span class="keyword">ON</span> d.id <span class="operator">=</span> dd.id</span><br><span class="line"><span class="keyword">ORDER</span> <span class="keyword">BY</span> d.create_time, d.id;  <span class="comment">-- 排序补充 id 次级键，避免同值记录翻页重复/丢失</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><strong>工作原理：</strong></p>
+<ol>
+<li class="lvl-3">子查询 <code>(SELECT id ... LIMIT 60000, 20)</code> 只查询 <code>id</code> 字段。因为 <code>id</code> 和 <code>create_time</code> 都在索引 <code>idx_create_time</code> 上（InnoDB 二级索引会包含主键值），所以这个子查询可以<strong>完全在索引中完成</strong>，速度非常快。找到第 60000 条记录对应的 <code>id</code>。</li>
+<li class="lvl-3">外层查询再根据这个 <code>id</code> 作为起点，通过主键索引快速取出完整的 20 条记录。</li>
+</ol>
+</blockquote>
+<p>**优点：**比原始深度分页快很多，因为子查询的“偏移”过程在索引中进行，效率更高。</p>
+<p><strong>缺点：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>依赖于覆盖索引。</p>
+</li>
+<li class="lvl-2">
+<p>效果不如游标分页稳定，查询期间有数据新增或删除则会受影响。</p>
+</li>
+<li class="lvl-2">
+<p>仍然有 <code>OFFSET</code>，只是将其转移到了更快的索引扫描上，当 <code>OFFSET</code> 极大时（如百万级），子查询本身还是会变慢。</p>
+</li>
+</ul>
+<h3 id="直接覆盖索引（可用）">直接覆盖索引（可用）</h3>
+<p>确保分页查询的数据都包含在索引里，这样只需要查询索引即可，而无需回表，从而减少磁盘 I/O。</p>
+<blockquote>
+<p>除非要查询的数据量很少，且都符合建立索引的条件下可以使用。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> id, order_id, create_time <span class="keyword">FROM</span> user_order </span><br><span class="line">	<span class="keyword">WHERE</span> create_time<span class="operator">&gt;</span><span class="string">&#x27;2020-8-5 00:00:00&#x27;</span> </span><br><span class="line">    <span class="keyword">ORDER</span> <span class="keyword">BY</span> id LIMIT <span class="number">10000</span>, <span class="number">10</span>;</span><br></pre></td></tr></table></figure>
+</blockquote>
+<p>**优点：**在一定程度上减轻了深度分页的压力。</p>
+<p><strong>缺点：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>优化有限，<code>OFFSET</code> 非常大时，索引扫描范围依然很大。</p>
+</li>
+<li class="lvl-2">
+<p>只能查询有限的数据列，且需要创建大量索引，占据磁盘。</p>
+</li>
+</ul>
+<h3 id="间接覆盖索引（可用）">间接覆盖索引（可用）</h3>
+<p>让查询只需要扫描索引，而无需回表，从而减少磁盘 I/O。</p>
+<p>通过以下两步查询完成：</p>
+<ol>
+<li class="lvl-3">
+<p>先从覆盖索引中获取目标记录的主键</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> id <span class="keyword">FROM</span> user_order </span><br><span class="line">	<span class="keyword">WHERE</span> create_time<span class="operator">&gt;</span><span class="string">&#x27;2020-8-5 00:00:00&#x27;</span> </span><br><span class="line">    <span class="keyword">ORDER</span> <span class="keyword">BY</span> id LIMIT <span class="number">10000</span>, <span class="number">10</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>假设 <code>(create_time, id)</code> 是一个联合索引，这个查询可以完全在索引上完成，速度较快</p>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p>再根据这些主键ID，回表查询获取完整数据</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span></span><br><span class="line">    <span class="keyword">FROM</span> user_order </span><br><span class="line">	<span class="keyword">WHERE</span> id <span class="keyword">IN</span> (<span class="number">10001</span>, <span class="number">10002</span>, ..., <span class="number">10020</span>); <span class="comment">-- 上一步得到的主键ID </span></span><br><span class="line">    <span class="keyword">ORDER</span> <span class="keyword">BY</span> id</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<p>**优点：**在一定程度上减轻了深度分页的压力。</p>
+<p><strong>缺点：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>优化有限，<code>OFFSET</code> 非常大时，索引扫描范围依然很大。</p>
+</li>
+<li class="lvl-2">
+<p>仅适用于查询数据较少的情况，否则回表时会有大量ID集合数据需要过滤。</p>
+</li>
+<li class="lvl-2">
+<p>需要两次查询：一次覆盖索引扫描 + 一次主键回表，占用额外 IO；两步之间的数据变更可能影响结果一致性。</p>
+</li>
+</ul>
+<h3 id="限制分页深度（可用）">限制分页深度（可用）</h3>
+<p>业务层面可以限制分页深度，这是一种“防患于未然”的策略，从产品设计上避免用户进入深度分页。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>提供精确的搜索和筛选功能</strong>：让用户通过条件（如时间范围、标签、关键词）来缩小结果集，而不是无脑地翻页。</p>
+</li>
+<li class="lvl-2">
+<p><strong>限制最大可访问页码</strong>：例如，搜索引擎通常只允许查看前 100 页的结果。直接在前端或后端限制 <code>offset</code> 的最大值（如 <code>max_offset = 2000</code>）。</p>
+</li>
+</ul>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>简单有效</strong>：从根本上避免了性能问题；</p>
+</li>
+<li class="lvl-2">
+<p><strong>契合用户习惯</strong>：用户通常也不愿意翻上百页。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="使用-id-分区（不实用）">使用 <code>id</code> 分区（不实用）</h3>
+<p>如果表的主键 <code>id</code> 是自增且连续的，没有空洞，可以通过 <code>id</code> 范围进行分页。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 假设每页20条，要查第100页</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> articles <span class="keyword">WHERE</span> id <span class="keyword">BETWEEN</span> <span class="number">2001</span> <span class="keyword">AND</span> <span class="number">2020</span>;</span><br></pre></td></tr></table></figure>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>不实用</strong>：要求 <code>id</code> 绝对连续，这在有删除操作的表中是几乎不可能的。</p>
+</li>
+<li class="lvl-2">
+<p><strong>排序不符</strong>：结果顺序是 <code>id</code> 顺序，如果业务要求按其他字段（如时间）排序，此方法无效。</p>
+</li>
+</ul>
+<h3 id="使用-IN-查询（不推荐）">使用 <code>IN</code> 查询（不推荐）</h3>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> test </span><br><span class="line"><span class="keyword">WHERE</span> id <span class="keyword">IN</span> (<span class="keyword">SELECT</span> id <span class="keyword">FROM</span> test <span class="keyword">ORDER</span> <span class="keyword">BY</span> create_time <span class="keyword">DESC</span> LIMIT <span class="number">60000</span>, <span class="number">20</span>);</span><br></pre></td></tr></table></figure>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>IN</code> 子句中的子查询性能并不稳定，MySQL 优化器可能不会很好地优化。</p>
+</li>
+<li class="lvl-2">
+<p>同样存在深度 <code>OFFSET</code> 问题。</p>
+</li>
+</ul>
+<h2 id="利用-Redis-扩展实现">利用 Redis 扩展实现</h2>
+<p>利用其内存和对应的数据结构。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>使用 <strong>zset</strong> 结构，将数据的 id 作为 value，将数据的排序依据（比如时间、热度、评分等）作为 score，然后根据用户的分页请求，使用 <code>ZRANGE</code> 或者 <code>ZREVRANGE</code> 命令来获取指定范围的 value，再根据 value 获取具体数据。</p>
+<blockquote>
+<p>优点：减轻数据库压力，提高查询效率，保证数据一致性，动态地添加或删除数据，可以控制 zset 长度，防止一直增长。</p>
+<p>缺点：需要维护额外的 zset 数据结构，可能占用更多的内存空间，并且需要注意数据同步和更新的问题。</p>
+</blockquote>
+</li>
+<li class="lvl-2">
+<p>使用 <strong>hash</strong> 结构，将数据以 id 为 key 缓存，然后把数据 id 和排序存到 redis 的 zset 里；当查找数据时，先从 redis 里的 skip list 取出对应的分页数据，得到 id 列表；用 multi get 从 redis 上一次性把 id 列表里的所有数据都取出。</p>
+<blockquote>
+<p>优点：可以利用 hash 的高效存储和查询特性，减少内存开销，利用 zset 的排序和范围查询特性，提高分页效率。缺点：需要维护两个数据结构，可能增加复杂度，并且需要注意数据同步和更新的问题。</p>
+</blockquote>
+</li>
+<li class="lvl-2">
+<p>使用 <strong>list</strong> 结构，将数据按照顺序存储到 list，根据用户分页请求，使用 <code>LINDEX</code> 或者 <code>LRANGE</code> 命令来获取指定范围的数据。</p>
+<blockquote>
+<p>优点：简单易实现，并且可以利用 list 的有序和可变特性，动态地添加或删除数据。缺点：需要扫描所有的数据，查询效率低下，并且不能支持多种排序方式。</p>
+</blockquote>
+</li>
+</ul>
+<h3 id="有序集合">有序集合</h3>
+<ol>
+<li class="lvl-3">
+<p>使用 Redis 有序集合存储文章的评分/时间戳作为 score</p>
+</li>
+<li class="lvl-3">
+<p>通过 <code>ZREVRANGE</code> 命令实现高效分页</p>
+</li>
+<li class="lvl-3">
+<p>根据获取到的 ID 再去 MySQL 查询完整数据</p>
+</li>
+</ol>
+<blockquote>
+<p><code>ZREVRANGE</code> 基于跳表实现，无论取第1页还是第1000页，性能都是 <strong>O(logN + M)</strong>。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 添加文章到有序集合</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">addArticle</span><span class="params">(Long articleId, Double score)</span> &#123;</span><br><span class="line">    redisTemplate.opsForZSet().add(<span class="string">&quot;articles:hot&quot;</span>, articleId, score);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 深度分页查询 - 性能极佳</span></span><br><span class="line"><span class="keyword">public</span> List&lt;Long&gt; <span class="title function_">getHotArticles</span><span class="params">(<span class="type">int</span> page, <span class="type">int</span> size)</span> &#123;</span><br><span class="line">    <span class="type">int</span> <span class="variable">start</span> <span class="operator">=</span> (page - <span class="number">1</span>) * size;</span><br><span class="line">    <span class="type">int</span> <span class="variable">end</span> <span class="operator">=</span> start + size - <span class="number">1</span>;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// ZREVRANGE 时间复杂度 O(log(N) + M)，性能稳定</span></span><br><span class="line">    Set&lt;Long&gt; articleIds = redisTemplate.opsForZSet()</span><br><span class="line">        .reverseRange(<span class="string">&quot;articles:hot&quot;</span>, start, end);</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">ArrayList</span>&lt;&gt;(articleIds);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 使用示例</span></span><br><span class="line">List&lt;Long&gt; page100ArticleIds = getHotArticles(<span class="number">100</span>, <span class="number">20</span>); <span class="comment">// 获取第100页，性能不变</span></span><br></pre></td></tr></table></figure>
+<h3 id="游标分页">游标分页</h3>
+<p>结合 Redis 的游标能力和 MySQL 的数据存储。记住上一页最后一条的 score，从该点继续查询。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> PageResult&lt;Long&gt; <span class="title function_">getArticlesByCursor</span><span class="params">(Double lastScore, <span class="type">int</span> size)</span> &#123;</span><br><span class="line">    <span class="comment">// 如果没有lastScore，从最高分开始</span></span><br><span class="line">    <span class="keyword">if</span> (lastScore == <span class="literal">null</span>) &#123;</span><br><span class="line">        lastScore = Double.MAX_VALUE;</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 查询比lastScore小的前size条记录</span></span><br><span class="line">    Set&lt;ZSetOperations.TypedTuple&lt;Long&gt;&gt; tuples = redisTemplate.opsForZSet()</span><br><span class="line">        .reverseRangeByScoreWithScores(<span class="string">&quot;articles:time&quot;</span>, <span class="number">0</span>, lastScore, <span class="number">0</span>, size);</span><br><span class="line">    </span><br><span class="line">    List&lt;Long&gt; articleIds = <span class="keyword">new</span> <span class="title class_">ArrayList</span>&lt;&gt;();</span><br><span class="line">    <span class="type">Double</span> <span class="variable">nextCursor</span> <span class="operator">=</span> <span class="literal">null</span>;</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">for</span> (ZSetOperations.TypedTuple&lt;Long&gt; tuple : tuples) &#123;</span><br><span class="line">        articleIds.add(tuple.getValue());</span><br><span class="line">        nextCursor = tuple.getScore(); <span class="comment">// 最后一条的score作为下一页游标</span></span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">PageResult</span>&lt;&gt;(articleIds, nextCursor);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="ID-列表分页">ID 列表分页</h3>
+<p>预先生成所有文章的ID列表，通过 <code>LRANGE</code> 分页。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 初始化ID列表</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">initArticleList</span><span class="params">(List&lt;Long&gt; allArticleIds)</span> &#123;</span><br><span class="line">    redisTemplate.opsForList().rightPushAll(<span class="string">&quot;articles:ids&quot;</span>, allArticleIds);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 分页查询ID</span></span><br><span class="line"><span class="keyword">public</span> List&lt;Long&gt; <span class="title function_">getArticleIds</span><span class="params">(<span class="type">int</span> page, <span class="type">int</span> size)</span> &#123;</span><br><span class="line">    <span class="type">int</span> <span class="variable">start</span> <span class="operator">=</span> (page - <span class="number">1</span>) * size;</span><br><span class="line">    <span class="type">int</span> <span class="variable">end</span> <span class="operator">=</span> start + size - <span class="number">1</span>;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// LRANGE 性能 O(S+N)，S是起始偏移，N是元素个数</span></span><br><span class="line">    <span class="keyword">return</span> redisTemplate.opsForList().range(<span class="string">&quot;articles:ids&quot;</span>, start, end);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="ES-深度分页解决方案">ES 深度分页解决方案</h2>
+<p>ES 提供三种分页查询，其中以下两种为常用深度分页的解决方案：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">特性</th>
+<th style="text-align:left"><code>search_after</code></th>
+<th style="text-align:left"><code>scroll</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>设计目的</strong></td>
+<td style="text-align:left"><strong>实时、高效的深度分页</strong></td>
+<td style="text-align:left"><strong>大批量数据的离线检索和导出</strong></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>数据一致性</strong></td>
+<td style="text-align:left"><strong>实时当前索引状态</strong>（Point-in-Time 可增强）</td>
+<td style="text-align:left"><strong>快照</strong>（Snapshot in Time）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>资源占用</strong></td>
+<td style="text-align:left">低（无状态，每次查询独立）</td>
+<td style="text-align:left">高（在上下文存活期间占用资源）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>生命周期</strong></td>
+<td style="text-align:left">无状态，无需维护</td>
+<td style="text-align:left">有状态，需要显式创建和销毁</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>性能</strong></td>
+<td style="text-align:left">每次查询开销类似常规搜索</td>
+<td style="text-align:left">首次创建开销大，后续遍历非常快</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>客户端</strong></td>
+<td style="text-align:left">需要维护排序值（sort values）</td>
+<td style="text-align:left">需要维护 <code>scroll_id</code></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>返回结果</strong></td>
+<td style="text-align:left">返回一页数据</td>
+<td style="text-align:left">返回一批数据和一个新的 <code>scroll_id</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="scroll（游标-非实时）">scroll（游标-非实时）</h3>
+<p>一种基于游标的分页方式，它允许我们遍历大量数据而不需要在每次请求时重新计算整个搜索。</p>
+<blockquote>
+<p>对某次查询生成一个游标 scroll_id ， 后续的查询只需要根据这个游标去取数据，直到结果集中返回的 hits 字段为空，就表示遍历结束。scroll_id 的生成可以理解为建立了一个临时的历史快照，在此之后的增删改查等操作不会影响到这个快照的结果。</p>
+</blockquote>
+<p><strong>实现原理</strong></p>
+<p><code>scroll</code> 会为第一次搜索创建一个<strong>快照（snapshot）</strong> 和一个<strong>搜索上下文（search context）</strong>。后续请求使用返回的 <code>scroll_id</code> 来从这个固定的快照中获取下一批结果。它本质上是一个<strong>有状态的游标</strong>。</p>
+<blockquote>
+<p>当你执行一个带有 <code>scroll</code> 参数的搜索查询时：</p>
+<ol>
+<li class="lvl-3"><strong>初始化搜索上下文</strong>：Elasticsearch会为这次搜索创建一个快照（snapshot），并存储相关的搜索上下文（search context）。这个上下文包括查询本身、排序方式、聚合等所有与搜索相关的信息。</li>
+<li class="lvl-3"><strong>返回初始结果</strong>：Elasticsearch会像普通搜索一样返回第一批结果，并附带一个 <code>scroll_id</code>。这个 <code>scroll_id</code> 是唯一标识这次搜索上下文的。</li>
+<li class="lvl-3"><strong>使用 scroll_id 获取更多结果</strong>：客户端可以使用这个 <code>scroll_id</code> 来请求更多的结果。Elasticsearch会基于之前存储的搜索上下文，从快照中检索更多的结果，并返回给客户端。这个过程可以重复多次，直到所有的结果都被检索完或搜索上下文过期。</li>
+</ol>
+</blockquote>
+<p>由于 <code>scroll</code> 只需要在开始时计算一次搜索上下文，并在之后基于这个上下文来获取结果，因此它在处理大量数据时通常比 <code>from + size</code> 更快。但是，它也会消耗更多的服务器资源来维护搜索上下文和快照。</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 初始搜索：对普通搜索请求附加 scroll 参数即可</span></span><br><span class="line">POST /orders/_search?scroll=<span class="number">1</span>m</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">100</span><span class="punctuation">,</span>           <span class="comment">// 每次返回的文档数量</span></span><br><span class="line">    <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;match_all&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="punctuation">&#125;</span>    <span class="comment">// 可替换为任何需要的查询条件</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 二次搜索：携带第一次返回的 scroll_id 翻页</span></span><br><span class="line">POST /_search/scroll</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;scroll&quot;</span><span class="punctuation">:</span> <span class="string">&quot;1m&quot;</span><span class="punctuation">,</span>                <span class="comment">// 保持与第一次请求相同的scroll上下文时间</span></span><br><span class="line">    <span class="attr">&quot;scroll_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;你的scroll_id&quot;</span> <span class="comment">// 第一次请求返回的scroll_id</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p><strong>优点：</strong></p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>极高的遍历效率</strong>：一旦上下文创建，后续的滚动请求非常快，因为是从快照中获取，无需再次排序和计算排名（如果不需要评分，可设置 <code>&quot;sort&quot;: [&quot;_doc&quot;]</code> 达到最大速度）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>数据一致性</strong>：看到的是查询发起时刻的<strong>数据快照</strong>，在整个滚动过程中，结果集不会改变，不会受新数据写入影响。</p>
+</li>
+</ol>
+</blockquote>
+<p><strong>缺点：</strong></p>
+<p>默认情况下，scroll请求会保持一段时间（如1分钟）的上下文，如果在这段时间内没有新的请求，上下文将被自动清除。</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>非实时（Stale Data）</strong>：由于<code>scroll</code>是基于数据快照的，看到的是历史数据，无法获取滚动开始后新写入的文档。</p>
+</li>
+<li class="lvl-3">
+<p><strong>资源消耗大</strong>：<code>scroll</code>会消耗大量的服务器资源来维护游标和数据快照，搜索上下文会占用大量的堆内存和文件句柄，直到超时被自动清除。同时处理大量滚动查询会消耗集群大量资源。</p>
+</li>
+<li class="lvl-3">
+<p><strong>非随机性</strong>：不支持随机访问页面，只能顺序获取数据。</p>
+</li>
+<li class="lvl-3">
+<p><strong>有状态</strong>：需要服务器和客户端共同维护 <code>scroll_id</code> 和上下文生命周期，如果忘记清理，会导致资源泄漏。</p>
+</li>
+</ol>
+</blockquote>
+<p><strong>适用场景：</strong></p>
+<p>适用于需要遍历大量数据、实时性要求不高的场景，如日志导出、数据迁移等。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>离线数据处理和大批量数据导出</strong>（例如将整个索引或大量查询结果导出到文件或数据库）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>索引重建（reindex）</strong> 等后台任务。</p>
+</li>
+<li class="lvl-2">
+<p><strong>需要对大量数据进行全量分析</strong>（不关心最新数据，只关心某一时刻的状态）。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="search-after（推荐-排序值唯一）">search_after（推荐-排序值唯一）</h3>
+<p>一种基于排序值的分页方式，它允许我们根据上一页的最后一条数据的排序值来获取下一页的数据。需要配合<code>sort</code>字段使用。</p>
+<p><strong>实现原理</strong></p>
+<p><code>search_after</code> 分页方式的原理是基于上一次查询的结果来确定下一次查询的起始位置。当你执行一个带有 <code>search_after</code> 参数的搜索查询时，Elasticsearch 会：</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>排序和返回结果</strong>：首先，Elasticsearch会像普通搜索一样执行查询，并根据指定的排序字段对结果进行排序。然后，它会返回第一批结果。</p>
+</li>
+<li class="lvl-3">
+<p><strong>确定下一次查询的起始位置</strong>：客户端可以选择结果集中的任意一条记录作为下一次查询的起始位置。这通常是通过记录该条记录的排序字段值来实现的。</p>
+</li>
+<li class="lvl-3">
+<p><strong>使用 search_after 获取更多结果</strong>：在下一次查询时，客户端会指定 <code>search_after</code> 参数，并将上一次查询的起始位置（即排序字段值）作为该参数的值。Elasticsearch会基于这个值来确定下一次查询的起始位置，并返回该位置之后的结果。</p>
+</li>
+</ol>
+</blockquote>
+<p>由于 <code>search_after</code> 不需要像 <code>from + size</code> 那样合并和排序所有分片返回的结果，也不需要像 <code>scroll</code> 那样维护搜索上下文和快照，因此它在深度分页时通常比这两种方式更高效。但它要求排序字段的值必须是唯一的，以确保能够准确地确定下一次查询的起始位置。</p>
+<pre><code class="highlight mermaid">sequenceDiagram
+    participant C as 客户端
+    participant N as 协调节点
+    participant S as 各分片
+
+    C-&gt;&gt;N: 第 1 页查询 / sort: [price desc, created_at asc]
+    N-&gt;&gt;S: 分发到各分片 / 各取前 size 条
+    S--&gt;&gt;N: 分片内有序的 top size
+    N-&gt;&gt;N: 归并排序 截取第 1 页
+    N--&gt;&gt;C: 10 条结果 + 末条 sort values
+
+    Note over C: 记住末条排序值作为游标
+
+    C-&gt;&gt;N: 第 2 页查询 / search_after: [129.99, ...]
+    N-&gt;&gt;S: 携带 search_after 下发 / 各分片从该点之后继续取
+    S--&gt;&gt;N: 游标之后的 top size
+    N-&gt;&gt;N: 归并去重 返回第 2 页
+    N--&gt;&gt;C: 10 条结果 + 新 sort values</code></pre>
+<blockquote>
+<p><strong>为什么代价与页码无关</strong>：无论第 2 页还是第 10000 页，协调节点都只需汇总“每个分片返回的 size 条”，做一次归并即可——不像 <code>from + size</code> 要把各分片 <code>from + size</code> 条结果全部上抛再截断。另外，Elasticsearch 7.10+ 可搭配 <strong>PIT（Point-in-Time）</strong> 固定查询视图，规避翻页期间索引 refresh 造成的位置漂移。（深挖 <code>from + size</code> 上限与更多取舍，见本站《ES 深度分页的陷阱与更稳妥的方案》一文。）</p>
+</blockquote>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 初始查询</span></span><br><span class="line">GET /products/_search</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;match_all&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="punctuation">&#125;</span>  <span class="comment">// 或者你可以添加具体的查询条件</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">        <span class="punctuation">&#123;</span> <span class="attr">&quot;price&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="attr">&quot;order&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span><span class="punctuation">&#125;</span><span class="punctuation">&#125;</span><span class="punctuation">,</span>        <span class="comment">// 排序</span></span><br><span class="line">        <span class="punctuation">&#123;</span> <span class="attr">&quot;created_at&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="attr">&quot;order&quot;</span><span class="punctuation">:</span> <span class="string">&quot;asc&quot;</span><span class="punctuation">&#125;</span><span class="punctuation">&#125;</span>    <span class="comment">// 排序</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 二次查询</span></span><br><span class="line">GET /products/_search</span><br><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">10</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;query&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;match_all&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="punctuation">&#125;</span>  <span class="comment">// 保持与初始查询相同的查询条件</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;sort&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">        <span class="comment">// 保持与初始查询相同的排序字段和顺序</span></span><br><span class="line">        <span class="punctuation">&#123;</span> <span class="attr">&quot;price&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="attr">&quot;order&quot;</span><span class="punctuation">:</span> <span class="string">&quot;desc&quot;</span><span class="punctuation">&#125;</span><span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="punctuation">&#123;</span> <span class="attr">&quot;created_at&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span><span class="attr">&quot;order&quot;</span><span class="punctuation">:</span> <span class="string">&quot;asc&quot;</span><span class="punctuation">&#125;</span><span class="punctuation">&#125;</span>  </span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;search_after&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">        <span class="number">129.99</span><span class="punctuation">,</span>                  <span class="comment">// 上一页最后一个产品的price值</span></span><br><span class="line">        <span class="string">&quot;2023-10-23T12:00:00Z&quot;</span>  <span class="comment">// 上一页最后一个产品的created_at值</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p><strong>优点：</strong></p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>实时性 (Real-time)</strong>：默认查询的是最新的索引状态，比<code>scroll</code>更具实时性。</p>
+</li>
+<li class="lvl-3">
+<p><strong>无状态 (Stateless)</strong>：服务端不保存任何上下文。每次查询都是独立的，资源占用低，易于扩展。</p>
+</li>
+<li class="lvl-3">
+<p><strong>适用于实时分页</strong>：是替代 <code>from + size</code>（深度分页）的理想方案，用户可前后翻页（需客户端缓存多组 <code>search_after</code> 值）。</p>
+</li>
+</ol>
+</blockquote>
+<p><strong>缺点：</strong></p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>无法跳页</strong>：和所有游标分页一样，只能一页一页顺序往下走，不能直接跳到任意页码。</p>
+</li>
+<li class="lvl-3">
+<p><strong>需要稳定的排序</strong>：排序字段必须能够唯一确定文档顺序（通常需要至少一个唯一字段如 <code>_id</code> 作为第二排序条件），需要依赖一个或多个排序字段确定下一页的位置。否则可能导致分页结果重复或丢失。</p>
+<blockquote>
+<ul class="lvl-4">
+<li class="lvl-2">如果排序字段的值不是唯一的，可能导致查询结果不准确。</li>
+<li class="lvl-2">如果排序字段的值发生更改（如文档被更新或删除），可能会导致结果不一致。</li>
+</ul>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p><strong>实时性</strong>：虽然<code>search_after</code>比<code>scroll</code>更实时，但它可能仍然无法获取到查询发起后的最新数据。这取决于刷新机制，</p>
+<blockquote>
+<ul class="lvl-4">
+<li class="lvl-2">Elasticsearch 默认每 <strong>1秒</strong> 自动刷新一次索引（可配置 <code>refresh_interval</code>）。</li>
+<li class="lvl-2">只有被 <strong>refresh</strong> 后的文档，才能被搜索到。</li>
+<li class="lvl-2"><code>search_after</code> 查询的是 <strong>当前已 refresh 的数据快照</strong>，不是实时写入的文档。</li>
+</ul>
+</blockquote>
+<p>如果你在查询发起后，有新文档写入（<code>index</code> 或 <code>update</code>），但在下一次 <code>refresh</code> 之前，这些数据不会出现在 <code>search_after</code> 查询结果中；一旦索引完成 refresh，后续查询就可能看到新数据，使下一页起点发生位移（可用 PIT 固定视图规避）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>客户端逻辑稍复杂</strong>：客户端需要存储和传递每页的排序值。</p>
+</li>
+</ol>
+</blockquote>
+<p><strong>适用场景：</strong></p>
+<blockquote>
+<p>适用于需要深度分页、实时性要求相对较高、且排序字段唯一，支持顺序向后翻页访问的场景。</p>
+<ul class="lvl-1">
+<li class="lvl-2">用户界面的无限滚动（Infinite Scroll）</li>
+<li class="lvl-2">需要实时反映数据变化的深度分页需求</li>
+<li class="lvl-2">任何需要替代 <code>from + size</code>（特别是当 <code>from &gt; 10,000</code> 时）的高性能分页</li>
+</ul>
+</blockquote>
+<h3 id="关于随机翻页">关于随机翻页</h3>
+<p>如果你有随机跳页的需求（例如，用户直接在界面上输入页码并跳转），正确的解决方案是 扩展**<code>search_after</code>**。</p>
+<p><strong><code>scroll</code> API 完全不支持随机访问或跳页。</strong> 这是由其核心设计理念和工作机制决定的。</p>
+<h4 id="为什么-Scroll-不支持随机跳页？">为什么 Scroll 不支持随机跳页？</h4>
+<ol>
+<li class="lvl-3">
+<p><strong>顺序遍历器</strong>，而非随机存取器<br>
+<code>scroll</code> 被设计成一个<strong>单向的、顺序的流式读取器</strong>。你可以把它想象成一个只能从前往后读的磁带，或者一个只能调用 <code>next()</code> 方法的迭代器 (Iterator)。</p>
+<blockquote>
+<p>它唯一的操作是 <strong>“获取下一批（next batch）”</strong>。系统内部维护着一个指针，指向下一批要返回的数据的起始位置。你无法让这个指针突然跳到任意位置。</p>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p><strong>基于快照的上下文</strong><br>
+当你初始化一个 <code>scroll</code> 请求时，Elasticsearch 会为当时的查询条件创建一个<strong>数据快照（snapshot）</strong> 和<strong>搜索上下文（search context）</strong>，这个快照是固定的。后续所有的 <code>scroll</code> 请求都是用同一个 <code>scroll_id</code>，在这个固定的快照上顺序地获取下一批数据。它没有为“跳到第 N 页”这种操作建立任何索引或映射。</p>
+</li>
+<li class="lvl-3">
+<p><strong><code>scroll_id</code> 的含义</strong><br>
+<code>scroll_id</code> 不是一个指向页码的标记，而是一个<strong>包含了整个查询状态、排序顺序和当前读取位置</strong>的上下文句柄。服务器根据这个句柄知道“你已经拿到前 1000 条了，下一次应该从第 1001 条开始”。</p>
+</li>
+</ol>
+<p><strong>举例说明</strong></p>
+<blockquote>
+<p>假设你有一个 10000 条结果的 <code>scroll</code> 查询，每次返回 100 条。</p>
+<ul class="lvl-1">
+<li class="lvl-2"><strong>第一次请求 (<code>scroll=1m</code>)</strong>: 你得到结果 1-100 和一个 <code>scroll_id: ABC</code>。</li>
+<li class="lvl-2"><strong>第二次请求 (带上 <code>scroll_id: ABC</code>)</strong>: 你得到结果 101-200。</li>
+<li class="lvl-2">…</li>
+<li class="lvl-2"><strong>你想直接拿到第 50 页（结果 4901-5000）</strong>: <strong>这是不可能的</strong>。你没有任何一个 <code>scroll_id</code> 能让你直接从 4901 开始。你唯一的办法是从头开始，顺序地进行大约 49 次 <code>scroll</code> 请求，丢弃掉前 4900 条结果，才能拿到你想要的那一页。这不仅完全失去了 <code>scroll</code> 的性能优势，其性能甚至会比深度分页更差，因为你还额外维护了一个沉重的上下文。</li>
+</ul>
+</blockquote>
+<h4 id="基于-search-after-的随机翻页设计">基于 <strong><code>search_after</code></strong> 的随机翻页设计</h4>
+<p><code>search_after</code> 的核心也不完全支持随机翻页，但通过巧妙的设计，可以实现“有限度的”随机分页。 它无法像传统数据库 <code>LIMIT offset, size</code> 那样直接跳到任意页码，但比 <code>scroll</code> 灵活得多。</p>
+<blockquote>
+<p>和 <code>scroll</code> 一样，<code>search_after</code> 的核心也是一个<strong>顺序遍历器</strong>。它的参数是上一页最后一条记录的<strong>排序值</strong>。Elasticsearch 利用这些值在排序索引中快速定位，并获取“接下来”的一批数据。</p>
+<p>它没有也不维护任何关于“页码”的概念。要跳到第 N 页，系统必须知道第 (N-1) 页最后一条记录的排序值是什么。而获取这个值，恰恰就是深度分页要解决的难题本身。</p>
+</blockquote>
+<h5 id="策略一：客户端缓存（最实用、最常用）">策略一：客户端缓存（最实用、最常用）</h5>
+<p>这是实现“前后翻页”和“跳回已浏览页”的最主流方案。</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p>客户端（浏览器、APP）或服务端会话（Session）在用户浏览过程中，<strong>缓存每一页的“页边界”</strong>（即每一页最后一条记录的排序值）。</p>
+</li>
+<li class="lvl-3">
+<p>当用户点击“下一页”时，使用当前页的排序值。</p>
+</li>
+<li class="lvl-3">
+<p>当用户点击“上一页”或想跳回之前看过的某一页（例如第3页）时，从缓存中取出第2页的排序值，作为 <code>search_after</code> 参数去查询，得到的就是第3页的结果。</p>
+</li>
+</ol>
+</blockquote>
+<p><strong>优点：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>性能极佳，每次查询都是高效的。</p>
+</li>
+<li class="lvl-2">
+<p>可以实现完美的前后导航和跳回已浏览页面。</p>
+</li>
+</ul>
+<p><strong>缺点：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>无法跳转到未浏览的页面</strong>。你不能直接跳到第100页，除非你之前已经一页一页地浏览并缓存了第99页的排序值。</p>
+</li>
+<li class="lvl-2">
+<p>需要客户端逻辑来管理这个缓存。</p>
+</li>
+</ul>
+<h5 id="策略二：服务端预计算（复杂，有代价）">策略二：服务端预计算（复杂，有代价）</h5>
+<p>如果需要支持跳转到未浏览的页面，需要一个更强大的服务端架构。</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>构建“页索引”服务</strong>：有一个后台任务或服务，预先为常见的排序和查询条件计算好每一页的边界排序值，并将其存储起来（例如在Redis中）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>查询流程</strong>：当用户请求跳转到第N页时，API先向这个“页索引”服务请求获取第(N-1)页的排序值，然后再用这个值去执行 <code>search_after</code> 查询。</p>
+</li>
+</ol>
+</blockquote>
+<p><strong>优点：</strong> 理论上可以实现真正的随机跳页。</p>
+<p><strong>缺点：</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>极其复杂</strong>：引入了新的服务和系统复杂性。</p>
+</li>
+<li class="lvl-2">
+<p><strong>维护成本高</strong>：数据有任何增删改，都可能使预计算的页边界失效，需要重新计算，维护数据一致性挑战巨大。</p>
+</li>
+<li class="lvl-2">
+<p><strong>不灵活</strong>：只能针对少数几个固定的排序方式和查询条件做预计算。</p>
+</li>
+</ul>
+<h5 id="策略三：近似跳页（牺牲精确度）">策略三：近似跳页（牺牲精确度）</h5>
+<p>如果你的一个排序字段是均匀分布的（如自增ID、均匀分布的时间戳），你可以进行估算。例如，你想跳转到第50页（每页20条），你可以估算一个 <code>search_after</code> 值。然后让用户在这个大致的结果集里进行微调。</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;search_after&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span> <span class="string">&quot;2023-01-01T00:00:00Z&quot;</span> <span class="punctuation">]</span><span class="punctuation">,</span> <span class="comment">// 估算一个大概的时间点</span></span><br><span class="line">  <span class="attr">&quot;size&quot;</span><span class="punctuation">:</span> <span class="number">20</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p>**缺点：**结果不精确，用户体验差，适用场景有限。</p>
+<h3 id="行业标准做法（强烈推荐）">行业标准做法（强烈推荐）</h3>
+<p>像Google、Amazon、Netflix这样的大型互联网应用，<strong>它们直接从产品设计上规避了“深度随机跳页”的需求</strong>。</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>提供强大的搜索和筛选器</strong>：让用户通过加条件（如时间范围、分类、标签）来缩小结果集，使其变得很少，无需深度分页。</p>
+</li>
+<li class="lvl-3">
+<p><strong>只提供“上一页/下一页”</strong>：这是无限滚动的标准模式，完美契合 <code>search_after</code> 的优势。</p>
+</li>
+<li class="lvl-3">
+<p><strong>限制最大可访问范围</strong>：即使提供了页码，通常也只显示前10页或前20页的页码选项，并提示“请优化搜索以查看更多结果”。</p>
+</li>
+</ol>
+</blockquote>
+<h2 id="工程实践：优化深分页时先改查询目标，而不是先改参数">工程实践：优化深分页时先改查询目标，而不是先改参数</h2>
+<p>如果页面只需要“下一批”，就把 API 从 <code>page + size</code> 改成 <code>cursor + size</code>；如果业务必须随机跳页，则应限制最大深度，并通过搜索条件缩小候选集。</p>
+<p>验证优化是否有效时，建议使用真实数据量分别测试浅页和深页，并对比执行计划、扫描行数、排序方式、回表次数和 P95/P99 延迟。</p>
+<h2 id="参考资料">参考资料</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://dev.mysql.com/doc/refman/8.0/en/optimization-indexes.html">https://dev.mysql.com/doc/refman/8.0/en/optimization-indexes.html</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://www.elastic.co/docs/reference/elasticsearch/rest-apis/paginate-search-results">https://www.elastic.co/docs/reference/elasticsearch/rest-apis/paginate-search-results</a></p>
+</li>
+</ul>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2025/12/es-deep-pagination-search-after/">Elasticsearch 深度分页为何越来越慢？从 from/size 到 search_after + PIT</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/01/redis-zset-deep-pagination/">Redis ZSET 深度分页为何变慢？从排名定位到 Score 游标分页</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/12/mysql-index-guide/">MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/09/sharding-cross-db-pagination/">分库分表后如何分页？从全局排序到游标与归并查询</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/09/mysql-performance-tuning/">MySQL 性能慢怎么查？从 SQL、索引到架构的分层优化路径</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/09/mysql-deep-pagination-cursor/">https://pengline.cn/2025/09/mysql-deep-pagination-cursor/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5/">深度分页</a><a class="post-meta__tags" href="/tags/search-after/">search_after</a><a class="post-meta__tags" href="/tags/%E6%B8%B8%E6%A0%87%E5%88%86%E9%A1%B5/">游标分页</a><a class="post-meta__tags" href="/tags/MySQL/">MySQL</a><a class="post-meta__tags" href="/tags/%E8%A6%86%E7%9B%96%E7%B4%A2%E5%BC%95/">覆盖索引</a><a class="post-meta__tags" href="/tags/LIMIT/">LIMIT</a><a class="post-meta__tags" href="/tags/%E5%88%86%E9%A1%B5%E6%80%A7%E8%83%BD/">分页性能</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/09/sharding-cross-db-pagination/" title="分库分表后如何分页？从全局排序到游标与归并查询"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">分库分表后如何分页？从全局排序到游标与归并查询</div></div><div class="info-2"><div class="info-item-1">厘清分库分表分片与分区的概念边界与适用场景，聚焦分库分表后跨库分页的分布式难题，多分片汇总再排序的成本为何随页码线性膨胀，对比游标分页、排序归并、二次查询法与优先队列流式归并的原理与取舍，并给出与 ID 内置分片的选型。</div></div></div></a><a class="pagination-related" href="/2025/09/ai-medical-rag-agent/" title="医疗大模型问答不可信如何用RAG加本地上线免幻觉"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">医疗大模型问答不可信如何用RAG加本地上线免幻觉</div></div><div class="info-2"><div class="info-item-1">大模型直接回答医学问题易产生幻觉,且依赖云端成本高、医疗数据有隐私顾虑。本文基于 LangChain 编排 RAG 检索、网络搜索与症状评估等多工具协作,借助 Ollama 本地推理与 Chroma 向量库构建完全本地化的医疗问答 Agent,给出完整源码、核心链路拆解与部署排坑。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2025/12/es-deep-pagination-search-after/" title="Elasticsearch 深度分页为何越来越慢？从 from&#x2F;size 到 search_after + PIT"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1730166918792173016691849.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-22</div><div class="info-item-2">Elasticsearch 深度分页为何越来越慢？从 from&#x2F;size 到 search_after + PIT</div></div><div class="info-2"><div class="info-item-1">厘清 Elasticsearch 深度分页的核心陷阱——from/size 实质是“取出前 N+M 条再丢弃”而非跳过，偏移量越大协调节点的全局排序与内存开销线性增长直至 OOM；对比 Scroll 快照与 search_after 游标的原理差异，讲解用排序值代替偏移量并配合 PIT 保证翻页一致性的最优实践，给出不同跳页场景的选型建议。</div></div></div></a><a class="pagination-related" href="/2025/01/redis-zset-deep-pagination/" title="Redis ZSET 深度分页真的越翻越慢吗？跳表 span 定位与 Score 游标的工程取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1744010580430174401058043.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-01-11</div><div class="info-item-2">Redis ZSET 深度分页真的越翻越慢吗？跳表 span 定位与 Score 游标的工程取舍</div></div><div class="info-2"><div class="info-item-1">Redis ZSET 深度分页越翻越慢吗？本文考证跳表 span 定位的源码机制，澄清按排名定位实为对数复杂度的误解，指出深分页真实代价在于并发写入下的排名漂移与分页偏移的隐藏线性路径，给出 Score 游标分页、复合分数化解同分与浮点精度红线的工程方案。</div></div></div></a><a class="pagination-related" href="/2025/12/mysql-index-guide/" title="MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small202824LQTsk1760099304.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-07</div><div class="info-item-2">MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断</div></div><div class="info-2"><div class="info-item-1">从底层到实战剖析 MySQL 索引——B+ 树与 Hash 的结构差异以及聚簇、二级索引的回表机制，最左前缀为何成立、覆盖索引与索引下推如何省去回表 IO，细数函数操作、隐式转换等导致索引失效的写法陷阱，结尾给出 EXPLAIN 各列判读方法与区分度、选择性导向的索引选列最佳实践。</div></div></div></a><a class="pagination-related" href="/2025/09/sharding-cross-db-pagination/" title="分库分表后如何分页？从全局排序到游标与归并查询"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-09-05</div><div class="info-item-2">分库分表后如何分页？从全局排序到游标与归并查询</div></div><div class="info-2"><div class="info-item-1">厘清分库分表分片与分区的概念边界与适用场景，聚焦分库分表后跨库分页的分布式难题，多分片汇总再排序的成本为何随页码线性膨胀，对比游标分页、排序归并、二次查询法与优先队列流式归并的原理与取舍，并给出与 ID 内置分片的选型。</div></div></div></a><a class="pagination-related" href="/2026/08/mysql-buffer-pool-flush/" title="MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-08-15</div><div class="info-item-2">MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景</div></div><div class="info-2"><div class="info-item-1">几百 GB 的大表跑在只有几十 GB 内存的服务器上，MySQL 为什么敢放心把数据先放在内存里？答案藏在 Buffer Pool、change buffer、redo log 与整套刷盘策略里。本文沿一条 UPDATE 的流转路径展开，讲清缓存页管理与防污染设计、WAL 预写日志与 checkpoint 节奏、双 1 配置的取舍以及 doublewrite 的存在理由，并复盘三个典型故障场景。</div></div></div></a><a class="pagination-related" href="/2025/12/mysql-es-data-sync/" title="MySQL 如何同步到 Elasticsearch？从双写到 CDC 的方案演进与一致性"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-03</div><div class="info-item-2">MySQL 如何同步到 Elasticsearch？从双写到 CDC 的方案演进与一致性</div></div><div class="info-2"><div class="info-item-1">MySQL 同步至 ES、Redis 等异构存储的五种策略详解——应用双写、定时轮询、消息队列解耦、Binlog 解析与云托管服务，从实时性、一致性、业务侵入性与运维成本四个维度权衡，讲解各自原理、一致性补偿手段与生产演进路径，并给出适合不同数据规模与团队能力的选型建议。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5%E7%9A%84%E6%A6%82%E5%BF%B5%E5%92%8C%E5%9C%BA%E6%99%AF"><span class="toc-number">1.</span> <span class="toc-text">深度分页的概念和场景</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5%E5%B8%B8%E7%94%A8%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">2.</span> <span class="toc-text">深度分页常用解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B8%B8%E6%A0%87%E5%88%86%E9%A1%B5%EF%BC%88%E6%8E%A8%E8%8D%90%EF%BC%89"><span class="toc-number">2.1.</span> <span class="toc-text">游标分页（推荐）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AD%90%E6%9F%A5%E8%AF%A2%EF%BC%88%E5%B8%B8%E7%94%A8%EF%BC%89"><span class="toc-number">2.2.</span> <span class="toc-text">子查询（常用）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9B%B4%E6%8E%A5%E8%A6%86%E7%9B%96%E7%B4%A2%E5%BC%95%EF%BC%88%E5%8F%AF%E7%94%A8%EF%BC%89"><span class="toc-number">2.3.</span> <span class="toc-text">直接覆盖索引（可用）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%97%B4%E6%8E%A5%E8%A6%86%E7%9B%96%E7%B4%A2%E5%BC%95%EF%BC%88%E5%8F%AF%E7%94%A8%EF%BC%89"><span class="toc-number">2.4.</span> <span class="toc-text">间接覆盖索引（可用）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%99%90%E5%88%B6%E5%88%86%E9%A1%B5%E6%B7%B1%E5%BA%A6%EF%BC%88%E5%8F%AF%E7%94%A8%EF%BC%89"><span class="toc-number">2.5.</span> <span class="toc-text">限制分页深度（可用）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8-id-%E5%88%86%E5%8C%BA%EF%BC%88%E4%B8%8D%E5%AE%9E%E7%94%A8%EF%BC%89"><span class="toc-number">2.6.</span> <span class="toc-text">使用 id 分区（不实用）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8-IN-%E6%9F%A5%E8%AF%A2%EF%BC%88%E4%B8%8D%E6%8E%A8%E8%8D%90%EF%BC%89"><span class="toc-number">2.7.</span> <span class="toc-text">使用 IN 查询（不推荐）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%A9%E7%94%A8-Redis-%E6%89%A9%E5%B1%95%E5%AE%9E%E7%8E%B0"><span class="toc-number">3.</span> <span class="toc-text">利用 Redis 扩展实现</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9C%89%E5%BA%8F%E9%9B%86%E5%90%88"><span class="toc-number">3.1.</span> <span class="toc-text">有序集合</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B8%B8%E6%A0%87%E5%88%86%E9%A1%B5"><span class="toc-number">3.2.</span> <span class="toc-text">游标分页</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ID-%E5%88%97%E8%A1%A8%E5%88%86%E9%A1%B5"><span class="toc-number">3.3.</span> <span class="toc-text">ID 列表分页</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#ES-%E6%B7%B1%E5%BA%A6%E5%88%86%E9%A1%B5%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">4.</span> <span class="toc-text">ES 深度分页解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#scroll%EF%BC%88%E6%B8%B8%E6%A0%87-%E9%9D%9E%E5%AE%9E%E6%97%B6%EF%BC%89"><span class="toc-number">4.1.</span> <span class="toc-text">scroll（游标-非实时）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#search-after%EF%BC%88%E6%8E%A8%E8%8D%90-%E6%8E%92%E5%BA%8F%E5%80%BC%E5%94%AF%E4%B8%80%EF%BC%89"><span class="toc-number">4.2.</span> <span class="toc-text">search_after（推荐-排序值唯一）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%85%B3%E4%BA%8E%E9%9A%8F%E6%9C%BA%E7%BF%BB%E9%A1%B5"><span class="toc-number">4.3.</span> <span class="toc-text">关于随机翻页</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-Scroll-%E4%B8%8D%E6%94%AF%E6%8C%81%E9%9A%8F%E6%9C%BA%E8%B7%B3%E9%A1%B5%EF%BC%9F"><span class="toc-number">4.3.1.</span> <span class="toc-text">为什么 Scroll 不支持随机跳页？</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%9F%BA%E4%BA%8E-search-after-%E7%9A%84%E9%9A%8F%E6%9C%BA%E7%BF%BB%E9%A1%B5%E8%AE%BE%E8%AE%A1"><span class="toc-number">4.3.2.</span> <span class="toc-text">基于 search_after 的随机翻页设计</span></a><ol class="toc-child"><li class="toc-item toc-level-5"><a class="toc-link" href="#%E7%AD%96%E7%95%A5%E4%B8%80%EF%BC%9A%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%BC%93%E5%AD%98%EF%BC%88%E6%9C%80%E5%AE%9E%E7%94%A8%E3%80%81%E6%9C%80%E5%B8%B8%E7%94%A8%EF%BC%89"><span class="toc-number">4.3.2.1.</span> <span class="toc-text">策略一：客户端缓存（最实用、最常用）</span></a></li><li class="toc-item toc-level-5"><a class="toc-link" href="#%E7%AD%96%E7%95%A5%E4%BA%8C%EF%BC%9A%E6%9C%8D%E5%8A%A1%E7%AB%AF%E9%A2%84%E8%AE%A1%E7%AE%97%EF%BC%88%E5%A4%8D%E6%9D%82%EF%BC%8C%E6%9C%89%E4%BB%A3%E4%BB%B7%EF%BC%89"><span class="toc-number">4.3.2.2.</span> <span class="toc-text">策略二：服务端预计算（复杂，有代价）</span></a></li><li class="toc-item toc-level-5"><a class="toc-link" href="#%E7%AD%96%E7%95%A5%E4%B8%89%EF%BC%9A%E8%BF%91%E4%BC%BC%E8%B7%B3%E9%A1%B5%EF%BC%88%E7%89%BA%E7%89%B2%E7%B2%BE%E7%A1%AE%E5%BA%A6%EF%BC%89"><span class="toc-number">4.3.2.3.</span> <span class="toc-text">策略三：近似跳页（牺牲精确度）</span></a></li></ol></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A1%8C%E4%B8%9A%E6%A0%87%E5%87%86%E5%81%9A%E6%B3%95%EF%BC%88%E5%BC%BA%E7%83%88%E6%8E%A8%E8%8D%90%EF%BC%89"><span class="toc-number">4.4.</span> <span class="toc-text">行业标准做法（强烈推荐）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5%EF%BC%9A%E4%BC%98%E5%8C%96%E6%B7%B1%E5%88%86%E9%A1%B5%E6%97%B6%E5%85%88%E6%94%B9%E6%9F%A5%E8%AF%A2%E7%9B%AE%E6%A0%87%EF%BC%8C%E8%80%8C%E4%B8%8D%E6%98%AF%E5%85%88%E6%94%B9%E5%8F%82%E6%95%B0"><span class="toc-number">5.</span> <span class="toc-text">工程实践：优化深分页时先改查询目标，而不是先改参数</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="toc-number">6.</span> <span class="toc-text">参考资料</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">7.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

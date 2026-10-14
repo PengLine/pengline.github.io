@@ -1,0 +1,630 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>模型该怎样压缩才能既上移动端又保留九成精度 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="模型轻量化是剪枝、量化、知识蒸馏、低秩分解等组合策略而非单一技术。以轻量结构设计过渡到蒸馏再到结构化剪枝最后量化感知训练与硬件部署为主线,详解每类方法的原理、实战效果与场景选型,使模型在移动端可实现毫秒级延迟、更小体积并保留九成以上精度。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="模型该怎样压缩才能既上移动端又保留九成精度">
+<meta property="og:url" content="https://pengline.cn/2025/10/ai-model-compression/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="模型轻量化是剪枝、量化、知识蒸馏、低秩分解等组合策略而非单一技术。以轻量结构设计过渡到蒸馏再到结构化剪枝最后量化感知训练与硬件部署为主线,详解每类方法的原理、实战效果与场景选型,使模型在移动端可实现毫秒级延迟、更小体积并保留九成以上精度。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small221437yj1D11756131277.webp">
+<meta property="article:published_time" content="2025-10-26T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-10-14T08:00:44.248Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="AI模型轻量化">
+<meta property="article:tag" content="INT8量化">
+<meta property="article:tag" content="MobileNet">
+<meta property="article:tag" content="二值化网络">
+<meta property="article:tag" content="低秩分解">
+<meta property="article:tag" content="嵌入式部署">
+<meta property="article:tag" content="推理加速">
+<meta property="article:tag" content="模型剪枝">
+<meta property="article:tag" content="模型部署">
+<meta property="article:tag" content="知识蒸馏">
+<meta property="article:tag" content="结构化剪枝">
+<meta property="article:tag" content="轻量网络设计">
+<meta property="article:tag" content="量化感知训练">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small221437yj1D11756131277.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/10/ai-model-compression/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '模型该怎样压缩才能既上移动端又保留九成精度',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">91</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">781</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small221437yj1D11756131277.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">模型该怎样压缩才能既上移动端又保留九成精度</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">模型该怎样压缩才能既上移动端又保留九成精度</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-10-26T16:00:00.000Z" title="发表于 2025-10-27 00:00:00">2025-10-27</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-10-14T08:00:44.248Z" title="更新于 2026-10-14 16:00:44">2026-10-14</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Model/">Model</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h2 id="概述与核心价值">概述与核心价值</h2>
+<p>模型轻量化指在<strong>保持模型性能的前提下，显著减少参数量、计算量（FLOPs）、内存占用与推理延迟</strong>，使其能够部署到移动端、嵌入式设备、IoT 设备等资源受限的硬件上。通过系统化实施，业界已在移动端实现 <strong>&lt;10ms 推理延迟、&lt;5MB 模型体积、90%+ 原始精度保留</strong> 的效果。</p>
+<p>在动手之前，有四点认知决定了方案能否落地：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>精度-效率权衡</strong>：轻量化必然带来精度损失，幅度取决于技术组合与压缩强度，需根据业务容忍度提前划定红线（如语音识别任务要求 WER 增幅不超过 0.5%~1%）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>硬件适配</strong>：INT8 量化在 GPU/NPU 上有明显加速，但在不支持 SIMD 指令的 CPU 上可能收效甚微，甚至更慢。</p>
+</li>
+<li class="lvl-2">
+<p><strong>端到端延迟</strong>：性能不能只看 FLOPs，还要考虑内存带宽、缓存命中率与算子调度开销。</p>
+</li>
+<li class="lvl-2">
+<p><strong>动态输入限制</strong>：部分方法（如通道剪枝）会改变网络结构，不支持动态 shape 输入，需在架构设计阶段就确认输入是否固定。</p>
+</li>
+</ul>
+<blockquote>
+<p>因此，模型轻量化从来不是&quot;某一项技术&quot;，而是一条<strong>组合策略流水线</strong>：<code>轻量结构设计 → 知识蒸馏 → 结构化剪枝 → 量化感知训练 → 硬件部署</code>。下面逐一拆解各技术点的原理、实施步骤与实战排坑。</p>
+</blockquote>
+<hr>
+<h2 id="关键技术拆解">关键技术拆解</h2>
+<h3 id="1-轻量网络结构设计">1. 轻量网络结构设计</h3>
+<p>从源头设计轻量级网络是最省成本的思路——不压缩既有模型，而是直接&quot;生而轻量&quot;。主流选择：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>MobileNet（V1/V2/V3）</strong>：核心是深度可分离卷积（Depthwise Separable Convolution），把标准卷积拆成&quot;逐通道卷积 + 逐点卷积&quot;，计算量下降约 8~9 倍；</p>
+</li>
+<li class="lvl-2">
+<p><strong>ShuffleNet（V1/V2）</strong>：使用通道混洗（Channel Shuffle）与分组卷积，解决分组卷积带来的通道信息不流通问题；</p>
+</li>
+<li class="lvl-2">
+<p><strong>EfficientNet</strong>：通过复合缩放（Compound Scaling）统一平衡网络的深度、宽度与输入分辨率，在同等算力下精度更高；</p>
+</li>
+<li class="lvl-2">
+<p><strong>GhostNet</strong>：通过廉价操作生成&quot;幻影&quot;特征图，用少量线性变换补齐冗余特征。</p>
+</li>
+</ul>
+<p><strong>实施步骤</strong>：</p>
+<p>① 需求分析，明确目标设备（手机、嵌入式芯片）与延迟/功耗/精度要求；</p>
+<p>② 选择基线架构，如图像分类任务首选 MobileNetV2；</p>
+<p>③ 调节宽度乘子（width multiplier）、输入分辨率等超参数控制模型体积；</p>
+<p>④ 在目标任务数据集上训练并验证精度与速度的平衡点。</p>
+<h3 id="2-模型剪枝（Pruning）">2. 模型剪枝（Pruning）</h3>
+<p>剪枝通过移除神经网络中不重要的参数来压缩模型，按<strong>权重/神经元/通道/层/块</strong>五级粒度移除冗余，通用流程为：原始模型 → 识别重要参数 → 移除不重要参数 → 微调 → 导出剪枝后模型。</p>
+<p>按结构分为两类：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>权重剪枝（非结构化）</strong>：移除绝对值小的单个权重，形成稀疏矩阵，压缩率高但需要稀疏计算库或专用硬件支持；</p>
+</li>
+<li class="lvl-2">
+<p><strong>通道/结构化剪枝</strong>：整通道或整神经元移除，保持稠密矩阵结构，兼容 CPU/GPU/NPU 等通用硬件，是工程落地主流。</p>
+</li>
+</ul>
+<blockquote>
+<p>重要性评估有两条路线：<strong>基于幅度</strong>——认为绝对值小的权重不重要，简单高效；<strong>基于梯度</strong>——累积&quot;梯度 × 权重&quot;作为重要性分数（近似泰勒展开，衡量移除该参数对损失的影响），更精确但需要反向传播。此外也可用 BN 层的 γ 系数衡量通道重要性。</p>
+</blockquote>
+<p>剪枝策略上，**一次性剪枝（One-shot）**直接剪掉固定比例，速度快但精度损失大；<strong>迭代剪枝（Iterative）<strong>采用&quot;逐步剪枝 + 微调&quot;循环，每次只剪一小部分再恢复精度，效果明显更优。实施时还可引入</strong>敏感性分析</strong>：逐层测试不同剪枝比例（如 0.1~0.7）对精度的伤害，敏感度低的层分配更高剪枝比例。核心逻辑如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">global_magnitude_prune</span>(<span class="params">self, model</span>):</span><br><span class="line">    <span class="string">&quot;&quot;&quot;全局幅度剪枝&quot;&quot;&quot;</span></span><br><span class="line">    all_weights = []</span><br><span class="line">    <span class="keyword">for</span> name, param <span class="keyword">in</span> model.named_parameters():</span><br><span class="line">        <span class="keyword">if</span> <span class="string">&#x27;weight&#x27;</span> <span class="keyword">in</span> name <span class="keyword">and</span> <span class="built_in">len</span>(param.shape) &gt; <span class="number">1</span>:</span><br><span class="line">            all_weights.append(param.data.<span class="built_in">abs</span>().view(-<span class="number">1</span>))</span><br><span class="line">    all_weights = torch.cat(all_weights)</span><br><span class="line">    threshold = torch.quantile(all_weights, <span class="variable language_">self</span>.pruning_rate)  <span class="comment"># 全局阈值</span></span><br><span class="line"></span><br><span class="line">    masks = &#123;&#125;</span><br><span class="line">    <span class="keyword">for</span> name, param <span class="keyword">in</span> model.named_parameters():</span><br><span class="line">        <span class="keyword">if</span> <span class="string">&#x27;weight&#x27;</span> <span class="keyword">in</span> name <span class="keyword">and</span> <span class="built_in">len</span>(param.shape) &gt; <span class="number">1</span>:</span><br><span class="line">            mask = param.data.<span class="built_in">abs</span>() &gt; threshold</span><br><span class="line">            masks[name] = mask</span><br><span class="line">            param.data *= mask.<span class="built_in">float</span>()</span><br><span class="line">    <span class="keyword">return</span> masks</span><br></pre></td></tr></table></figure>
+<p><strong>实验参考</strong>：GPT-2 MLP（c_fc/c_proj）按 L1 范数保留 topk 通道的结构化剪枝实现，含剪枝后微调恢复精度的完整流程（微调用 <code>lr=1e-5</code> 的 Adam 跑百步以内即可显著回升），见 <a target="_blank" rel="noopener" href="https://github.com/neopen/model-lite-demo/tree/main/Pruning/gpt2">model-lite-demo</a>。</p>
+<p><strong>排坑注意</strong>：剪枝后若不微调，精度会大幅回退；且剪枝是&quot;永久删除&quot;，剪掉的通道无法恢复，务必保留原模型备份、分阶段验证。另外通道剪枝改变了层维度，若下游还有依赖该通道数的算子，需要一并联动修改。</p>
+<h3 id="3-量化感知（Quantization）">3. 量化感知（Quantization）</h3>
+<p>量化将 FP32 浮点参数转为低比特整数（INT8/INT4）或半精度浮点（FP16），需先通过校准确定量化范围（min/max 或 scale/zero-point）。以 7B 参数大模型为例，量化收益非常直观：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>FP32：模型 ~28GB，显存占用 ~14GB，速度基准 1x；</p>
+</li>
+<li class="lvl-2">
+<p>INT8：~7GB，推理快 1.5~2x，精度损失通常 &lt;1%（可接受）；</p>
+</li>
+<li class="lvl-2">
+<p>INT4：~3.5GB，快 2~3x，损失 1~3%（可能需要调优）。</p>
+</li>
+</ul>
+<p>例如权重 <code>0.8732</code>（FP32）会被近似为 <code>0.875</code>（INT8），量化误差取决于数值分布与校准质量。按训练时机分为两类：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">类型</th>
+<th style="text-align:left">原理</th>
+<th style="text-align:left">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">训练后量化（PTQ）</td>
+<td style="text-align:left">对已训练模型直接量化，无需重新训练</td>
+<td style="text-align:left">快速部署、资源有限环境</td>
+</tr>
+<tr>
+<td style="text-align:left">量化感知训练（QAT）</td>
+<td style="text-align:left">训练中模拟量化误差，使模型适应低精度</td>
+<td style="text-align:left">高精度要求的微调场景</td>
+</tr>
+</tbody>
+</table>
+<p>此外还有按校准时机区分的<strong>动态量化</strong>（推理时量化权重与激活，实时性强）与<strong>静态量化</strong>（预先校准 scale，推理固定，适合移动端/嵌入式）。主流实现路径有三条：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>GPTQ</strong>——训练后量化方案，尤其适合降低大语言模型显存占用与推理延迟；</p>
+</li>
+<li class="lvl-2">
+<p><strong>PyTorch 原生量化</strong>——基于 <code>torch.ao.quantization</code> 内置模块，支持动态/静态量化，与 PyTorch 生态结合紧密；</p>
+</li>
+<li class="lvl-2">
+<p><strong>TensorRT 集成</strong>——模型转 ONNX 后用 TensorRT 优化量化，在 NVIDIA 硬件上追求极限推理性能。</p>
+</li>
+</ul>
+<p><strong>实施步骤（以 QAT 为例）</strong>：</p>
+<p>① 在训练图中插入 FakeQuant 伪量化节点，模拟量化过程；</p>
+<p>② 使用量化感知损失函数，保证梯度可传导；</p>
+<p>③ 训练/微调模型，通常只需少量 epoch；</p>
+<p>④ 将 FakeQuant 替换为真实 INT8 操作完成转换；</p>
+<p>⑤ 使用支持 INT8 的推理引擎部署（TensorRT、ONNX Runtime、TFLite）。</p>
+<blockquote>
+<p><strong>排坑：量化后模型文件没变小？</strong> 原因在于 <code>state_dict()</code> 保存的是量化参数（scale/zero_point）与量化权重（int8），但 <strong>PyTorch 默认以 float32 格式序列化所有张量</strong>——即使权重是 int8，<code>torch.save()</code> 时也会自动转回 float32，并额外保存 scale、zero_point 等参数，最终文件大小与原始 FP32 几乎一致甚至更大。<strong>量化的核心收益在运行时而非存储文件</strong>，部署应导出 TorchScript / ONNX 格式。</p>
+</blockquote>
+<h3 id="4-知识蒸馏（Distillation）">4. 知识蒸馏（Distillation）</h3>
+<p>蒸馏将一个庞大但性能优异的教师模型（Teacher）的知识转移给更小、更高效的学生模型（Student），是&quot;训练出小模型&quot;而非&quot;压缩大模型&quot;的路线。其成功有两条经验法则：<strong>80% 取决于训练数据质量</strong>；<strong>Teacher 与 Student 的差距不宜过大</strong>。</p>
+<p>原理层面有三个关键概念：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>软标签</strong>：教师模型输出的概率分布（如 <code>[0.1, 0.2, 0.5, 0.15, 0.05]</code>）远比硬标签（类别索引 <code>2</code>）信息丰富；</p>
+</li>
+<li class="lvl-2">
+<p><strong>暗知识</strong>：分布中隐含的类别间相似关系等知识；</p>
+</li>
+<li class="lvl-2">
+<p><strong>温度参数</strong>：控制概率分布的平滑程度，温度越高分布越平缓。</p>
+</li>
+</ul>
+<blockquote>
+<p>蒸馏损失 = α × 软标签 KL 损失 + (1-α) × 硬标签交叉熵损失：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">student_soft = F.log_softmax(student_logits / <span class="variable language_">self</span>.temperature, dim=<span class="number">1</span>)</span><br><span class="line">teacher_soft = F.softmax(teacher_logits / <span class="variable language_">self</span>.temperature, dim=<span class="number">1</span>)</span><br><span class="line">distillation_loss = <span class="variable language_">self</span>.kl_loss(student_soft, teacher_soft) * (<span class="variable language_">self</span>.temperature ** <span class="number">2</span>)</span><br><span class="line">total_loss = <span class="variable language_">self</span>.alpha * distillation_loss + (<span class="number">1</span> - <span class="variable language_">self</span>.alpha) * <span class="variable language_">self</span>.ce_loss(student_logits, labels)</span><br></pre></td></tr></table></figure>
+</blockquote>
+<p><strong>实施步骤</strong>：</p>
+<p>① 训练高精度的 Teacher；</p>
+<p>② 设计更轻量的 Student 结构（更少层、更窄通道）；</p>
+<p>③ 定义蒸馏损失（软标签损失 + 可选的特征图/注意力对齐损失）；</p>
+<p>④ 联合训练，Student 同时学习真实标签与 Teacher 输出；</p>
+<p>⑤ 部署时只保留 Student。</p>
+<p><strong>进阶策略</strong>：<strong>渐进式蒸馏</strong>让 α 与温度随训练进度衰减——早期更依赖教师、后期更依赖真实标签（如 <code>alpha = max(0.1, 0.7 * (1 - epoch/total_epochs))</code>）；<strong>注意力蒸馏</strong>额外约束师生中间层注意力图对齐，常用于 Transformer 结构。</p>
+<p><strong>实战排坑（Token 循环）</strong>：以 GPT-2 蒸馏（Teacher: gpt2-medium 355M → Student: gpt2 124M）为例，蒸馏后模型输出变成 <code>The future of AI is and and and and...</code> 式的重复 token，困惑度飙升至 1.2e23。逐一排查后，典型成因与对策如下：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>训练数据不足或质量差</strong>：模型只记住了训练数据的高频模式（如 <code>,</code> 出现频率过高就过度生成），应尽量使用真实训练数据；</p>
+</li>
+<li class="lvl-2">
+<p><strong><code>alpha=0.7</code> 过高</strong>：Student 过度依赖软标签，硬标签权重仅 30%，语言建模基本功没学扎实，可把硬标签权重提到 0.3~0.5；</p>
+</li>
+<li class="lvl-2">
+<p><strong><code>temperature=2.0</code> 过高</strong>：Teacher 分布被过度平滑、失去区分度，建议降到 1.0~2.0；</p>
+</li>
+<li class="lvl-2">
+<p><strong>师生差距过大</strong>：小模型难以模仿大模型的复杂行为，可换用更小的 Teacher。</p>
+</li>
+</ul>
+<p>生成阶段可加 <code>repetition_penalty=1.2</code> 惩罚重复 token 作为兜底。在参数调优收效甚微后，改用<strong>三阶段蒸馏</strong>（阶段式训练、逐级优化），困惑度由 49.94 降至 <strong>36.26</strong>，成功追平教师模型（35.91），完整实现见 <a target="_blank" rel="noopener" href="https://github.com/neopen/model-lite-demo/tree/main/Distillation/gpt2">Distillation/gpt2</a>。</p>
+<h3 id="5-低秩分解（Low-Rank）">5. 低秩分解（Low-Rank）</h3>
+<p>低秩分解将大权重矩阵近似分解为多个小矩阵的乘积（Linear 层：$W∈Rm×n ≈ U⋅V$，其中 $U∈Rm×r、V∈Rr×n，r ≪ min(m,n)；$卷积核则用 CP/Tucker 分解），从而减少参数量与计算量。</p>
+<blockquote>
+<p>以一个 1000×1000 的全连接层为例：原始权重 100 万参数，若其内在&quot;自由度&quot;较低（即低秩），可以先投影到 50 维（矩阵 A: 1000×50）再恢复（矩阵 B: 50×1000），参数量变为 <code>1000×50 + 50×1000 = 10 万</code>，<strong>压缩率高达 90%</strong>。分解后可用两个小 Linear 层替换原层，再微调恢复精度。</p>
+</blockquote>
+<p><strong>核心参数与经验</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>秩 r</strong>：分解的中间维度，是最核心参数。r 增大 → 精度提升、压缩率下降；r 减小 → 压缩率上升、精度下降甚至输出崩溃；</p>
+</li>
+<li class="lvl-2">
+<p><strong>秩比例 rank_ratio</strong>（r = ratio × min(m,n)）：GPT-2 实测——0.3 时输出重复（压缩 68%）、0.5 可用（50%）、0.7 接近原始（30%）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>分解目标层</strong>：大矩阵优先。FFN 投影层 c_proj（3072→768，信息已压缩）推荐分解；FFN 中间层 c_fc（768→3072，需高容量编码语义）与 Attention QKV 影响注意力质量，需谨慎；Embedding 稀疏激活、分解收益低，通常不分解；</p>
+</li>
+<li class="lvl-2">
+<p><strong>是否微调</strong>：无微调时精度损失大（尤其 ratio &lt; 0.5），微调可恢复 80%+ 性能。</p>
+</li>
+</ul>
+<p><strong>推荐配置</strong>：仅分解 <code>c_proj</code> 投影层 + rank_ratio=0.6 + 微调，可在压缩 25% 左右的前提下保持接近原始的生成质量；若分解全部 FFN 层则必须配合微调（压缩率可达 50%）。SVD 实现中注意权重矩阵的维度约定——Hugging Face GPT-2 的 Conv1D 权重形状为 <code>[in, out]</code>，与标准 <code>nn.Linear</code> 相反，复制权重前务必核对。实现见 <a target="_blank" rel="noopener" href="https://github.com/neopen/model-lite-demo/tree/main/Low-Rank">Low-Rank</a>。</p>
+<h3 id="6-二值化-三值化">6. 二值化/三值化</h3>
+<p>二值化与三值化是极致压缩技术，把权重从 FP32 压到 <strong>1-bit（±1）或 2-bit（-1, 0, +1）</strong>，压缩率高达 32x / 16x，适合 MCU、IoT 传感器等超低功耗设备（模型可 &lt;100KB），代价是精度损失大、训练复杂，只适合简单任务。二值化前向为 $y = W_b x ≈ α·W_bx$（α 为缩放因子，可取 $mean(|W|)）$；三值化以阈值 $δ = 0.7×mean(|W|) $ 保留重要权重、把冗余权重置零。</p>
+<p>由于 sign 函数不可导，训练需借助<strong>直通估计器（STE）</strong>：前向传播执行二值化，反向传播时梯度仅在 |x| ≤ 1 范围内直通（其余置零），保证训练稳定。<strong>实测效果</strong>：模型从 FP32 的 ~3MB 压缩到 <strong>0.33MB</strong>，体积缩小近 10 倍，适合&quot;空间换精度&quot;的唤醒词检测等简单任务。</p>
+<h3 id="7-自动轻量化（AutoML）">7. 自动轻量化（AutoML）</h3>
+<p>当人工设计的压缩方案难以达到最优时，可用<strong>神经架构搜索（NAS）或强化学习</strong>自动寻找最优轻量结构。代表方案：<strong>AMC</strong>（AutoML for Model Compression，用强化学习自动决定每层剪枝比例）与 <strong>Once-for-All</strong>（训练一个超网，部署时按硬件约束直接提取不同大小的子网，无需重复训练）。流程为：定义搜索空间（通道数、层数、算子类型）→ 设计奖励函数（精度 + 延迟约束）→ 用 RL/进化算法搜索 → 训练最优子网并部署。适合对部署硬件多、人工调优成本高的团队。</p>
+<hr>
+<h2 id="场景选型与实施流程">场景选型与实施流程</h2>
+<p>轻量化是在精度、速度、体积、功耗之间取舍，不同场景的优先级完全不同：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>手机实时语音助手</strong>（ARM CPU/NPU，延迟 &lt;300ms）：INT8 量化 + 结构化剪枝 + 轻量架构。硬件对 INT8 有加速，延迟敏感需移除冗余计算，WER +0.5% 可接受；</p>
+</li>
+<li class="lvl-2">
+<p><strong>智能音箱离线唤醒</strong>（MCU/DSP &lt;100MHz，模型 &lt;1MB）：二值化/三值化 + 蒸馏出 Tiny Student + 算子融合定点化。内存极小需极致压缩，唤醒词任务简单、小模型足够；</p>
+</li>
+<li class="lvl-2">
+<p><strong>车载语音系统</strong>（Automotive SoC，&lt;500ms，高可靠性）：QAT + 少量通道剪枝（10%）+ 微调 + TensorRT 导出。安全关键场景精度损失需 &lt;0.3%，SoC 有专用 NPU 适合 INT8；</p>
+</li>
+<li class="lvl-2">
+<p><strong>服务器高并发 API</strong>（x86 CPU/GPU）：TensorRT INT8（GPU）+ ONNX Runtime/OpenVINO（CPU）+ 动态批处理，吞吐优先；</p>
+</li>
+<li class="lvl-2">
+<p><strong>IoT 传感器关键词检测</strong>（Cortex-M，&lt;100KB/&lt;10mW）：MCU 专用框架 + 手工 Tiny CNN + 全整型无浮点，通常只检测 1~10 个关键词。</p>
+</li>
+</ul>
+<p>技术边界同样重要：量化（PTQ/QAT）不适用无 SIMD 指令的 MCU；结构化剪枝对超小模型收益低；蒸馏依赖现成的大 Teacher；低秩分解对小卷积层（3x3）可能反而增参；二值化/三值化不适合医疗 ASR 等高精度任务。</p>
+<p><strong>端到端实施流程</strong>：</p>
+<p>① <strong>建立基准</strong>——先训练高精度基线（如 ResNet50），测量参数量、FLOPs、延迟与内存；</p>
+<p>② <strong>选择组合</strong>——优先&quot;结构设计 + 量化&quot;（通用性强），精度要求高再加蒸馏，已有大模型可走&quot;剪枝 + QAT&quot;；</p>
+<p>③ <strong>迭代优化</strong>——逐步加强压缩并验证精度回退（见下图），剪枝后务必微调；</p>
+<p>④ <strong>部署验证</strong>——在目标硬件（ARM CPU/NPU）实测延迟与功耗，用 TFLite/ONNX/TensorRT 等工具转换导出。</p>
+<img src="/imgs/ai/image-20251012153208075.png" alt="轻量化迭代优化与精度回退验证" style="zoom:67%;" loading='lazy'>
+<blockquote>
+<p><strong>常用工具</strong>：剪枝用 NNI、TorchPruner、TensorFlow Model Optimization；量化用 PyTorch Quantization、TFLite、TensorRT；蒸馏用 HuggingFace Transformers（DistilBERT）、TorchDistill；轻量网络与自动压缩可参考 timm、AutoKeras 与 OFA 官方仓库。</p>
+</blockquote>
+<hr>
+<h2 id="总结与建议">总结与建议</h2>
+<p>轻量化是<strong>技术组合拳</strong>，没有银弹：结构设计决定上限，蒸馏&quot;教&quot;出小模型，剪枝与低秩分解&quot;砍&quot;掉冗余，量化在推理层换取速度。实践建议：</p>
+<ol>
+<li class="lvl-3">
+<p>先评估目标硬件支持的算子与精度格式（有无 INT8 加速、SIMD、NPU），再决定技术路线；</p>
+</li>
+<li class="lvl-3">
+<p>从量化、结构化剪枝等低风险、高通用性的技术入手，逐步叠加；</p>
+</li>
+<li class="lvl-3">
+<p><strong>每一步都保留微调环节</strong>，压缩与恢复交替进行，避免一步到位导致精度崩溃；</p>
+</li>
+<li class="lvl-3">
+<p>以端到端延迟、实际功耗与业务指标（如 WER）验收，而非单点指标（参数量/FLOPs）；</p>
+</li>
+<li class="lvl-3">
+<p>训练数据质量与师生差距是蒸馏成败的关键，遇到重复 token 优先检查数据与超参，再考虑换结构。</p>
+</li>
+</ol>
+<h2 id="工程边界与验证">工程边界与验证</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>模型/框架版本</strong>：AI SDK、模型能力和接口参数变化较快，涉及具体模型名称、参数或 API 的内容应按目标版本复核。</p>
+</li>
+<li class="lvl-2">
+<p><strong>效果结论</strong>：示例中的质量、延迟或 Token 消耗不能直接外推到其他模型、数据集和提示词。</p>
+</li>
+<li class="lvl-2">
+<p><strong>生产落地</strong>：至少补充超时、重试、限流、成本控制、敏感数据处理和可观测性验证。</p>
+</li>
+</ul>
+<h2 id="参考资料与延伸阅读">参考资料与延伸阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/model-lite-demo/tree/main/Pruning/gpt2">https://github.com/neopen/model-lite-demo/tree/main/Pruning/gpt2</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/model-lite-demo/tree/main/Distillation/gpt2">https://github.com/neopen/model-lite-demo/tree/main/Distillation/gpt2</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/model-lite-demo/tree/main/Low-Rank">https://github.com/neopen/model-lite-demo/tree/main/Low-Rank</a></p>
+</li>
+</ul>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2025/11/langchain-usage-guide/">大模型只会聊天如何变成会检索能调用工具的业务应用</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/09/ai-medical-rag-agent/">医疗大模型问答不可信如何用RAG加本地上线免幻觉</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/01/ai-long-video-generation/">模型只能生成十几秒如何把超长剧本串成长视频</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/10/ai-model-compression/">https://pengline.cn/2025/10/ai-model-compression/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/AI%E6%A8%A1%E5%9E%8B%E8%BD%BB%E9%87%8F%E5%8C%96/">AI模型轻量化</a><a class="post-meta__tags" href="/tags/%E6%A8%A1%E5%9E%8B%E5%89%AA%E6%9E%9D/">模型剪枝</a><a class="post-meta__tags" href="/tags/%E7%BB%93%E6%9E%84%E5%8C%96%E5%89%AA%E6%9E%9D/">结构化剪枝</a><a class="post-meta__tags" href="/tags/%E9%87%8F%E5%8C%96%E6%84%9F%E7%9F%A5%E8%AE%AD%E7%BB%83/">量化感知训练</a><a class="post-meta__tags" href="/tags/%E7%9F%A5%E8%AF%86%E8%92%B8%E9%A6%8F/">知识蒸馏</a><a class="post-meta__tags" href="/tags/%E4%BD%8E%E7%A7%A9%E5%88%86%E8%A7%A3/">低秩分解</a><a class="post-meta__tags" href="/tags/INT8%E9%87%8F%E5%8C%96/">INT8量化</a><a class="post-meta__tags" href="/tags/%E4%BA%8C%E5%80%BC%E5%8C%96%E7%BD%91%E7%BB%9C/">二值化网络</a><a class="post-meta__tags" href="/tags/%E8%BD%BB%E9%87%8F%E7%BD%91%E7%BB%9C%E8%AE%BE%E8%AE%A1/">轻量网络设计</a><a class="post-meta__tags" href="/tags/MobileNet/">MobileNet</a><a class="post-meta__tags" href="/tags/%E6%A8%A1%E5%9E%8B%E9%83%A8%E7%BD%B2/">模型部署</a><a class="post-meta__tags" href="/tags/%E6%8E%A8%E7%90%86%E5%8A%A0%E9%80%9F/">推理加速</a><a class="post-meta__tags" href="/tags/%E5%B5%8C%E5%85%A5%E5%BC%8F%E9%83%A8%E7%BD%B2/">嵌入式部署</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small221437yj1D11756131277.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/11/langchain-usage-guide/" title="大模型只会聊天如何变成会检索能调用工具的业务应用"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193133vUdYM1755689493.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">大模型只会聊天如何变成会检索能调用工具的业务应用</div></div><div class="info-2"><div class="info-item-1">LangChain 以模块化抽象加流水线编排的方式,把模型接入、提示词、记忆、检索与工具调用拆成标准组件组装,使大模型从只会聊天升级为可查库、会检索、记得住上下文且能自主决策的业务应用。详解模型管理、链式编排、智能决策、LangGraph 状态图与单多智能体实战案例及选型建议。</div></div></div></a><a class="pagination-related" href="/2025/10/osgi-modular-framework/" title="OSGi 面向服务模块化框架的动态加载与热部署原理"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">OSGi 面向服务模块化框架的动态加载与热部署原理</div></div><div class="info-2"><div class="info-item-1">单体应用在运行期难以动态升级模块，OSGi 提供面向服务的模块化方案。本文剖析其基于 jar 清单声明的模块体系、Bundle 动态装卸与类加载委派机制，对比 Apache Felix 与 Spring DM 实践，给出适用性与热插拔能力判定，支撑长期运行应用的动态化改造需求。</div></div></div></a></nav><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A6%82%E8%BF%B0%E4%B8%8E%E6%A0%B8%E5%BF%83%E4%BB%B7%E5%80%BC"><span class="toc-number">1.</span> <span class="toc-text">概述与核心价值</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%B3%E9%94%AE%E6%8A%80%E6%9C%AF%E6%8B%86%E8%A7%A3"><span class="toc-number">2.</span> <span class="toc-text">关键技术拆解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E8%BD%BB%E9%87%8F%E7%BD%91%E7%BB%9C%E7%BB%93%E6%9E%84%E8%AE%BE%E8%AE%A1"><span class="toc-number">2.1.</span> <span class="toc-text">1. 轻量网络结构设计</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E6%A8%A1%E5%9E%8B%E5%89%AA%E6%9E%9D%EF%BC%88Pruning%EF%BC%89"><span class="toc-number">2.2.</span> <span class="toc-text">2. 模型剪枝（Pruning）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E9%87%8F%E5%8C%96%E6%84%9F%E7%9F%A5%EF%BC%88Quantization%EF%BC%89"><span class="toc-number">2.3.</span> <span class="toc-text">3. 量化感知（Quantization）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-%E7%9F%A5%E8%AF%86%E8%92%B8%E9%A6%8F%EF%BC%88Distillation%EF%BC%89"><span class="toc-number">2.4.</span> <span class="toc-text">4. 知识蒸馏（Distillation）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-%E4%BD%8E%E7%A7%A9%E5%88%86%E8%A7%A3%EF%BC%88Low-Rank%EF%BC%89"><span class="toc-number">2.5.</span> <span class="toc-text">5. 低秩分解（Low-Rank）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-%E4%BA%8C%E5%80%BC%E5%8C%96-%E4%B8%89%E5%80%BC%E5%8C%96"><span class="toc-number">2.6.</span> <span class="toc-text">6. 二值化&#x2F;三值化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-%E8%87%AA%E5%8A%A8%E8%BD%BB%E9%87%8F%E5%8C%96%EF%BC%88AutoML%EF%BC%89"><span class="toc-number">2.7.</span> <span class="toc-text">7. 自动轻量化（AutoML）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9C%BA%E6%99%AF%E9%80%89%E5%9E%8B%E4%B8%8E%E5%AE%9E%E6%96%BD%E6%B5%81%E7%A8%8B"><span class="toc-number">3.</span> <span class="toc-text">场景选型与实施流程</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93%E4%B8%8E%E5%BB%BA%E8%AE%AE"><span class="toc-number">4.</span> <span class="toc-text">总结与建议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E8%BE%B9%E7%95%8C%E4%B8%8E%E9%AA%8C%E8%AF%81"><span class="toc-number">5.</span> <span class="toc-text">工程边界与验证</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99%E4%B8%8E%E5%BB%B6%E4%BC%B8%E9%98%85%E8%AF%BB"><span class="toc-number">6.</span> <span class="toc-text">参考资料与延伸阅读</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">7.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

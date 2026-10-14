@@ -1,0 +1,1431 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>MySQL 性能慢怎么查？从 SQL、索引到架构的分层优化路径 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="性能优化是贯穿 SQL、索引、表结构、配置、磁盘 IO 与架构设计的系统性工程，讲解如何用 EXPLAIN 与慢查询日志定位瓶颈，逐层推进索引与批量写入调优、刷盘策略与内存碎片治理，再到读写分离与分库分表，并强调先廉价后架构的分层落地路径。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MySQL 性能慢怎么查？从 SQL、索引到架构的分层优化路径">
+<meta property="og:url" content="https://pengline.cn/2025/09/mysql-performance-tuning/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="性能优化是贯穿 SQL、索引、表结构、配置、磁盘 IO 与架构设计的系统性工程，讲解如何用 EXPLAIN 与慢查询日志定位瓶颈，逐层推进索引与批量写入调优、刷盘策略与内存碎片治理，再到读写分离与分库分表，并强调先廉价后架构的分层落地路径。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp">
+<meta property="article:published_time" content="2025-09-05T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-10-14T07:50:52.371Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Buffer Pool">
+<meta property="article:tag" content="EXPLAIN">
+<meta property="article:tag" content="MySQL">
+<meta property="article:tag" content="性能优化">
+<meta property="article:tag" content="慢查询">
+<meta property="article:tag" content="架构优化">
+<meta property="article:tag" content="索引">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/09/mysql-performance-tuning/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'MySQL 性能慢怎么查？从 SQL、索引到架构的分层优化路径',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">91</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">781</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">MySQL 性能慢怎么查？从 SQL、索引到架构的分层优化路径</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">MySQL 性能慢怎么查？从 SQL、索引到架构的分层优化路径</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-09-05T16:00:00.000Z" title="发表于 2025-09-06 00:00:00">2025-09-06</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-10-14T07:50:52.371Z" title="更新于 2026-10-14 15:50:52">2026-10-14</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/MySQL/">MySQL</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>以下是全面、实用、分层次的 MySQL 性能优化解决方案，以及相关原理。优化手段按“投入产出比”分层——先做免费的（SQL 与索引），再做廉价的（表结构与参数），最后才轮到昂贵的架构改造：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    A[MySQL 性能优化全景] --&gt; B[SQL 语句层 / 改写 SQL · 避免全量查询 · EXPLAIN]
+    A --&gt; C[索引层 / 覆盖索引 · 联合索引 · 避免失效]
+    A --&gt; D[表结构与配置层 / 字段类型 · Buffer Pool · 刷盘策略]
+    A --&gt; E[监控运维层 / 慢查询 · 碎片治理 · 数据归档]
+    A --&gt; F[架构层 / 读写分离 · 分库分表 · 缓存]
+    B -.先做.-&gt; C
+    C -.再做.-&gt; D
+    D -.然后.-&gt; E
+    E -.最后.-&gt; F</code></pre>
+<p>本文以 MySQL 5.7 / 8.0 为背景展开（两版本默认值或行为有差异处会分别标注），存储引擎以 InnoDB 为主线。</p>
+<h2 id="常用的优化方案">常用的优化方案</h2>
+<h3 id="SQL-语句优化（最直接有效）">SQL 语句优化（最直接有效）</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>避免全量查询</strong></p>
+<p>避免查询多余的数据，尤其是敏感和 text 类型数据</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 不推荐</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 推荐：只查询需要的字段</span></span><br><span class="line"><span class="keyword">SELECT</span> id, name, email <span class="keyword">FROM</span> users;</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>使用 EXPLAIN 分析执行计划</strong></p>
+<p>分析 SQL 执行情况，以及索引利用率和连表查询性能等。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 关注：`type`（是否全表扫描）、`key`（是否用索引）、`rows`（扫描行数）、`Extra`（是否用临时表/文件排序）</span></span><br><span class="line">EXPLAIN <span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> orders <span class="keyword">WHERE</span> user_id <span class="operator">=</span> <span class="number">100</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>避免在 WHERE 中对字段进行函数操作或计算</strong></p>
+<p>低版本 MySQL 不支持函数索引，会导致索引失效。MySQL8 有所改善。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 索引失效</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> <span class="keyword">YEAR</span>(created_at) <span class="operator">=</span> <span class="number">2024</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 改写为范围查询</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> created_at <span class="operator">&gt;=</span> <span class="string">&#x27;2024-01-01&#x27;</span> <span class="keyword">AND</span> created_at <span class="operator">&lt;</span> <span class="string">&#x27;2025-01-01&#x27;</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>避免使用 OR</strong></p>
+<p>会导致索引失效，MySQL8 有所改善。可改写为 UNION 或 IN，或其他字段添加索引。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 可能导致索引失效</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> name <span class="operator">=</span> <span class="string">&#x27;Alice&#x27;</span> <span class="keyword">OR</span> age <span class="operator">=</span> <span class="number">25</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 改用 UNION（如果字段都有索引）</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> name <span class="operator">=</span> <span class="string">&#x27;Alice&#x27;</span></span><br><span class="line"><span class="keyword">UNION</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> users <span class="keyword">WHERE</span> age <span class="operator">=</span> <span class="number">25</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>使用 LIMIT 分页优化</strong>（避免 OFFSET 大偏移）</p>
+<p>涉及&quot;深度分页&quot;问题，可参照  本站《海量数据的深度分页解决方案》一文（游标分页与各方案代价对比）</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 慢（深度分页）：OFFSET 100000</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> orders <span class="keyword">ORDER</span> <span class="keyword">BY</span> id LIMIT <span class="number">100000</span>, <span class="number">20</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 优化：记住上一页最大ID</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> orders <span class="keyword">WHERE</span> id <span class="operator">&gt;</span> <span class="number">100000</span> <span class="keyword">ORDER</span> <span class="keyword">BY</span> id LIMIT <span class="number">20</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>避免复杂 CASE WHEN / IF 判断</strong>（尤其在 WHERE 或 JOIN 中）</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 性能差：</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span></span><br><span class="line"><span class="keyword">FROM</span> orders</span><br><span class="line"><span class="keyword">WHERE</span> <span class="keyword">CASE</span></span><br><span class="line">        <span class="keyword">WHEN</span> status <span class="operator">=</span> <span class="string">&#x27;paid&#x27;</span> <span class="keyword">AND</span> amount <span class="operator">&gt;</span> <span class="number">100</span> <span class="keyword">THEN</span> <span class="number">1</span></span><br><span class="line">        <span class="keyword">WHEN</span> status <span class="operator">=</span> <span class="string">&#x27;pending&#x27;</span> <span class="keyword">AND</span> created_at <span class="operator">&gt;</span> NOW() <span class="operator">-</span> <span class="type">INTERVAL</span> <span class="number">1</span> <span class="keyword">DAY</span> <span class="keyword">THEN</span> <span class="number">1</span></span><br><span class="line">        <span class="keyword">ELSE</span> <span class="number">0</span></span><br><span class="line">      <span class="keyword">END</span> <span class="operator">=</span> <span class="number">1</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-------------------------------------------------------</span></span><br><span class="line"><span class="comment">-- 改写为逻辑表达式：</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span></span><br><span class="line"><span class="keyword">FROM</span> orders</span><br><span class="line"><span class="keyword">WHERE</span> (status <span class="operator">=</span> <span class="string">&#x27;paid&#x27;</span> <span class="keyword">AND</span> amount <span class="operator">&gt;</span> <span class="number">100</span>)</span><br><span class="line">   <span class="keyword">OR</span> (status <span class="operator">=</span> <span class="string">&#x27;pending&#x27;</span> <span class="keyword">AND</span> created_at <span class="operator">&gt;</span> NOW() <span class="operator">-</span> <span class="type">INTERVAL</span> <span class="number">1</span> <span class="keyword">DAY</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>避免高频的统计计算和字符截取</strong></p>
+<p>如果某些计算是高频使用的，可以<strong>在写入时计算好并存储</strong>。或者定时或实时建立统计表（按天、按月）</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 每次查询都计算：</span></span><br><span class="line"><span class="keyword">SELECT</span> <span class="keyword">YEAR</span>(create_time), <span class="keyword">MONTH</span>(create_time), <span class="built_in">COUNT</span>(<span class="operator">*</span>)</span><br><span class="line"><span class="keyword">FROM</span> orders</span><br><span class="line"><span class="keyword">GROUP</span> <span class="keyword">BY</span> <span class="keyword">YEAR</span>(create_time), <span class="keyword">MONTH</span>(create_time);</span><br><span class="line"></span><br><span class="line"><span class="comment">---------------------------预计算 + 冗余字段（空间换时间）-------------------------------------</span></span><br><span class="line"><span class="comment">-- 建表时或通过触发器/应用层写入</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> orders <span class="keyword">ADD</span> <span class="keyword">COLUMN</span> order_year_month <span class="type">INT</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 查询时直接使用</span></span><br><span class="line"><span class="keyword">SELECT</span> order_year_month, <span class="built_in">COUNT</span>(<span class="operator">*</span>)</span><br><span class="line"><span class="keyword">FROM</span> orders</span><br><span class="line"><span class="keyword">GROUP</span> <span class="keyword">BY</span> order_year_month;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 对该字段加索引</span></span><br><span class="line"><span class="keyword">CREATE</span> INDEX idx_order_ym <span class="keyword">ON</span> orders(order_year_month);</span><br></pre></td></tr></table></figure>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 使用生成列：MySQL 支持虚拟列或存储列，自动计算并可加索引</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> orders</span><br><span class="line"><span class="keyword">ADD</span> <span class="keyword">COLUMN</span> order_year_month <span class="type">INT</span></span><br><span class="line">GENERATED ALWAYS <span class="keyword">AS</span> (<span class="keyword">YEAR</span>(create_time) <span class="operator">*</span> <span class="number">100</span> <span class="operator">+</span> <span class="keyword">MONTH</span>(create_time)) STORED;</span><br><span class="line"></span><br><span class="line"><span class="keyword">CREATE</span> INDEX idx_order_ym <span class="keyword">ON</span> orders(order_year_month);</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>使用临时表 / 中间表预处理复杂逻辑</strong></p>
+<p>可分步优化、避免单条 SQL 过于复杂。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- Step 1: 预处理中间结果到临时表</span></span><br><span class="line"><span class="keyword">CREATE</span> TEMPORARY <span class="keyword">TABLE</span> temp_filtered_orders <span class="keyword">AS</span></span><br><span class="line"><span class="keyword">SELECT</span> id, user_id, amount,</span><br><span class="line">       <span class="keyword">CASE</span> <span class="keyword">WHEN</span> amount <span class="operator">&gt;</span> <span class="number">100</span> <span class="keyword">THEN</span> <span class="string">&#x27;high&#x27;</span> <span class="keyword">ELSE</span> <span class="string">&#x27;low&#x27;</span> <span class="keyword">END</span> <span class="keyword">AS</span> level</span><br><span class="line"><span class="keyword">FROM</span> orders</span><br><span class="line"><span class="keyword">WHERE</span> create_time <span class="operator">&gt;=</span> <span class="string">&#x27;2024-01-01&#x27;</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- Step 2: 对临时表加索引（可选）</span></span><br><span class="line"><span class="keyword">CREATE</span> INDEX idx_temp_user <span class="keyword">ON</span> temp_filtered_orders(user_id);</span><br><span class="line"></span><br><span class="line"><span class="comment">-- Step 3: 基于临时表做后续 JOIN / GROUP / 统计</span></span><br><span class="line"><span class="keyword">SELECT</span> u.name, t.level, <span class="built_in">COUNT</span>(<span class="operator">*</span>)</span><br><span class="line"><span class="keyword">FROM</span> temp_filtered_orders t</span><br><span class="line"><span class="keyword">JOIN</span> users u <span class="keyword">ON</span> t.user_id <span class="operator">=</span> u.id</span><br><span class="line"><span class="keyword">GROUP</span> <span class="keyword">BY</span> u.name, t.level;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h3 id="索引优化（性能提升关键）">索引优化（性能提升关键）</h3>
+<p><strong>不适合建立索引的列</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>低基数枚举列（如性别、状态等 <code>tinyint</code> 标志列）：取值只有 2~3 种，任何单值都会命中 30%~50% 的行，优化器按成本模型估算——回表取数比全表扫描还贵，索引基本不会被使用，因此<strong>单独建索引没有意义</strong>。但低基数列可以放在联合索引的中间 / 末尾位置参与过滤（如 <code>(dept_id, gender)</code>），此时它承担的是“二次过滤”而非“定位”职责。</p>
+</li>
+<li class="lvl-2">
+<p>更新频繁的字段。</p>
+</li>
+<li class="lvl-2">
+<p>不会出现在where子句中的字段。</p>
+</li>
+<li class="lvl-2">
+<p>数据可能为null或空或0的字段</p>
+</li>
+<li class="lvl-2">
+<p>存储占用过大的，如：text，json</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>适合建立索引的列</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>字段离散度越高，越适合选作索引的关键字。如主键和唯一字段（主键索引自动创建）。</p>
+</li>
+<li class="lvl-2">
+<p>很少更新的字段（因为也会牵连更新索引）。</p>
+</li>
+<li class="lvl-2">
+<p>占用存储空间少的字段。</p>
+</li>
+<li class="lvl-2">
+<p>存储空间固定的字段。</p>
+</li>
+<li class="lvl-2">
+<p>Where子句中经常使用的字段，分组字段、排序字段和多表连接字段（外键索引自动创建）。</p>
+</li>
+<li class="lvl-2">
+<p>尽量使用联合索引（前缀）</p>
+</li>
+</ul>
+</blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>为常用 WHERE、JOIN、ORDER BY 字段建索引</strong></p>
+<p>索引设计需遵守以上规则，否则适得其反——低质量索引会在优化器的成本估算中被直接放弃，白白占用写入时的维护开销。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">CREATE</span> INDEX idx_user_email <span class="keyword">ON</span> users(email);</span><br><span class="line"><span class="keyword">CREATE</span> INDEX idx_order_user_status <span class="keyword">ON</span> orders(user_id, status);</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>使用复合索引</strong>（联合索引），注意最左前缀原则</p>
+<p>优先考虑使用联合索引，尤其是有类型状态的字段。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查询条件 WHERE a=? AND b=? → 建立 (a, b)</span></span><br><span class="line"><span class="comment">-- 查询条件 WHERE b=? AND a=? → 同样可用 (a, b)，MySQL 会自动优化顺序（优化器）</span></span><br><span class="line"><span class="comment">-- 查询条件 WHERE b=? → 无法使用 (a, b) 索引，MySQL8 中有所优化，可能会用到</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>避免过多索引</strong>（写操作变慢，空间占用大）</p>
+<p>一般单表索引不超过 5 个，根据查询频率和区分度选择，优先使用联合索引</p>
+</li>
+<li class="lvl-3">
+<p><strong>使用覆盖索引</strong>（Covering Index）避免回表</p>
+<p>尽量将查询字段都包含在索引中。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 如果索引包含 SELECT 所有字段，无需回表查主键</span></span><br><span class="line"><span class="keyword">CREATE</span> INDEX idx_covering <span class="keyword">ON</span> orders(user_id, status, amount);</span><br><span class="line"></span><br><span class="line"><span class="keyword">SELECT</span> user_id, status, amount <span class="keyword">FROM</span> orders <span class="keyword">WHERE</span> user_id <span class="operator">=</span> <span class="number">100</span>; <span class="comment">-- 走覆盖索引</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p><strong>定期分析和重建索引</strong>（碎片整理）</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">ANALYZE <span class="keyword">TABLE</span> orders;  <span class="comment">-- 更新统计信息</span></span><br><span class="line">OPTIMIZE <span class="keyword">TABLE</span> orders; <span class="comment">-- 重建表和索引（锁表，谨慎使用）</span></span><br><span class="line"><span class="comment">-- 或使用在线工具：pt-online-schema-change / gh-ost</span></span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h3 id="表结构与设计优化（思想习惯）">表结构与设计优化（思想习惯）</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>选择合适的数据类型</strong></p>
+<blockquote>
+<ul class="lvl-3">
+<li class="lvl-2">使用 <code>TINYINT</code> 代替 <code>INT</code> 存布尔值</li>
+<li class="lvl-2">使用 <code>VARCHAR(N)</code> 而不是 <code>TEXT</code>（如果长度可控）</li>
+<li class="lvl-2">使用 <code>DATETIME</code> 而不是字符串存时间</li>
+<li class="lvl-2">使用 <code>UNSIGNED</code> 无符号整数扩大范围</li>
+</ul>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p><strong>避免 NULL，设置默认值</strong></p>
+<p>NULL 会增加判断复杂度，索引效率略低，且可能存在歧义性。</p>
+</li>
+<li class="lvl-3">
+<p><strong>拆分大字段或大表</strong>（垂直/水平分表）</p>
+<p>对于半结构化 JSON 大数据，可以选择存储在非关系型数据库中。</p>
+<blockquote>
+<ul class="lvl-3">
+<li class="lvl-2">
+<p>TEXT/BLOB 字段可拆到扩展表</p>
+</li>
+<li class="lvl-2">
+<p>历史数据归档（如 orders → orders_2024, orders_2023）</p>
+</li>
+</ul>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p><strong>使用合适存储引擎</strong></p>
+<p>只有插入和查询的 日志类数据，在明确接受表级锁、无崩溃恢复、无事务能力等代价后，可以选用 MyISAM 引擎</p>
+<blockquote>
+<ul class="lvl-3">
+<li class="lvl-2">
+<p>一般用 <strong>InnoDB</strong>（支持事务、行锁、外键）</p>
+</li>
+<li class="lvl-2">
+<p>读多写少且无事务可用 MyISAM（已基本淘汰）</p>
+</li>
+</ul>
+</blockquote>
+</li>
+</ol>
+<h3 id="MySQL-配置参数优化（底层原理）">MySQL 配置参数优化（底层原理）</h3>
+<p>MySQL的<code>innodb_flush_method</code>参数控制着innodb数据文件及redo log的打开、刷写模式</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>redo log 物理日志</strong>（保证持久性），记录的是数据页的物理修改，而不是某一行或某几行修改，它用来恢复提交后的物理数据页(只能恢复到最后一次提交的位置)。</p>
+</li>
+<li class="lvl-2">
+<p><strong>undo 逻辑日志</strong> （保证原子性），用来回滚行记录到某个版本，根据每行记录进行记录。</p>
+</li>
+</ul>
+</blockquote>
+<h4 id="缓冲池（最重要）">缓冲池（最重要）</h4>
+<figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">innodb_buffer_pool_size</span> = <span class="number">70</span>%-<span class="number">80</span>% of total RAM （专用数据库服务器）</span><br></pre></td></tr></table></figure>
+<p>Buffer Pool 大小，会影响缓存命中率</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p>在事务执行过程中，所有对数据页的修改都会先生成 redo log 记录，并写入 log buffer；在事务提交时，根据配置决定是否将 log buffer 中的日志刷入磁盘上的 redo log 文件（ib_logfile）。</p>
+</li>
+<li class="lvl-3">
+<p>事务执行期间，数据页的修改是在 Buffer Pool 中的“脏页”上直接进行的；事务提交时，并不会立即将这些脏页写回磁盘，而是标记为“可刷盘”，由后台线程（如 checkpoint、LRU flusher）异步写入。</p>
+</li>
+</ol>
+</blockquote>
+<h4 id="日志与刷盘策略（平衡性能与安全）">日志与刷盘策略（平衡性能与安全）</h4>
+<p>两条刷盘参数控制着“事务提交时日志何时真正落盘”以及“脏页何时合并回数据文件”，完整链路如下：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    T[事务提交] --&gt; B&#123;innodb_flush_log_at_trx_commit?&#125;
+    B --&gt;|1 提交即同步刷盘| R[redo log file / 最安全 · 默认]
+    B --&gt;|2 提交写 OS 缓存 / 每秒同步一次| R
+    B --&gt;|0 每秒批量刷盘| R
+    R --&gt; C[Checkpoint 推进 / 后台执行]
+    C --&gt; D[脏页异步刷盘 / 合并回数据文件]
+    T --&gt; S&#123;sync_binlog?&#125;
+    S --&gt;|1 提交即同步| BL[binlog file / 主从一致的最强保证]
+    S --&gt;|N 每 N 次同步| BL
+    BL --&gt; E[从库拉取并重放]</code></pre>
+<p>两参数都取 1（“双 1”）时，每次提交都要等待两次磁盘 fsync（redo + binlog），单机吞吐受限于磁盘 IOPS；若业务可容忍小概率丢数据（如日志、统计类），可下调换取数倍写入性能（组合见下文与文末实践）。</p>
+<figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 安全（默认），设为2可提速（小概率丢数据）</span></span><br><span class="line">&gt; **本文定位**：这不是参数清单，而是围绕一个工程问题解释“为什么这样设计、什么时候会失效、应该如何验证”。文中的示例代码用于说明机制；涉及版本、默认值和性能的数据，请在你的目标版本与真实数据集上复测。</span><br><span class="line"></span><br><span class="line"><span class="comment">## 先给结论</span></span><br><span class="line"></span><br><span class="line">MySQL 性能优化最忌讳“一上来改配置”。真正高效的排查路径应该是：**先证明哪里慢，再确定瓶颈属于 SQL、索引、数据访问、IO、锁、内存还是架构。** 本文把优化动作按成本和影响范围分层，并补充每一层应该观察什么指标、什么情况下应该停止继续调参数。</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="attr">innodb_flush_log_at_trx_commit</span> = <span class="number">1</span></span><br><span class="line"><span class="comment"># 安全，设为0或N可提速</span></span><br><span class="line"><span class="attr">sync_binlog</span> = <span class="number">1</span></span><br></pre></td></tr></table></figure>
+<p>这两个参数是控制MySQL 磁盘写入策略以及数据安全性的关键参数：</p>
+<blockquote>
+<p>InnoDB 默认开启内部的 XA 事务（redo log 与 binlog 的两阶段提交，与 undo log 无关），整体采用日志先行（WAL）策略。</p>
+<p>在未开启binlog的情况下，数据变更（增，删，改）会在内存中操作，并将事务顺序写入到redo log中，这时就会认为事务已经完成，响应事务提交成功。然后在以下参数设置条件下，才将内存中数据刷新合并到磁盘中。</p>
+<p>在 redo log 已持久化的前提下，即使此后宕机、内存中的脏页尚未合并回磁盘，数据仍可通过 recovery 阶段重放 redo log 找回；真正可能丢失的，只是那些还没来得及刷入 redo log file 的 log buffer 内容（丢多少取决于 <code>innodb_flush_log_at_trx_commit</code> 的取值）。</p>
+<p>缓存刷新的参数： <code>innodb_flush_log_at_trx_commit</code>（刷新方式）   <code>innodb_flush_log_at_timeout</code>（刷新频率）</p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>innodb_flush_log_at_trx_commit=1</strong>（默认），每次事务提交，把log buffer刷到文件系统中去，并且调用文件系统的“flush”操作将缓存刷新到磁盘（如果底层硬件提供的IOPS比较差，MySQL并发会由于硬件IO而无法提升）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>innodb_flush_log_at_trx_commit=0</strong>，每隔一秒，把log buffer刷到文件系统，并且调用文件系统的“flush”将缓存刷新到磁盘（可能丢失1秒的事务数据）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>innodb_flush_log_at_trx_commit=2</strong>（推荐），每次事务提交，把log buffer刷到文件系统，但每隔一秒调用文件系统的“flush”将缓存刷新到磁盘（如果只是MySQL数据库挂掉了，由于文件系统没有问题，那么对应的事务数据并没有丢失。如果操作系统挂掉或重启，可能丢失1秒的事务数据）</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>sync_binlog</strong></p>
+<blockquote>
+<p>sync_binlog 的默认值是0，像操作系统刷其他文件的机制一样，MySQL不会同步到磁盘中而是依赖操作系统来刷新binary log。</p>
+<p>当sync_binlog =N (N&gt;0) ，MySQL 在每写 N次 二进制日志binary log时，会使用fdatasync()函数将它的写二进制日志binary log同步到磁盘中去。</p>
+<p><strong>注</strong>：如果启用了 autocommit，那么每一条语句（statement）都会触发一次写操作；否则每个事务对应一次写操作。</p>
+</blockquote>
+<h4 id="脏页控制（数据页）">脏页控制（数据页）</h4>
+<p>把内存中被修改过，跟磁盘中的数据页不一致的数据页称为脏页</p>
+<figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 告知磁盘 I/O 能力：默认 200，SSD 建议 1000~5000</span></span><br><span class="line"><span class="attr">innodb_io_capacity</span>=<span class="number">2000</span></span><br><span class="line"><span class="comment"># 控制突发刷盘能力：默认 2000，可设为 io_capacity 的 2~5 倍</span></span><br><span class="line"><span class="attr">innodb_io_capacity_max</span>=<span class="number">3000</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 脏页比例软上限：默认 75%（5.7）或 90%（8.0），建议 70~85%</span></span><br><span class="line"><span class="attr">innodb_max_dirty_pages_pct</span>=<span class="number">80</span></span><br><span class="line"><span class="comment"># 脏页刷盘起始水位：默认 0，建议设为 10~20，避免突增抖动</span></span><br><span class="line"><span class="attr">innodb_max_dirty_pages_pct_lwm</span>=<span class="number">10</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 自适应刷盘：默认 ON，推荐保持开启</span></span><br><span class="line"><span class="attr">innodb_adaptive_flushing</span>=<span class="literal">ON</span></span><br><span class="line"><span class="comment"># 监控刷盘滞后：Innodb_checkpoint_age 越大表示刷盘越滞后，需结合 innodb_log_waits 判断是否出现写入等待</span></span><br><span class="line"><span class="comment"># Innodb_checkpoint_age 为状态指标而非配置项，用于监控刷盘滞后（查询方式见下方代码）</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><code>innodb_io_capacity</code> 参数用于告诉 InnoDB 存储引擎底层磁盘设备的 I/O 能力（单位：IOPS），InnoDB 会据此控制后台线程（如 Page Cleaner）每秒刷脏页的数量，从而避免过度消耗 I/O 资源或刷盘不足。 该参数值设置过小，会导致 InnoDB 低估磁盘 I/O 能力，从而限制后台刷脏页的速度，使得脏页积累速度超过刷盘速度，最终引发 Redo Log 空间不足、Checkpoint 延迟、写入阻塞等问题。</p>
+</li>
+<li class="lvl-2">
+<p><code>innodb_max_dirty_pages_pct</code> 是 Buffer Pool 中脏页比例的“软上限”，默认值在 MySQL 5.6+ 是 75%，在 MySQL 8.0 中默认是 90%。当脏页比例达到或超过该值时，InnoDB 会主动加大刷盘力度，但不会完全禁止新脏页产生。</p>
+</li>
+<li class="lvl-2">
+<p>InnoDB 内部会根据当前脏页比例 M，结合 <code>innodb_max_dirty_pages_pct</code> 和 <code>innodb_max_dirty_pages_pct_lwm</code>（低水位线，默认 0），通过一个内部算法（非公开公式）计算出一个“刷盘压力因子”，用于动态调节 Page Cleaner 线程的刷盘速度。这个因子影响每秒刷多少页，但不是简单的 0~100 百分比映射。</p>
+</li>
+<li class="lvl-2">
+<p>页比例是监控指标，不是配置参数。通过查询 <code>Innodb_buffer_pool_pages_dirty / Innodb_buffer_pool_pages_total</code> 来监控当前脏页比例，但不能“通过它去设置”任何参数 —— 设置上限应使用 <code>innodb_max_dirty_pages_pct</code>。</p>
+</li>
+</ul>
+</blockquote>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 监控指标：</span></span><br><span class="line"><span class="keyword">SHOW</span> <span class="keyword">GLOBAL</span> STATUS <span class="keyword">LIKE</span> <span class="string">&#x27;Innodb_buffer_pool_pages_dirty&#x27;</span>;</span><br><span class="line"><span class="keyword">SHOW</span> <span class="keyword">GLOBAL</span> STATUS <span class="keyword">LIKE</span> <span class="string">&#x27;Innodb_checkpoint_age&#x27;</span>;</span><br><span class="line"><span class="comment">-- checkpoint_age 越大，说明刷盘越滞后</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 查看当前脏页比例</span></span><br><span class="line"><span class="keyword">SELECT</span></span><br><span class="line">    VARIABLE_VALUE <span class="keyword">AS</span> dirty_pages</span><br><span class="line"><span class="keyword">FROM</span> information_schema.GLOBAL_STATUS</span><br><span class="line"><span class="keyword">WHERE</span> VARIABLE_NAME <span class="operator">=</span> <span class="string">&#x27;Innodb_buffer_pool_pages_dirty&#x27;</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">SELECT</span></span><br><span class="line">    VARIABLE_VALUE <span class="keyword">AS</span> total_pages</span><br><span class="line"><span class="keyword">FROM</span> information_schema.GLOBAL_STATUS</span><br><span class="line"><span class="keyword">WHERE</span> VARIABLE_NAME <span class="operator">=</span> <span class="string">&#x27;Innodb_buffer_pool_pages_total&#x27;</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 计算比例</span></span><br><span class="line"><span class="keyword">SELECT</span> ROUND(</span><br><span class="line">    (dirty_pages <span class="operator">/</span> total_pages) <span class="operator">*</span> <span class="number">100</span>, <span class="number">2</span></span><br><span class="line">) <span class="keyword">AS</span> dirty_pct</span><br><span class="line"><span class="keyword">FROM</span> (</span><br><span class="line">    <span class="keyword">SELECT</span></span><br><span class="line">        (<span class="keyword">SELECT</span> VARIABLE_VALUE <span class="keyword">FROM</span> information_schema.GLOBAL_STATUS <span class="keyword">WHERE</span> VARIABLE_NAME <span class="operator">=</span> <span class="string">&#x27;Innodb_buffer_pool_pages_dirty&#x27;</span>) <span class="keyword">AS</span> dirty_pages,</span><br><span class="line">        (<span class="keyword">SELECT</span> VARIABLE_VALUE <span class="keyword">FROM</span> information_schema.GLOBAL_STATUS <span class="keyword">WHERE</span> VARIABLE_NAME <span class="operator">=</span> <span class="string">&#x27;Innodb_buffer_pool_pages_total&#x27;</span>) <span class="keyword">AS</span> total_pages</span><br><span class="line">) t;</span><br><span class="line"></span><br><span class="line"><span class="keyword">SHOW</span> <span class="keyword">GLOBAL</span> STATUS <span class="keyword">LIKE</span> <span class="string">&#x27;Innodb_buffer_pool_pages_%&#x27;</span>;</span><br></pre></td></tr></table></figure>
+<p>脏页刷盘触发的条件：</p>
+<table>
+<thead>
+<tr>
+<th>触发条件</th>
+<th>是否自动触发</th>
+<th>是否阻塞用户线程</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Checkpoint 推进</td>
+<td>是</td>
+<td>否（异步）</td>
+<td>最主要机制，由 redo log 空间或脏页比例驱动</td>
+</tr>
+<tr>
+<td>Buffer Pool 满（LRU淘汰）</td>
+<td>是</td>
+<td>是（可能等待）</td>
+<td>高并发写 + 缓冲池小 → 性能瓶颈</td>
+</tr>
+<tr>
+<td>脏页比例超阈值</td>
+<td>是</td>
+<td>否（异步）</td>
+<td>由<code>innodb_max_dirty_pages_pct</code>控制</td>
+</tr>
+<tr>
+<td>Page Cleaner 定时任务</td>
+<td>是</td>
+<td>否</td>
+<td>每秒后台刷脏，受 I/O capacity 控制</td>
+</tr>
+<tr>
+<td>实例关闭（SHUTDOWN）</td>
+<td>是</td>
+<td>是（阻塞）</td>
+<td>Sharp Checkpoint，刷所有脏页</td>
+</tr>
+<tr>
+<td>手动命令（FLUSH/OPTIMIZE）</td>
+<td>否</td>
+<td>是</td>
+<td>运维操作，谨慎执行</td>
+</tr>
+<tr>
+<td>Redo Log 空间不足</td>
+<td>是</td>
+<td>可能阻塞写入</td>
+<td>强制推进 checkpoint，刷对应脏页</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>mysql <strong>连坐机制</strong>：如果要刷盘的脏页相邻的数据页恰好也是脏页，就一起写入磁盘，如果邻居的邻居也是如此。</p>
+<p>在机械硬盘时代这个策略可以减少随机IO，但如果使用固态硬盘的话随机IO的性能往往比较高，所以使用这个策略反而拖累了查询性能。因此可以通过 <code>innodb_flush_neighbors</code> 关闭这个“连坐”的策略。</p>
+</blockquote>
+<h4 id="连接与线程">连接与线程</h4>
+<figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 根据业务调整</span></span><br><span class="line"><span class="attr">max_connections</span> = <span class="number">500</span></span><br><span class="line"><span class="comment"># 缓存线程避免频繁创建</span></span><br><span class="line"><span class="attr">thread_cache_size</span> = <span class="number">50</span></span><br></pre></td></tr></table></figure>
+<h4 id="临时表与排序">临时表与排序</h4>
+<figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">tmp_table_size</span> = <span class="number">64</span>M</span><br><span class="line"><span class="attr">max_heap_table_size</span> = <span class="number">64</span>M</span><br><span class="line"><span class="comment"># 每连接分配，不宜过大</span></span><br><span class="line"><span class="attr">sort_buffer_size</span> = <span class="number">2</span>M</span><br></pre></td></tr></table></figure>
+<p>修改后重启或 <code>SET GLOBAL</code> 生效，建议压测验证。</p>
+<h3 id="监控与慢查询优化（手段穷极）">监控与慢查询优化（手段穷极）</h3>
+<ol>
+<li class="lvl-3">
+<p>开启慢查询日志</p>
+<figure class="highlight ini"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="attr">slow_query_log</span> = <span class="number">1</span></span><br><span class="line"><span class="attr">slow_query_log_file</span> = /var/log/mysql/slow.log</span><br><span class="line"><span class="attr">long_query_time</span> = <span class="number">1</span>                  <span class="comment"># 超过1秒记录</span></span><br><span class="line"><span class="attr">log_queries_not_using_indexes</span> = <span class="number">1</span>    <span class="comment"># 记录未用索引的查询</span></span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p>使用工具分析慢查询</p>
+<ul class="lvl-2">
+<li class="lvl-5"><code>mysqldumpslow</code>（MySQL 自带）：按语句指纹聚合慢日志，输出 Top SQL；</li>
+<li class="lvl-5"><code>pt-query-digest</code>（Percona Toolkit，推荐）：解析慢日志与通用日志，按响应时间 / 扫描行数等多维度排序：</li>
+</ul>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">pt-query-digest /var/log/mysql/slow.log</span><br></pre></td></tr></table></figure>
+</li>
+<li class="lvl-3">
+<p>监控工具</p>
+<blockquote>
+<ul class="lvl-3">
+<li class="lvl-2"><strong>实时监控</strong>：<code>SHOW PROCESSLIST</code>, <code>SHOW STATUS</code>, <code>SHOW ENGINE INNODB STATUS</code></li>
+<li class="lvl-2">可视化监控：
+<ul class="lvl-5">
+<li class="lvl-4">Prometheus + Grafana + mysqld_exporter</li>
+<li class="lvl-4">Percona PMM（推荐）</li>
+<li class="lvl-4">MySQL Workbench Performance Dashboard</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+</li>
+</ol>
+<h3 id="架构层优化（高并发-大数据）">架构层优化（高并发/大数据）</h3>
+<blockquote>
+<p><strong>代价提醒</strong>：架构手段都有隐藏成本——读写分离引入主从延迟与“写完读不到”的一致性问题；分库分表引入分布式事务、跨库查询与扩容复杂度（详参本站《分库分表的跨库分页解决方案》）；缓存层需自行处理穿透 / 击穿 / 雪崩与一致性；异步化把实时一致换成最终一致。<strong>正确顺序是自下而上</strong>：先榨干单实例（SQL → 索引 → 参数），仍不满足再引入架构层。</p>
+</blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>读写分离</strong></p>
+<p>主库写，多个从库读（通过 ProxySQL / MaxScale / 中间件路由）</p>
+</li>
+<li class="lvl-3">
+<p><strong>分库分表</strong></p>
+<ul class="lvl-2">
+<li class="lvl-5">使用 ShardingSphere / MyCat / Vitess 等中间件</li>
+<li class="lvl-5">按用户ID、时间等维度拆分</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p><strong>引入缓存层</strong></p>
+<ul class="lvl-2">
+<li class="lvl-5">Redis / Memcached 缓存热点数据</li>
+<li class="lvl-5">缓存查询结果或对象，减轻数据库压力</li>
+</ul>
+</li>
+<li class="lvl-4">
+<p><strong>异步化与队列</strong></p>
+</li>
+</ol>
+<ul class="lvl-0">
+<li class="lvl-5">
+<p>非核心写操作走消息队列（如 Kafka、RabbitMQ）</p>
+</li>
+<li class="lvl-5">
+<p>延迟写、批量写优化吞吐</p>
+</li>
+</ul>
+<ol start="5">
+<li class="lvl-4">
+<p><strong>数据归档与冷热分离</strong></p>
+</li>
+</ol>
+<ul class="lvl-0">
+<li class="lvl-5">
+<p>历史数据迁移到归档库或数仓（ClickHouse / Hive）</p>
+</li>
+<li class="lvl-5">
+<p>在线库只保留热数据</p>
+</li>
+</ul>
+<h2 id="实用的优化方案">实用的优化方案</h2>
+<p>实际中经常碰到的问题和优化方案。</p>
+<h3 id="如何提高数据插入效率">如何提高数据插入效率</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>合并insert语句（批量插入）。日志量减少（binlog、undolog），日志刷盘数量和频率就减少，SQL解析也减少。</p>
+</li>
+<li class="lvl-2">
+<p>注意：<code>bulk_insert_buffer_size</code> 仅对 <strong>MyISAM</strong> 的 <code>INSERT...SELECT</code> 等批量装载有效，InnoDB 场景调它没有任何效果；InnoDB 的写入吞吐瓶颈主要在 Buffer Pool 命中率、redo 刷盘频率（<code>innodb_flush_log_at_trx_commit</code>）与磁盘 IOPS。</p>
+</li>
+<li class="lvl-2">
+<p>设置 事务日志刷盘策略  <code>innodb_flush_log_at_trx_commit = 0</code>，默认为1。</p>
+<blockquote>
+<p>=1：每个事务提交都会刷新日志（buffer -&gt; file），和文件同步磁盘。<br>
+=0：每秒执行一次刷新，和文件到磁盘同步。<br>
+=2：每个事务会刷新日志（buffer -&gt; file），但不会立即同步磁盘。文件到磁盘同步，是每秒一次</p>
+</blockquote>
+</li>
+<li class="lvl-2">
+<p>手动提交事务（执行完成后，统一提交事务）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>单条语句携带多行 VALUES</strong>：<code>INSERT INTO t VALUES (...),(...),(...)</code> 用一条语句插多行，减少 SQL 解析与日志刷盘次数（多次插入共担一次 redo flush）；</p>
+</li>
+<li class="lvl-2">
+<p><strong>导入大文件优先 <code>LOAD DATA INFILE</code></strong>：比逐条 INSERT 快一个数量级；批量导入期可临时调大 <code>innodb_buffer_pool_size</code> 与 redo 容量，并在导入完成后再建二级索引，减少索引维护开销。</p>
+</li>
+</ul>
+<h3 id="频繁更新数据的优化方案">频繁更新数据的优化方案</h3>
+<p>频繁更新（UPDATE / DELETE / 高频 UPSERT）场景的调优，最怕的是<strong>不定位原因就堆砌手段</strong>——加索引、换引擎、上缓存一顿操作，问题依旧。更新的代价并不只在这条 SQL 本身：InnoDB 对 UPDATE 先“扫描加锁”再逐行修改，扫描路径差、锁等待、索引维护、页分裂都会把单点问题放大成整个库的并发抖动。因此本节按“<strong>定位 → 六类根因 → 验证</strong>”三步展开：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    S[一条 UPDATE 很慢] --&gt; Q&#123;SHOW PROCESSLIST 看状态&#125;
+    Q -- 锁等待 --&gt; A[查 innodb_trx / sys.innodb_lock_waits / 揪出持锁长事务]
+    Q -- 执行中 --&gt; B[EXPLAIN UPDATE 验证访问路径]
+    A --&gt; A1[缩短事务 统一加锁顺序 / 或评估降级 RC + ROW 格式]
+    B --&gt; B1&#123;是否全表扫描&#125;
+    B1 -- 是 --&gt; C1[为 WHERE 加索引 / 收敛扫描与加锁范围]
+    B1 -- 否 --&gt; C2[排查索引写放大 大事务 / 页分裂 热点行更新]
+    A1 --&gt; R[复测耗时 / 锁等待 / 磁盘 IO]
+    C1 --&gt; R
+    C2 --&gt; R</code></pre>
+<h4 id="定位：更新慢的两个方向">定位：更新慢的两个方向</h4>
+<p>“更新慢”先要分清是 <strong>SQL 执行慢</strong> 还是 <strong>根本轮不到执行</strong>（卡在锁上），两者对策完全不同：</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><code>SHOW PROCESSLIST</code> 观察会话状态：</p>
+<ul class="lvl-3">
+<li class="lvl-5">状态卡在 <code>Waiting for lock</code> / <code>Waiting for next row lock</code>，且已持续很久 → <strong>锁等待</strong>：不是这条 SQL 慢，而是有长事务持锁不放，它排在等待链最前面；</li>
+<li class="lvl-5">状态长期停留在 <code>Updating</code> / <code>Sending data</code> 且伴随 CPU 或磁盘 IO 升高 → <strong>执行慢</strong>：访问路径差或写放大，属于 SQL 本身的问题。</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p>锁等待方向：查 <code>information_schema.innodb_trx</code>（重点看 <code>trx_started</code> 启动时间、<code>trx_rows_locked</code> 锁定行数），再用 <code>sys.innodb_lock_waits</code> 直接查出“谁在等谁、等的哪把锁”，优先处理持锁的长事务。</p>
+</li>
+<li class="lvl-3">
+<p>执行慢方向：对 UPDATE 直接执行 <code>EXPLAIN</code> 验证访问路径（所用版本若不支持对写语句 EXPLAIN，可先对相同 WHERE 条件的 SELECT 执行），重点看 <code>type</code>、<code>key</code>、<code>rows</code>：是否退化为全表扫描、预估扫描行数是否远超实际修改行数。</p>
+</li>
+</ol>
+</blockquote>
+<h4 id="六类根因与对策">六类根因与对策</h4>
+<p><strong>根因一：WHERE 未命中索引 → 全表扫描并逐行加锁</strong></p>
+<p>UPDATE 的锁范围不是“最终被修改的行”，而是<strong>扫描过程中经过的所有行</strong>：<code>UPDATE t SET ... WHERE status = 1</code> 若无索引可用，InnoDB 只能全表扫描，对沿途每一行先加锁、再判断是否满足条件（不满足的随即释放）。行数越大，加锁、判断、释放的无效开销越高，并发读写还会被临时锁干扰——线上“一条小更新堵死整张表”大多源于此。</p>
+<blockquote>
+<p><strong>对策</strong>：为 WHERE 条件建立合适索引，让扫描与加锁一起收敛到目标行；上线前用 EXPLAIN 确认 <code>type</code> 不再是 <code>ALL</code>。低基数条件列（如 status）单独建索引仍可能被优化器放弃，应放入联合索引参与过滤（见上文“索引优化”）。</p>
+</blockquote>
+<p><strong>根因二：行锁 / 间隙锁等待链（RR 隔离级别）</strong></p>
+<p>RR 隔离级别下，范围 UPDATE 为防幻读会额外加间隙锁（Gap Lock）与临键锁（Next-Key Lock）。两个事务交错更新相邻区间、或加锁顺序不一致时，轻则互相等待直到 <code>innodb_lock_wait_timeout</code>（默认 50 秒）超时报错，重则触发死锁（ERROR 1213，InnoDB 自动回滚代价较小的一方并释放其持有的锁）。</p>
+<blockquote>
+<p><strong>对策</strong>：事务保持短小（见根因四）；批量场景全链路统一加锁顺序（如都按主键升序处理）；读多写少的业务可评估将隔离级别降为 RC——间隙锁只在 RR 生效，但需同时确认 <code>binlog_format=ROW</code>，否则主从复制在 RC 下不安全。</p>
+</blockquote>
+<p><strong>根因三：二级索引维护的写放大</strong></p>
+<p>每个二级索引都是一棵独立的 B+ 树，UPDATE 一旦修改了索引列，所有包含该列的二级索引都要同步维护：删除旧键值、插入新键值，必要时触发页分裂。索引数量越多、索引列越宽，单条更新的固定开销越大；若其中还混着从未被优化器选中的冗余索引，就纯属“花钱买慢”。</p>
+<blockquote>
+<p><strong>对策</strong>：先删后建——移除低基数列单列索引、与现有联合索引最左前缀重复的冗余索引（单表索引一般控制在 5 个以内）；高频更新场景尤其要克制“为了可能的查询先加个索引”的习惯。</p>
+</blockquote>
+<p><strong>根因四：大事务 → 长持锁 + 日志与回滚段堆积</strong></p>
+<p>一条 UPDATE 波及几十万行、或一个事务内塞入大量写操作，会长时间把行锁攥在手里，阻塞一切触碰同一批行的读写；同时 undo log、redo log、binlog 同步膨胀，一旦事务失败需要回滚，补偿开销甚至高于正向执行。</p>
+<blockquote>
+<p><strong>对策</strong>：拆批更新——按主键范围或游标分批（每批几百至几千行），批间及时提交，把锁持有时间摊薄；通过 <code>trx_rows_modified</code> 观察单事务写入量；大规模历史数据订正放到业务低峰窗口执行。</p>
+</blockquote>
+<p><strong>根因五：随机主键 → 页分裂与碎片放大</strong></p>
+<p>聚簇索引按主键有序组织，自增主键的顺序写入天然贴近页尾；而 UUID 等随机主键在插入/更新时落点随机，目标页空间不足即触发页分裂（Page Split），新页往往只填充一半——写放大、页内空洞、索引树层数增长接踵而至，二级索引的同步维护同样遭殃。</p>
+<blockquote>
+<p><strong>对策</strong>：新表主键优先自增或有序雪花 ID；存量 UUID 表可评估业务侧追加有序序列列，或以 <code>BINARY(16)</code> 等紧凑类型存储 UUID；分裂产生的空洞与后文“表数据碎片”治理联动，最终靠碎片整理回收。</p>
+</blockquote>
+<p><strong>根因六：热点行更新 → 单行锁上的排队</strong></p>
+<p>计数器、余额、库存这类“单行热点”，所有更新在行锁上严格串行，并发越高排队越长，吞吐由单行锁的释放速率决定，调大连接数或缓冲池都无济于事。</p>
+<blockquote>
+<p><strong>对策</strong>：这本质是业务设计问题而非数据库参数问题——① 异步合并：内存计数、定期批量落库；② 拆行分散：单行计数拆成 N 行分片，写入按取模路由、读取时汇总；③ 削峰：峰值写入经消息队列排队后再消费。</p>
+</blockquote>
+<h4 id="验证：改完如何确认有效">验证：改完如何确认有效</h4>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>同一批更新耗时下降，慢日志中 <code>rows_examined</code> 接近实际修改行数；</p>
+</li>
+<li class="lvl-2">
+<p>锁等待告警与 <code>innodb_lock_wait_timeout</code> 超时消失，<code>sys.innodb_lock_waits</code> 常态为空；</p>
+</li>
+<li class="lvl-2">
+<p>写入吞吐（如 <code>Innodb_rows_updated</code> 增量）与磁盘 IO 表现改善；</p>
+</li>
+<li class="lvl-2">
+<p>任何手段坚持<strong>单变量验证、可回滚</strong>：一次只动一处，记录优化前后基线，避免“多管齐下”后无法归因。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="表数据碎片（磁盘存储碎片）的优化方案">表数据碎片（磁盘存储碎片）的优化方案</h3>
+<p>MySQL碎片指的是MySQL数据文件中一些不连续的空白空间，这些空间无法再被全部利用，久而久之越来越多越来越零碎。</p>
+<p>MySQL 碎片的本质是“空间分配与回收不同步”或“空间利用率下降”。</p>
+<h4 id="碎片产生的原因">碎片产生的原因</h4>
+<p>MySQL 中的“碎片”通常是指由于数据的频繁增删改操作，导致存储空间未能被高效利用，从而在磁盘或内存中产生不连续、空闲但无法被有效重用的空间。碎片主要影响性能和存储效率。</p>
+<blockquote>
+<p>当执行插入操作时，MySQL会尝试使用空白空间，如果插入的数据刚好按照索引排序落在被删除数据的区间，可能会复用这个位置，但如果某个空白空间一直没有被大小合适的数据占用，仍然无法将其彻底占用，就形成了碎片；</p>
+<p>【MySQL的几种删除情况】</p>
+<blockquote>
+<ul class="lvl-2">
+<li class="lvl-2">
+<p>drop、truncate    不管是InnoDB还是MyISAM都立刻释放磁盘空间</p>
+</li>
+<li class="lvl-2">
+<p>delete from table_name  删除全部表数据，MyISAM立刻释放磁盘空间，InnoDB不会立刻释放磁盘空间</p>
+</li>
+<li class="lvl-2">
+<p>delete from table_name where xxx     带条件的删除不管是InnoDB还是MyISAM都不会立刻释放</p>
+</li>
+<li class="lvl-2">
+<p>delete from table_name     虽然未立刻释放磁盘空间，但下次插入的时候仍然可以使用这部分空间</p>
+</li>
+</ul>
+</blockquote>
+</blockquote>
+<p>以下是 MySQL 碎片产生的主要原因：</p>
+<p>一、<strong>数据删除操作</strong>（DELETE）</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>删除记录后，原数据页中的空间并不会立即归还给操作系统，而是标记为“可重用”。磁盘的文件大小不会收缩。InnoDB的Purge线程会异步的来清理这些没用的索引键和行。</p>
+</li>
+<li class="lvl-2">
+<p>如果后续插入的数据大小不匹配或插入位置不连续，就会形成“空洞”，即碎片。</p>
+</li>
+<li class="lvl-2">
+<p>大量 DELETE 操作后未进行优化，碎片会持续累积。</p>
+</li>
+</ul>
+</blockquote>
+<p>二、<strong>数据更新导致行变长</strong>（UPDATE）</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>当 UPDATE 操作使某行数据长度增加（如 VARCHAR 字段内容变长），原位置空间不足时，MySQL 会将该行迁移到新的数据页，原位置留下空洞。</p>
+</li>
+<li class="lvl-2">
+<p>尤其在 InnoDB 中，行溢出或页分裂会加剧碎片。</p>
+</li>
+</ul>
+<p>Innodb的最小物理存储分配单位是页(page)，而UPDATE也可能导致页分裂，频繁的页分裂，页会变得稀疏，并且被不规则的填充，所以最终数据会有碎片。例如原始数据长度varchar(100)，大规模更新数据长度为50，这样的话，有50的空间被空白了，新入库的数据不能完全利用剩余的50，这就会产生碎片。</p>
+</blockquote>
+<p>三、<strong>频繁的插入和删除交替操作</strong>（INSERT/DELETE）</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>高频的写入和删除会导致数据页中留下大量不连续的小块空闲空间。</p>
+</li>
+<li class="lvl-2">
+<p>这些空间可能因为太小或位置分散，无法容纳新插入的行，造成空间浪费。</p>
+</li>
+</ul>
+</blockquote>
+<p>四、<strong>自增主键中断或非顺序插入</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>按顺序写入可以减少碎片，但如果中间有删除或使用 UUID、随机主键等无序插入，会导致页内或页间数据不连续。</p>
+</li>
+<li class="lvl-2">
+<p>非顺序插入容易引发页分裂（Page Split），进而产生碎片。</p>
+</li>
+</ul>
+</blockquote>
+<p>五、<strong>页分裂</strong>（Page Split） —— InnoDB 特有</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>当一个数据页已满，而新数据需要插入到该页的中间位置时，InnoDB 会将该页一分为二（页分裂），腾出空间。</p>
+</li>
+<li class="lvl-2">
+<p>分裂后两个页可能都未填满，形成内部碎片。</p>
+</li>
+<li class="lvl-2">
+<p>频繁分裂会加剧碎片化并影响查询性能。</p>
+</li>
+</ul>
+</blockquote>
+<p>六、<strong>表结构变更</strong>（如 ALTER TABLE）</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>某些 ALTER 操作（如添加字段、修改类型）可能导致表重建或行格式变化，产生临时碎片。</p>
+</li>
+<li class="lvl-2">
+<p>在线 DDL 操作过程中也可能因中间状态产生碎片。</p>
+</li>
+</ul>
+</blockquote>
+<p>七、<strong>未及时重建表</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>MySQL 不会自动整理碎片，长期运行的表若未定期优化，碎片会持续积累。</p>
+</li>
+<li class="lvl-2">
+<p>OPTIMIZE TABLE 或 ALTER TABLE … ENGINE=InnoDB 可重建表、整理碎片，但需手动或定时执行。</p>
+</li>
+</ul>
+</blockquote>
+<p>八、<strong>存储引擎特性</strong>（如 MyISAM vs InnoDB）</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>MyISAM：删除记录后留下空洞，碎片明显，需定期执行 OPTIMIZE。</p>
+</li>
+<li class="lvl-2">
+<p>InnoDB：虽然有“插入缓冲”和“页合并”机制，但高并发写入或大量更新仍会产生碎片，尤其在独立表空间（file-per-table）模式下。</p>
+</li>
+</ul>
+</blockquote>
+<p>九、<strong>大对象字段的存储和更新</strong>（BLOB/TEXT）</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>大字段可能导致行溢出（off-page storage），更新时容易造成原页空间浪费。</p>
+</li>
+<li class="lvl-2">
+<p>频繁更新大字段会加剧碎片问题。</p>
+</li>
+</ul>
+</blockquote>
+<p>十、<strong>事务回滚或 MVCC 机制残留</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>InnoDB 的多版本并发控制（MVCC）会保留旧版本数据，直到无事务引用。</p>
+</li>
+<li class="lvl-2">
+<p>回滚段或 undo log 中旧数据占用空间，若清理不及时，也可能形成逻辑碎片（不影响数据页，但占用存储）。</p>
+</li>
+</ul>
+</blockquote>
+<h4 id="碎片会带来什么问题">碎片会带来什么问题</h4>
+<p>MySQL 中的“碎片”虽然不会直接导致数据丢失或系统崩溃，但会带来一系列<strong>性能下降、资源浪费和运维复杂性增加</strong>的问题。</p>
+<p>以下是碎片带来的主要负面影响：</p>
+<p>一、<strong>性能下降</strong>（最核心问题）</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>查询性能降低</strong></p>
+<ul class="lvl-3">
+<li class="lvl-5">
+<p>碎片导致数据在磁盘或内存中<strong>物理不连续</strong>，查询时需要读取更多数据页才能获取完整结果。</p>
+</li>
+<li class="lvl-5">
+<p>尤其影响范围查询（<code>BETWEEN</code>、<code>&gt;</code>、<code>&lt;</code>）和全表扫描，I/O 次数增加，响应时间变长。</p>
+</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p><strong>索引效率降低</strong></p>
+<ul class="lvl-3">
+<li class="lvl-5">
+<p>索引结构（如 B+ 树）若因碎片导致节点分散，会增加树的高度或节点访问次数。</p>
+</li>
+<li class="lvl-5">
+<p>查询时需要加载更多索引页到内存，缓存命中率下降，执行计划变慢。</p>
+</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p><strong>缓冲池利用率下降</strong>（Buffer Pool）</p>
+<ul class="lvl-3">
+<li class="lvl-5">
+<p>InnoDB 缓冲池缓存的是数据页。碎片页中有效数据少，大量缓存空间被“空洞”占用。</p>
+</li>
+<li class="lvl-5">
+<p>导致真正需要的数据页无法被缓存，频繁从磁盘读取，拖慢整体性能。</p>
+</li>
+</ul>
+</li>
+</ol>
+</blockquote>
+<p>二、<strong>存储空间浪费</strong></p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>占用额外磁盘空间</strong></p>
+<ul class="lvl-3">
+<li class="lvl-5">
+<p><code>Data_free</code>（表中未使用但未释放的空间）持续增长，实际数据量远小于表文件大小。</p>
+</li>
+<li class="lvl-5">
+<p>举例：一个 10GB 的表，可能只有 6GB 是真实数据，其余 4GB 是碎片空洞。</p>
+</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p><strong>备份/迁移成本增加</strong></p>
+<ul class="lvl-3">
+<li class="lvl-5">
+<p>备份工具（如 mysqldump、xtrabackup）会备份整个表文件（含碎片），导致备份文件更大、耗时更长。</p>
+</li>
+<li class="lvl-5">
+<p>数据迁移、复制、同步也会因体积膨胀而效率降低。</p>
+</li>
+</ul>
+</li>
+</ol>
+</blockquote>
+<p>三、<strong>写入性能受影响</strong></p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>插入效率降低</strong></p>
+<ul class="lvl-3">
+<li class="lvl-5">
+<p>当新数据无法填入现有碎片空洞时，MySQL 需分配新页，增加 I/O 和页管理开销。</p>
+</li>
+<li class="lvl-5">
+<p>频繁页分裂（Page Split）也会拖慢 INSERT/UPDATE 操作。</p>
+</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p><strong>更新操作成本上升</strong>：如果更新导致行迁移（Migration），需要写入新页 + 维护指针 + 清理旧位置，开销更大。</p>
+</li>
+</ol>
+</blockquote>
+<p>四、<strong>维护成本增加</strong></p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>需要定期人工干预</strong></p>
+<ul class="lvl-3">
+<li class="lvl-5">
+<p>必须定期执行 <code>OPTIMIZE TABLE</code> 或重建表，否则碎片持续累积。</p>
+</li>
+<li class="lvl-5">
+<p>大表优化耗时长、锁表风险高（尤其 MyISAM），影响业务可用性。</p>
+</li>
+</ul>
+</li>
+<li class="lvl-3">
+<p><strong>监控和诊断复杂化</strong></p>
+<ul class="lvl-3">
+<li class="lvl-5">
+<p>需监控 <code>information_schema.TABLES.Data_free</code>、表大小增长率、查询执行时间变化等指标。</p>
+</li>
+<li class="lvl-5">
+<p>性能问题排查时，碎片可能成为“隐藏元凶”，增加诊断难度。</p>
+</li>
+</ul>
+</li>
+</ol>
+</blockquote>
+<p>五、<strong>扩展性和高可用受影响</strong></p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>主从复制延迟可能加剧</strong>：大量碎片表在主库执行 <code>OPTIMIZE </code>会产生大量 binlog，从库重放时会造成复制延迟。</p>
+</li>
+<li class="lvl-3">
+<p><strong>云数据库/容器环境成本上升</strong></p>
+</li>
+</ol>
+<ul class="lvl-1">
+<li class="lvl-4">
+<p>在按存储计费的云环境（如 AWS RDS、阿里云 RDS）中，碎片导致“虚胖”表，多花冤枉钱。</p>
+</li>
+<li class="lvl-4">
+<p>容器存储卷空间被无效占用，影响弹性扩缩容。</p>
+</li>
+</ul>
+</blockquote>
+<p>六、极端情况：<strong>系统稳定性风险</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>表空间文件（如 ibdata1 或 .ibd 文件）过度膨胀，可能占满磁盘，导致数据库写入失败或服务中断。</p>
+</li>
+<li class="lvl-2">
+<p>自动扩容机制若未配置，可能引发严重生产事故。</p>
+</li>
+</ul>
+</blockquote>
+<h4 id="如何清理碎片">如何清理碎片</h4>
+<p>清理 MySQL 中的碎片是数据库日常维护的重要任务，目的是<strong>回收无效空间、提升查询性能、减少存储占用、优化缓存效率</strong>。</p>
+<p>不同存储引擎（如 InnoDB、MyISAM）清理方式略有不同，以下是完整、实用的碎片清理方案。清理手段的选型决策如下：</p>
+<pre><code class="highlight mermaid">flowchart TD
+    S[确认存在碎片 / Data_free 占比高] --&gt; Q1&#123;表规模与可停写时间?&#125;
+    Q1 --&gt;|小表 / 低峰期可短暂锁写| O1[OPTIMIZE TABLE]
+    Q1 --&gt;|大表需保持在线| Q2&#123;引擎与表类型?&#125;
+    Q2 --&gt;|InnoDB 普通表| O2[ALTER TABLE ... ENGINE=InnoDB / ALGORITHM=INPLACE LOCK=NONE]
+    Q2 --&gt;|超大表 / 严格在线| O3[pt-online-schema-change 重建]
+    S --&gt; Q3&#123;分区表?&#125;
+    Q3 --&gt;|是| O4[只重建碎片严重的分区 / ALTER TABLE ... OPTIMIZE PARTITION]
+    O1 --&gt; V[复测 Data_free 与查询耗时]
+    O2 --&gt; V
+    O3 --&gt; V
+    O4 --&gt; V</code></pre>
+<p><strong>一、OPTIMIZE TABLE</strong>（通用方法）</p>
+<p>推荐用于 MyISAM 和部分 InnoDB，Optimize语句可以<strong>重新组织表和索引</strong>的物理存储，减少存储空间，提高访问的IO效率</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">OPTIMIZE <span class="keyword">TABLE</span> table_name;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 示例：</span></span><br><span class="line">OPTIMIZE <span class="keyword">TABLE</span> orders;</span><br><span class="line"><span class="comment">-- +----------------+----------+----------+---------------------------------------------------+</span></span><br><span class="line"><span class="comment">-- | Table          | Op       | Msg_type | Msg_text</span></span><br><span class="line"><span class="comment">-- +----------------+----------+----------+---------------------------------------------------+</span></span><br><span class="line"><span class="comment">-- | test.orders    | optimize | status   | OK</span></span><br><span class="line"><span class="comment">-- +----------------+----------+----------+---------------------------------------------------+</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>重建表结构、整理碎片、回收未使用空间。</p>
+</li>
+<li class="lvl-2">
+<p>对 MyISAM：效果显著，会重建索引和数据文件。</p>
+</li>
+<li class="lvl-2">
+<p>对 InnoDB（独立表空间模式 innodb_file_per_table=1）才有作用：等价于 <code>ALTER TABLE ... FORCE</code>，重建表和索引。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>注意事项</strong>：</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>锁表操作</strong>：执行期间表会被锁定（MyISAM 全锁，InnoDB 可能短暂锁）。数据量越大的表，优化耗时越长，百万条数据大约耗时30s(约25000-30000行/秒)。在磁盘优化时，所有的增删操作将受限。</p>
+</li>
+<li class="lvl-2">
+<p><strong>空间要求</strong>：需要额外磁盘空间存放临时表（约等于原表大小）。剩余空间必须 &gt; 被optimize的表大小</p>
+</li>
+<li class="lvl-2">
+<p><strong>权限要求</strong>：使用这个语句需要对目标表具有select、insert权限</p>
+</li>
+<li class="lvl-2">
+<p><strong>主从复制</strong>：会记录到 binlog，在从库重放，可能引起复制延迟。</p>
+</li>
+<li class="lvl-2">
+<p><strong>大表慎用</strong>：建议在业务低峰期执行。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>二、重建表</strong>（InnoDB 专用方法）</p>
+<p>更灵活、推荐用于生产环境</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 使用 ALTER TABLE 重建，本质上是recreate，期间支持DML查询和更新操作</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> table_name ENGINE<span class="operator">=</span>InnoDB;</span><br><span class="line"><span class="comment">-- MySQL 5.7+ 支持的语法，明确表示强制重建表，等价于更改引擎为当前引擎</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> table_name FORCE;</span><br><span class="line"></span><br><span class="line"><span class="comment">----------------------------------------------------------------------</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 使用在线 DDL（MySQL 5.6+，推荐）</span></span><br><span class="line"><span class="comment">-- ALGORITHM=INPLACE：原地重建，减少空间占用。LOCK=NONE：尽量不锁表（取决于操作类型和版本）。</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> table_name ENGINE<span class="operator">=</span>InnoDB, ALGORITHM<span class="operator">=</span>INPLACE, LOCK<span class="operator">=</span><span class="keyword">NONE</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>更可控，支持在线操作（部分场景）。</p>
+</li>
+<li class="lvl-2">
+<p>可结合其他 DDL 一起执行（如加索引、改字段）。</p>
+</li>
+</ul>
+</blockquote>
+<p><strong>操作过程</strong>：</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p>获取MDL（meta data lock）写锁，innodb内部创建与原表结构相同的临时文件</p>
+</li>
+<li class="lvl-3">
+<p>拷贝数据前，MDL写锁退化成读锁，支持DML更新操作</p>
+</li>
+<li class="lvl-3">
+<p>根据主键递增顺序，将数据读出并写到临时文件，直到全部写入，并且拷贝期间的DML更新操作会记录到Row log中</p>
+</li>
+<li class="lvl-3">
+<p>上锁，再将Row log中的数据应用到临时文件</p>
+</li>
+<li class="lvl-3">
+<p>互换原表和临时表的名字</p>
+</li>
+<li class="lvl-3">
+<p>删除临时表</p>
+</li>
+</ol>
+</blockquote>
+<p><strong>三、分区表碎片清理</strong>（针对 RANGE/LIST 分区）</p>
+<p>如果表是分区表，可以<strong>只优化特定碎片严重的分区</strong>，减少影响：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">ALTER TABLE</span> table_name OPTIMIZE <span class="keyword">PARTITION</span> partition_name;</span><br><span class="line"><span class="comment">-- 或</span></span><br><span class="line"><span class="keyword">ALTER TABLE</span> table_name REBUILD <span class="keyword">PARTITION</span> partition_name;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>适用于日志表、时间分表等场景，按月/日分区，只清理历史分区。</p>
+</blockquote>
+<p><strong>四、批量清理多个表的碎片</strong></p>
+<p>方法1：SQL 脚本自动生成优化语句</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> CONCAT(<span class="string">&#x27;OPTIMIZE TABLE &#x27;</span>, table_schema, <span class="string">&#x27;.&#x27;</span>, table_name, <span class="string">&#x27;;&#x27;</span>) <span class="keyword">AS</span> sql_stmt</span><br><span class="line"><span class="keyword">FROM</span> information_schema.tables</span><br><span class="line"><span class="keyword">WHERE</span> table_schema <span class="operator">=</span> <span class="string">&#x27;your_database&#x27;</span></span><br><span class="line">  <span class="keyword">AND</span> data_free <span class="operator">&gt;</span> <span class="number">1024</span> <span class="operator">*</span> <span class="number">1024</span> <span class="operator">*</span> <span class="number">100</span>  <span class="comment">-- 碎片大于100MB的表</span></span><br><span class="line">  <span class="keyword">AND</span> engine <span class="keyword">IN</span> (<span class="string">&#x27;InnoDB&#x27;</span>, <span class="string">&#x27;MyISAM&#x27;</span>);</span><br></pre></td></tr></table></figure>
+<p>方法2：Shell 脚本 + MySQL 命令行（定时任务）</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line">DB_USER=<span class="string">&quot;root&quot;</span></span><br><span class="line">DB_PASS=<span class="string">&quot;password&quot;</span></span><br><span class="line">DB_NAME=<span class="string">&quot;your_db&quot;</span></span><br><span class="line"></span><br><span class="line">mysql -u<span class="variable">$DB_USER</span> -p<span class="variable">$DB_PASS</span> -Nse <span class="string">&quot;</span></span><br><span class="line"><span class="string">SELECT CONCAT(&#x27;OPTIMIZE TABLE &#x27;, table_schema, &#x27;.&#x27;, table_name, &#x27;;&#x27;)</span></span><br><span class="line"><span class="string">FROM information_schema.tables</span></span><br><span class="line"><span class="string">WHERE table_schema = &#x27;<span class="variable">$DB_NAME</span>&#x27;</span></span><br><span class="line"><span class="string">  AND data_free &gt; 100*1024*1024</span></span><br><span class="line"><span class="string">  AND engine IN (&#x27;InnoDB&#x27;,&#x27;MyISAM&#x27;);</span></span><br><span class="line"><span class="string">&quot;</span> | mysql -u<span class="variable">$DB_USER</span> -p<span class="variable">$DB_PASS</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>建议每周或每月低峰期执行一次。</p>
+</blockquote>
+<p><strong>五、监控碎片程度</strong>（执行前判断是否需要清理）</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查看表碎片大小（Data_free）：</span></span><br><span class="line"><span class="keyword">SELECT</span></span><br><span class="line">    table_name,</span><br><span class="line">    engine,</span><br><span class="line">    data_length,</span><br><span class="line">    index_length,</span><br><span class="line">    data_free,</span><br><span class="line">    ROUND(data_free <span class="operator">/</span> (data_length <span class="operator">+</span> index_length) <span class="operator">*</span> <span class="number">100</span>, <span class="number">2</span>) <span class="keyword">AS</span> frag_percent</span><br><span class="line"><span class="keyword">FROM</span> information_schema.tables</span><br><span class="line"><span class="keyword">WHERE</span> table_schema <span class="operator">=</span> <span class="string">&#x27;your_database&#x27;</span></span><br><span class="line">  <span class="keyword">AND</span> data_free <span class="operator">&gt;</span> <span class="number">0</span></span><br><span class="line"><span class="keyword">ORDER</span> <span class="keyword">BY</span> data_free <span class="keyword">DESC</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 通过 `show table status like &#x27;表名&#x27;` 查看表的状态，如果data_free字段不为0则表示有碎片存在</span></span><br><span class="line"><span class="keyword">SELECT</span></span><br><span class="line">    CONCAT( <span class="keyword">TRUNCATE</span> ( <span class="built_in">SUM</span>( data_length ) <span class="operator">/</span> <span class="number">1024</span> <span class="operator">/</span> <span class="number">1024</span>, <span class="number">2</span> ), <span class="string">&#x27;MB&#x27;</span> ) <span class="keyword">AS</span> data_size,</span><br><span class="line">    CONCAT( <span class="keyword">TRUNCATE</span> ( <span class="built_in">SUM</span>( data_free ) <span class="operator">/</span> <span class="number">1024</span> <span class="operator">/</span> <span class="number">1024</span>, <span class="number">2</span> ), <span class="string">&#x27;MB&#x27;</span> ) <span class="keyword">AS</span> data_free,</span><br><span class="line">    CONCAT( <span class="keyword">TRUNCATE</span> ( <span class="built_in">SUM</span>( index_length ) <span class="operator">/</span> <span class="number">1024</span> <span class="operator">/</span> <span class="number">1024</span>, <span class="number">2</span> ), <span class="string">&#x27;MB&#x27;</span> ) <span class="keyword">AS</span> index_size</span><br><span class="line"><span class="keyword">FROM</span></span><br><span class="line">    information_schema.TABLES</span><br><span class="line"><span class="keyword">WHERE</span></span><br><span class="line">    TABLE_NAME <span class="operator">=</span> <span class="string">&#x27;tableName&#x27;</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>建议：碎片率 &gt; 10% 或碎片大小 &gt; 1GB 的表优先优化。</p>
+</blockquote>
+<p>六、特殊情况处理</p>
+<ol>
+<li class="lvl-3">
+<p><strong>共享表空间碎片</strong>（ibdata1）</p>
+<blockquote>
+<p>此操作风险高，仅建议在维护窗口或新系统部署时进行。</p>
+<ul class="lvl-3">
+<li class="lvl-2">
+<p>如果使用系统表空间（innodb_file_per_table=OFF），所有表数据存在 ibdata1，碎片无法单独清理。</p>
+</li>
+<li class="lvl-2">
+<p>解决方案：</p>
+<ol>
+<li class="lvl-5">备份所有数据（mysqldump）</li>
+<li class="lvl-5">停止 MySQL，删除 ibdata1、ib_logfile*</li>
+<li class="lvl-5">启用 <code>innodb_file_per_table=ON</code></li>
+<li class="lvl-5">恢复数据 → 每个表独立 .ibd 文件，可单独优化</li>
+</ol>
+</li>
+</ul>
+</blockquote>
+</li>
+<li class="lvl-3">
+<p>大表优化太慢？</p>
+<p>使用 <strong>pt-online-schema-change</strong>（Percona Toolkit）工具在线重建表，几乎无锁：支持大表在线优化，不影响业务读写。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">pt<span class="operator">-</span>online<span class="operator">-</span>schema<span class="operator">-</span>change <span class="comment">--alter &quot;ENGINE=InnoDB&quot; D=your_db,t=your_table --execute</span></span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<p><strong>预防碎片的最佳实践</strong>（治本之策）</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>使用自增主键</strong></td>
+<td>保证数据顺序插入，减少页分裂</td>
+</tr>
+<tr>
+<td><strong>避免频繁 UPDATE 大字段</strong></td>
+<td>如 TEXT/BLOB，更新易导致行迁移</td>
+</tr>
+<tr>
+<td><strong>定期归档历史数据</strong></td>
+<td>减少活跃数据量，降低碎片产生速度</td>
+</tr>
+<tr>
+<td><strong>合理设置页填充因子</strong></td>
+<td>InnoDB 默认已优化，一般无需调整</td>
+</tr>
+<tr>
+<td><strong>使用 SSD + 合理 buffer pool</strong></td>
+<td>减轻碎片对 I/O 的影响</td>
+</tr>
+<tr>
+<td><strong>监控 + 自动化脚本</strong></td>
+<td>定期检查碎片，自动触发优化</td>
+</tr>
+</tbody>
+</table>
+<p><strong>碎片清理操作速查表</strong></p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐命令</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>小表 / MyISAM 表</td>
+<td><code>OPTIMIZE TABLE t;</code></td>
+<td>简单直接，会锁表</td>
+</tr>
+<tr>
+<td>InnoDB 表重建</td>
+<td><code>ALTER TABLE t ENGINE=InnoDB;</code></td>
+<td>更灵活，支持在线选项</td>
+</tr>
+<tr>
+<td>在线无锁优化</td>
+<td><code>ALTER TABLE t ENGINE=InnoDB, ALGORITHM=INPLACE, LOCK=NONE;</code></td>
+<td>MySQL 5.6+</td>
+</tr>
+<tr>
+<td>分区表优化</td>
+<td><code>ALTER TABLE t OPTIMIZE PARTITION p0;</code></td>
+<td>针对性清理</td>
+</tr>
+<tr>
+<td>批量清理</td>
+<td>用 SQL 生成脚本 + 定时任务</td>
+<td>自动化运维</td>
+</tr>
+<tr>
+<td>超大表在线优化</td>
+<td><code>pt-online-schema-change</code></td>
+<td>第三方工具，推荐生产环境</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>监控先行</strong>：不要盲目优化，先查碎片率和大小。</p>
+</li>
+<li class="lvl-2">
+<p><strong>低峰操作</strong>：选择业务低谷期执行，避免影响线上服务。</p>
+</li>
+<li class="lvl-2">
+<p><strong>备份保障</strong>：重要表优化前做备份。</p>
+</li>
+<li class="lvl-2">
+<p><strong>自动化 + 预防</strong>：建立定期维护机制 + 优化表设计，从源头减少碎片。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="其他实用技巧">其他实用技巧</h3>
+<p>本节汇总前文未展开、但线上实践同样高频的“习惯层”技巧——它们见效不如索引直接，却决定长期稳定性：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>使用连接池（HikariCP / Druid）</strong>：频繁创建/销毁连接的代价不只是握手与认证——每条连接都要占用服务端内存（<code>max_connections</code> 受制于此），TCP 建连在并发高峰还会放大延迟。注意两点：① 池大小不是越大越好，连接数超过 CPU 与磁盘 IO 的并行上限后只会徒增上下文切换，经验起点 ≈ <code>(CPU 核数 × 2) + 有效磁盘数</code>，最终以压测为准；② 池的 <code>maxLifetime</code>（HikariCP 默认 30 分钟）必须小于 MySQL 服务端 <code>wait_timeout</code>（默认 8 小时，线上常被调小），否则空闲连接被服务端掐断后，池中会出现“已失效却仍在复用”的幽灵连接报错。</p>
+</li>
+<li class="lvl-2">
+<p><strong>避免滥用 <code>SELECT ... FOR UPDATE</code></strong>：它把读操作也变成写锁，会与所有写事务互斥。能用快照读（MVCC 一致性读）满足的业务（报表、大部分查询）绝不加锁；只有真正的“读-改-写”竞态才需要显式锁，且优先考虑<strong>乐观锁</strong>（版本号校验影响行数：<code>UPDATE ... SET version = version + 1 WHERE id = ? AND version = ?</code>）或<strong>原子更新</strong>（<code>UPDATE ... SET stock = stock - 1 WHERE id = ? AND stock &gt;= 1</code>），从根上消除锁等待与死锁风险。</p>
+</li>
+<li class="lvl-2">
+<p><strong>避免大事务与长事务</strong>：锁持有时间与事务长度成正比，大事务还会放大 undo / redo / binlog 堆积——具体机制与拆批手法已在上文“频繁更新数据的优化方案”根因二、根因四展开，此处不赘述。</p>
+</li>
+<li class="lvl-2">
+<p><strong>批量操作</strong>：多行 VALUES、按主键游标分批等收益已在“如何提高数据插入效率”与“频繁更新数据”两节量化过；应用侧需补一个隐藏坑：JDBC 驱动必须开启 <code>rewriteBatchedStatements=true</code>，否则 <code>addBatch()</code> 仍会逐条发送 SQL，批量只是“看起来快”。</p>
+</li>
+</ul>
+<h2 id="总结：优化工作的正确打开方式">总结：优化工作的正确打开方式</h2>
+<blockquote>
+<p>性能优化的本质是<strong>用成本模型找瓶颈</strong>，而不是背参数清单。建议的推进顺序：</p>
+<ol>
+<li class="lvl-3"><strong>量化现状</strong>：慢查询日志 + performance_schema 找出 Top SQL，先解决“读”的问题；</li>
+<li class="lvl-3"><strong>SQL 与索引</strong>：用 EXPLAIN 逐条分析（type / key / rows / Extra），消灭全表扫描与 filesort——这一层通常贡献 80% 的收益；</li>
+<li class="lvl-3"><strong>表结构与参数</strong>：字段类型是否合理、Buffer Pool 是否够大、双 1 刷盘是否必要、脏页参数是否匹配磁盘能力；</li>
+<li class="lvl-3"><strong>运维治理</strong>：定期 ANALYZE 刷新统计信息、碎片整理、历史数据归档，防止“慢慢变慢”；</li>
+<li class="lvl-3"><strong>架构演进</strong>：前三步做完仍不满足时，再考虑读写分离 / 分库分表 / 缓存——此时目标明确、收益可预期。</li>
+</ol>
+<p>每次优化都要<strong>可回滚、可度量</strong>：记录优化前后的响应时间 / 扫描行数 / 吞吐对比，用数据说话，避免“凭感觉调参”。</p>
+</blockquote>
+<h2 id="工程实践：优化必须可测量、可回滚">工程实践：优化必须可测量、可回滚</h2>
+<p>建议每次只改变一个主要变量，并保留基线：QPS、P95/P99、CPU、IO、Buffer Pool 命中、锁等待、慢查询数量等。SQL 和索引层的问题没有确认之前，不建议直接上读写分离或分库分表。</p>
+<p>配置参数尤其需要结合 MySQL 版本、硬件和负载验证，文章中的示例值只能作为起点，不能直接当成所有生产环境的推荐值。</p>
+<h2 id="参考资料">参考资料</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://dev.mysql.com/doc/refman/8.0/en/optimization.html">https://dev.mysql.com/doc/refman/8.0/en/optimization.html</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://dev.mysql.com/doc/refman/8.0/en/monitoring.html">https://dev.mysql.com/doc/refman/8.0/en/monitoring.html</a></p>
+</li>
+</ul>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2025/12/mysql-index-guide/">MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/11/mysql-query-execution/">一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/11/mysql8-new-features/">MySQL 8.0 哪些新特性真正值得用？窗口函数、CTE、索引与 JSON</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/10/mysql-mvcc-read-view/">MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/11/mysql-auto-increment/">MySQL 自增主键为何会出现空洞？分配机制与主从/分布式取舍</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/09/mysql-performance-tuning/">https://pengline.cn/2025/09/mysql-performance-tuning/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/">性能优化</a><a class="post-meta__tags" href="/tags/MySQL/">MySQL</a><a class="post-meta__tags" href="/tags/%E7%B4%A2%E5%BC%95/">索引</a><a class="post-meta__tags" href="/tags/EXPLAIN/">EXPLAIN</a><a class="post-meta__tags" href="/tags/%E6%85%A2%E6%9F%A5%E8%AF%A2/">慢查询</a><a class="post-meta__tags" href="/tags/Buffer-Pool/">Buffer Pool</a><a class="post-meta__tags" href="/tags/%E6%9E%B6%E6%9E%84%E4%BC%98%E5%8C%96/">架构优化</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small215620KZy261754229380.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/09/java-cpu-spike-diagnosis/" title="Web 系统 CPU 飙高如何逐层定位与根因排查"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860445980163886044557.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">Web 系统 CPU 飙高如何逐层定位与根因排查</div></div><div class="info-2"><div class="info-item-1">线上服务 CPU 持续飙高常由多因素叠加引起，需按进程线程到代码栈逐层定位。本文剖析应用层锁竞争死循环与 GC 频繁等诱因，结合线程 dump 与火焰图解构高占用线程，覆盖 Redis、MySQL 与外部依赖影响，给出完整排查路径与工程结论。</div></div></div></a><a class="pagination-related" href="/2025/09/sharding-cross-db-pagination/" title="分库分表后如何分页？从全局排序到游标与归并查询"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1745746436650174574643686.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">分库分表后如何分页？从全局排序到游标与归并查询</div></div><div class="info-2"><div class="info-item-1">厘清分库分表分片与分区的概念边界与适用场景，聚焦分库分表后跨库分页的分布式难题，多分片汇总再排序的成本为何随页码线性膨胀，对比游标分页、排序归并、二次查询法与优先队列流式归并的原理与取舍，并给出与 ID 内置分片的选型。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/08/mysql-buffer-pool-flush/" title="MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-08-15</div><div class="info-item-2">MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景</div></div><div class="info-2"><div class="info-item-1">几百 GB 的大表跑在只有几十 GB 内存的服务器上，MySQL 为什么敢放心把数据先放在内存里？答案藏在 Buffer Pool、change buffer、redo log 与整套刷盘策略里。本文沿一条 UPDATE 的流转路径展开，讲清缓存页管理与防污染设计、WAL 预写日志与 checkpoint 节奏、双 1 配置的取舍以及 doublewrite 的存在理由，并复盘三个典型故障场景。</div></div></div></a><a class="pagination-related" href="/2025/12/mysql-index-guide/" title="MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small202824LQTsk1760099304.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-07</div><div class="info-item-2">MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断</div></div><div class="info-2"><div class="info-item-1">从底层到实战剖析 MySQL 索引——B+ 树与 Hash 的结构差异以及聚簇、二级索引的回表机制，最左前缀为何成立、覆盖索引与索引下推如何省去回表 IO，细数函数操作、隐式转换等导致索引失效的写法陷阱，结尾给出 EXPLAIN 各列判读方法与区分度、选择性导向的索引选列最佳实践。</div></div></div></a><a class="pagination-related" href="/2025/11/mysql-query-execution/" title="一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small204025vlPNF1760100025.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-18</div><div class="info-item-2">一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路</div></div><div class="info-2"><div class="info-item-1">完整拆解一条 SQL 从客户端到存储引擎的执行链路——连接器建会话与认证、查询缓存为何在 8.0 移除、解析器进行词法与语法分析、优化器按成本模型与统计信息选索引和连接顺序、执行器逐行迭代取数，并详解三大日志分工、两阶段提交与慢定位。</div></div></div></a><a class="pagination-related" href="/2025/12/es-deep-pagination-search-after/" title="Elasticsearch 深度分页为何越来越慢？从 from&#x2F;size 到 search_after + PIT"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1730166918792173016691849.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-22</div><div class="info-item-2">Elasticsearch 深度分页为何越来越慢？从 from&#x2F;size 到 search_after + PIT</div></div><div class="info-2"><div class="info-item-1">厘清 Elasticsearch 深度分页的核心陷阱——from/size 实质是“取出前 N+M 条再丢弃”而非跳过，偏移量越大协调节点的全局排序与内存开销线性增长直至 OOM；对比 Scroll 快照与 search_after 游标的原理差异，讲解用排序值代替偏移量并配合 PIT 保证翻页一致性的最优实践，给出不同跳页场景的选型建议。</div></div></div></a><a class="pagination-related" href="/2025/12/mysql-es-data-sync/" title="MySQL 如何同步到 Elasticsearch？从双写到 CDC 的方案演进与一致性"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-03</div><div class="info-item-2">MySQL 如何同步到 Elasticsearch？从双写到 CDC 的方案演进与一致性</div></div><div class="info-2"><div class="info-item-1">MySQL 同步至 ES、Redis 等异构存储的五种策略详解——应用双写、定时轮询、消息队列解耦、Binlog 解析与云托管服务，从实时性、一致性、业务侵入性与运维成本四个维度权衡，讲解各自原理、一致性补偿手段与生产演进路径，并给出适合不同数据规模与团队能力的选型建议。</div></div></div></a><a class="pagination-related" href="/2025/11/mysql-auto-increment/" title="MySQL 自增主键为何会出现空洞？分配机制与主从&#x2F;分布式取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-09</div><div class="info-item-2">MySQL 自增主键为何会出现空洞？分配机制与主从&#x2F;分布式取舍</div></div><div class="info-2"><div class="info-item-1">解析 MySQL 自增主键的计数器存储与分配机制、innodb_autoinc_lock_mode 三种自增锁模式在并发与批量插入下的性能取舍及完整执行流程；解读事务回滚、先申请后更新等 ID 空洞的成因并论证其无害性，给出主从复制与双主架构的一致性配置，及多实例场景改用雪花 ID、号段模式的分布式设计建议。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B8%B8%E7%94%A8%E7%9A%84%E4%BC%98%E5%8C%96%E6%96%B9%E6%A1%88"><span class="toc-number">1.</span> <span class="toc-text">常用的优化方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#SQL-%E8%AF%AD%E5%8F%A5%E4%BC%98%E5%8C%96%EF%BC%88%E6%9C%80%E7%9B%B4%E6%8E%A5%E6%9C%89%E6%95%88%EF%BC%89"><span class="toc-number">1.1.</span> <span class="toc-text">SQL 语句优化（最直接有效）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%B4%A2%E5%BC%95%E4%BC%98%E5%8C%96%EF%BC%88%E6%80%A7%E8%83%BD%E6%8F%90%E5%8D%87%E5%85%B3%E9%94%AE%EF%BC%89"><span class="toc-number">1.2.</span> <span class="toc-text">索引优化（性能提升关键）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A1%A8%E7%BB%93%E6%9E%84%E4%B8%8E%E8%AE%BE%E8%AE%A1%E4%BC%98%E5%8C%96%EF%BC%88%E6%80%9D%E6%83%B3%E4%B9%A0%E6%83%AF%EF%BC%89"><span class="toc-number">1.3.</span> <span class="toc-text">表结构与设计优化（思想习惯）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#MySQL-%E9%85%8D%E7%BD%AE%E5%8F%82%E6%95%B0%E4%BC%98%E5%8C%96%EF%BC%88%E5%BA%95%E5%B1%82%E5%8E%9F%E7%90%86%EF%BC%89"><span class="toc-number">1.4.</span> <span class="toc-text">MySQL 配置参数优化（底层原理）</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%BC%93%E5%86%B2%E6%B1%A0%EF%BC%88%E6%9C%80%E9%87%8D%E8%A6%81%EF%BC%89"><span class="toc-number">1.4.1.</span> <span class="toc-text">缓冲池（最重要）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%97%A5%E5%BF%97%E4%B8%8E%E5%88%B7%E7%9B%98%E7%AD%96%E7%95%A5%EF%BC%88%E5%B9%B3%E8%A1%A1%E6%80%A7%E8%83%BD%E4%B8%8E%E5%AE%89%E5%85%A8%EF%BC%89"><span class="toc-number">1.4.2.</span> <span class="toc-text">日志与刷盘策略（平衡性能与安全）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%84%8F%E9%A1%B5%E6%8E%A7%E5%88%B6%EF%BC%88%E6%95%B0%E6%8D%AE%E9%A1%B5%EF%BC%89"><span class="toc-number">1.4.3.</span> <span class="toc-text">脏页控制（数据页）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%BF%9E%E6%8E%A5%E4%B8%8E%E7%BA%BF%E7%A8%8B"><span class="toc-number">1.4.4.</span> <span class="toc-text">连接与线程</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%B4%E6%97%B6%E8%A1%A8%E4%B8%8E%E6%8E%92%E5%BA%8F"><span class="toc-number">1.4.5.</span> <span class="toc-text">临时表与排序</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%9B%91%E6%8E%A7%E4%B8%8E%E6%85%A2%E6%9F%A5%E8%AF%A2%E4%BC%98%E5%8C%96%EF%BC%88%E6%89%8B%E6%AE%B5%E7%A9%B7%E6%9E%81%EF%BC%89"><span class="toc-number">1.5.</span> <span class="toc-text">监控与慢查询优化（手段穷极）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9E%B6%E6%9E%84%E5%B1%82%E4%BC%98%E5%8C%96%EF%BC%88%E9%AB%98%E5%B9%B6%E5%8F%91-%E5%A4%A7%E6%95%B0%E6%8D%AE%EF%BC%89"><span class="toc-number">1.6.</span> <span class="toc-text">架构层优化（高并发&#x2F;大数据）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E7%94%A8%E7%9A%84%E4%BC%98%E5%8C%96%E6%96%B9%E6%A1%88"><span class="toc-number">2.</span> <span class="toc-text">实用的优化方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%A6%82%E4%BD%95%E6%8F%90%E9%AB%98%E6%95%B0%E6%8D%AE%E6%8F%92%E5%85%A5%E6%95%88%E7%8E%87"><span class="toc-number">2.1.</span> <span class="toc-text">如何提高数据插入效率</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%A2%91%E7%B9%81%E6%9B%B4%E6%96%B0%E6%95%B0%E6%8D%AE%E7%9A%84%E4%BC%98%E5%8C%96%E6%96%B9%E6%A1%88"><span class="toc-number">2.2.</span> <span class="toc-text">频繁更新数据的优化方案</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%AE%9A%E4%BD%8D%EF%BC%9A%E6%9B%B4%E6%96%B0%E6%85%A2%E7%9A%84%E4%B8%A4%E4%B8%AA%E6%96%B9%E5%90%91"><span class="toc-number">2.2.1.</span> <span class="toc-text">定位：更新慢的两个方向</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%85%AD%E7%B1%BB%E6%A0%B9%E5%9B%A0%E4%B8%8E%E5%AF%B9%E7%AD%96"><span class="toc-number">2.2.2.</span> <span class="toc-text">六类根因与对策</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%AA%8C%E8%AF%81%EF%BC%9A%E6%94%B9%E5%AE%8C%E5%A6%82%E4%BD%95%E7%A1%AE%E8%AE%A4%E6%9C%89%E6%95%88"><span class="toc-number">2.2.3.</span> <span class="toc-text">验证：改完如何确认有效</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A1%A8%E6%95%B0%E6%8D%AE%E7%A2%8E%E7%89%87%EF%BC%88%E7%A3%81%E7%9B%98%E5%AD%98%E5%82%A8%E7%A2%8E%E7%89%87%EF%BC%89%E7%9A%84%E4%BC%98%E5%8C%96%E6%96%B9%E6%A1%88"><span class="toc-number">2.3.</span> <span class="toc-text">表数据碎片（磁盘存储碎片）的优化方案</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%A2%8E%E7%89%87%E4%BA%A7%E7%94%9F%E7%9A%84%E5%8E%9F%E5%9B%A0"><span class="toc-number">2.3.1.</span> <span class="toc-text">碎片产生的原因</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E7%A2%8E%E7%89%87%E4%BC%9A%E5%B8%A6%E6%9D%A5%E4%BB%80%E4%B9%88%E9%97%AE%E9%A2%98"><span class="toc-number">2.3.2.</span> <span class="toc-text">碎片会带来什么问题</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%A6%82%E4%BD%95%E6%B8%85%E7%90%86%E7%A2%8E%E7%89%87"><span class="toc-number">2.3.3.</span> <span class="toc-text">如何清理碎片</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%85%B6%E4%BB%96%E5%AE%9E%E7%94%A8%E6%8A%80%E5%B7%A7"><span class="toc-number">2.4.</span> <span class="toc-text">其他实用技巧</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%80%BB%E7%BB%93%EF%BC%9A%E4%BC%98%E5%8C%96%E5%B7%A5%E4%BD%9C%E7%9A%84%E6%AD%A3%E7%A1%AE%E6%89%93%E5%BC%80%E6%96%B9%E5%BC%8F"><span class="toc-number">3.</span> <span class="toc-text">总结：优化工作的正确打开方式</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5%EF%BC%9A%E4%BC%98%E5%8C%96%E5%BF%85%E9%A1%BB%E5%8F%AF%E6%B5%8B%E9%87%8F%E3%80%81%E5%8F%AF%E5%9B%9E%E6%BB%9A"><span class="toc-number">4.</span> <span class="toc-text">工程实践：优化必须可测量、可回滚</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="toc-number">5.</span> <span class="toc-text">参考资料</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">6.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

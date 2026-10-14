@@ -1,0 +1,1077 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="深入解析 InnoDB 多版本并发控制的底层机制，undo log 版本链如何承载历史版本、Read View 的快照可见性如何判定，厘清 MVCC 与 RC、RR 隔离级别及当前读与快照读的分工，理解读操作为何几乎不加锁、读写互不阻塞，并给出长事务、undo 膨胀与隔离级别选型的工程取舍。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC">
+<meta property="og:url" content="https://pengline.cn/2025/10/mysql-mvcc-read-view/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="深入解析 InnoDB 多版本并发控制的底层机制，undo log 版本链如何承载历史版本、Read View 的快照可见性如何判定，厘清 MVCC 与 RC、RR 隔离级别及当前读与快照读的分工，理解读操作为何几乎不加锁、读写互不阻塞，并给出长事务、undo 膨胀与隔离级别选型的工程取舍。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp">
+<meta property="article:published_time" content="2025-10-09T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-10-14T07:50:52.366Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="InnoDB">
+<meta property="article:tag" content="MVCC">
+<meta property="article:tag" content="MySQL">
+<meta property="article:tag" content="Read View">
+<meta property="article:tag" content="Undo Log">
+<meta property="article:tag" content="事务隔离">
+<meta property="article:tag" content="快照读">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2025/10/mysql-mvcc-read-view/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">91</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">781</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">48</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> AI 创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">MySQL 快照读为何几乎无锁？从 Undo 版本链到 Read View 的 MVCC</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2025-10-09T16:00:00.000Z" title="发表于 2025-10-10 00:00:00">2025-10-10</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-10-14T07:50:52.366Z" title="更新于 2026-10-14 15:50:52">2026-10-14</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/">DB</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/DB/MySQL/">MySQL</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><p>排查线上问题时，“另一个事务明明已提交，这边读到的还是旧值”“History list length 飙升、undo 表空间膨胀”这类现象，绕到最后都会指向同一个机制——MVCC。它决定了一个事务能看到哪些版本，也决定了读操作为什么几乎不加锁。本文从 undo 版本链与 Read View 讲起，把 RC/RR 的快照差异、写写冲突的兜底手段和长事务的代价讲清楚。</p>
+<p>MVCC（Multi-Version Concurrency Control，多版本并发控制）是一种用于实现数据库并发控制的机制，广泛应用于 PostgreSQL、Oracle、MySQL InnoDB 等主流关系型数据库引擎。</p>
+<p>其核心思想是通过维护数据的多个版本，使得读操作和写操作可以在不互相阻塞的情况下并发执行，从而提高数据库系统的并发性能和一致性。</p>
+<blockquote>
+<p><strong>阅读导览</strong>：<br>
+① <strong>事务与并发异常</strong>——脏写/丢失更新/脏读/不可重复读/幻读的精确定义与区别；<br>
+② <strong>隔离级别</strong>——从“异常矩阵”看各级别究竟放开了什么；<br>
+③ <strong>两大基石</strong>——当前读与快照读的分工、redo / undo / binlog 三类日志的角色；<br>
+④ <strong>MVCC 原理</strong>——隐藏字段、undo 版本链、Read View 四要素与可见性判断；<br>
+⑤ <strong>隔离级别 × MVCC</strong>——RC 语句级快照与 RR 事务级快照的差异；<br>
+⑥ <strong>实践问题</strong>——undo 膨胀、长事务、读改写陷阱与 RC/RR 选型。</p>
+</blockquote>
+<blockquote>
+<p><strong>MVCC = 多版本 + Read View + Undo Log 链</strong></p>
+<ul class="lvl-1">
+<li class="lvl-2">读不阻塞写，写不阻塞读；</li>
+<li class="lvl-2">通过<strong>版本可见性判断</strong>实现一致性快照；</li>
+<li class="lvl-2">实现 <strong>RC（Read Committed）</strong> 和 <strong>RR（Repeatable Read）</strong> 隔离级别的基石。</li>
+</ul>
+</blockquote>
+<h2 id="事务管理">事务管理</h2>
+<p><strong>数据库事务是构成单一逻辑工作单元的操作集合</strong></p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">BEGIN TRANSACTION  //事务开始</span><br><span class="line">    SQL1</span><br><span class="line">    SQL2</span><br><span class="line">COMMIT/ROLLBACK   //事务提交或回滚</span><br></pre></td></tr></table></figure>
+<p>当有多个用户同时操作数据库时，数据库能够以事务为单位进行并发控制</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 查看当前隔离级别</span></span><br><span class="line"><span class="keyword">SELECT</span> @<span class="variable">@transaction_isolation</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 设置隔离级别（会话级）</span></span><br><span class="line"><span class="keyword">SET</span> SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 查看当前事务 ID（需开启事务后）</span></span><br><span class="line"><span class="keyword">SELECT</span> trx_id <span class="keyword">FROM</span> information_schema.innodb_trx </span><br><span class="line"><span class="keyword">WHERE</span> trx_mysql_thread_id <span class="operator">=</span> CONNECTION_ID();</span><br></pre></td></tr></table></figure>
+<h3 id="并发异常">并发异常</h3>
+<p>事务并发可能导致数据异常问题，需要通过隔离级别+MVCC+锁保证。以下为并发导致的一些问题：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>脏写</strong>（锁机制）</p>
+<p>指一个事务<strong>回滚时覆盖了其他事务已提交的修改</strong>（写写并发）：事务 1 先修改某行（未提交），事务 2 又修改同一行并抢先提交；随后事务 1 回滚，把事务 2 已提交的修改一并撤销——事务 2 的成果凭空消失。这是写写异常中最严重的一种，<strong>任何隔离级别下都不允许发生</strong>（InnoDB 行锁从机制上禁止）。</p>
+<img src="/imgs/db/image-20210707175746735.png" alt="image-20210707175746735" style="zoom: 33%;" loading='lazy'>
+<p>如图：事务 1 实际应该回滚到 30（事务 2 已提交后的值），而不是 10。</p>
+</li>
+<li class="lvl-2">
+<p><strong>丢失更新</strong>（锁机制）</p>
+<p>事务覆盖了其他事务对数据的<strong>已提交修改</strong>，导致先提交者的更新“丢失”（写写并发）。与脏写的区别：丢失更新中<strong>两个事务都成功提交</strong>，只是后提交者基于自己读到的旧值，覆盖了先提交者的成果。</p>
+<img src="/imgs/db/image-20210707180059499.png" alt="image-20210707180059499" style="zoom: 50%;" loading='lazy'>
+<p>如图：事务 1 与事务 2 都读到 A=10；事务 1 先做 A+10 并提交（A=20）；事务 2 却基于自己读到的旧值 10 做 A-10 并提交（A=10）——事务 1 的 +10 被无声覆盖，这就是经典的读-改-写（read-modify-write）丢失更新。</p>
+</li>
+<li class="lvl-2">
+<p><strong>脏读</strong>（读未提交）</p>
+<p>指一个事务读取了另一个事务未提交的数据</p>
+<img src="/imgs/db/image-20210707180243594.png" alt="image-20210707180243594" style="zoom:50%;" loading='lazy'>
+<p>在事务1对A的处理过程中，事务2读取了A的值，但之后事务1回滚，导致事务2读取的A是未提交的脏数据。</p>
+</li>
+<li class="lvl-2">
+<p><strong>不可重复读</strong>（读已提交）</p>
+<p>指一个事务对同一数据的读取结果前后不一致。</p>
+<img src="/imgs/db/image-20210707180413531.png" alt="image-20210707180413531" style="zoom:50%;" loading='lazy'>
+<p>读取的是事务已经提交的数据，只不过因为数据被其他事务修改过导致前后两次读取的结果不一样</p>
+</li>
+<li class="lvl-2">
+<p><strong>幻读</strong>（可重复读）</p>
+<p>事务读取某个范围的数据时，因为其他事务<strong>插入/删除</strong>了范围内的行，导致前后两次读取的结果不一致——多出来的行就像“幻影”一样。</p>
+<p><strong>幻读与不可重复读的区别</strong>：不可重复读针对<strong>确定的一行</strong>（该行被 UPDATE 修改）；幻读针对<strong>不确定的行集合</strong>（被 INSERT / DELETE 改变了数量），因此幻读通常出现在带范围条件的查询中。比如下面这种情况：</p>
+<img src="/imgs/db/image-20210707184150129.png" alt="image-20210707184150129" style="zoom:50%;" loading='lazy'>
+</li>
+</ul>
+<h3 id="隔离级别">隔离级别</h3>
+<p>事务具有隔离性，理论上来说事务之间的执行不应该相互产生影响，其对数据库的影响应该和它们串行执行时一样。</p>
+<p>然而完全的隔离性会导致系统并发性能很低，降低对资源的利用率，因而实际上对隔离性的要求会有所放宽，这也会一定程度造成对数据库一致性要求降低</p>
+<img src="/imgs/db/1422237-20181122103221352-219869675.png" alt="img" style="zoom: 37%;" loading='lazy'>
+<p><strong>异常 × 隔离级别矩阵</strong>（「是」= 可能发生，「否」= 不可能发生）：</p>
+<table>
+<thead>
+<tr>
+<th>异常 \ 隔离级别</th>
+<th>读未提交</th>
+<th>读已提交</th>
+<th>可重复读</th>
+<th>串行化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>脏写</td>
+<td>否</td>
+<td>否</td>
+<td>否</td>
+<td>否</td>
+</tr>
+<tr>
+<td>脏读</td>
+<td>是</td>
+<td>否</td>
+<td>否</td>
+<td>否</td>
+</tr>
+<tr>
+<td>不可重复读</td>
+<td>是</td>
+<td>是</td>
+<td>否</td>
+<td>否</td>
+</tr>
+<tr>
+<td>幻读</td>
+<td>是</td>
+<td>是</td>
+<td>否（InnoDB）</td>
+<td>否</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>注：SQL 标准认为可重复读（RR）允许幻读，但 <strong>InnoDB 的 RR 通过 MVCC（快照读）+ Next-Key Lock（当前读）把幻读一并禁止</strong>，隔离强度接近 SERIALIZABLE 而并发度远高于它——这是 InnoDB 与 SQL 标准不一致的著名差异点。</p>
+</blockquote>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>基于锁的控制</strong></p>
+<p>申请锁的请求被发送给锁管理器。锁管理器根据当前数据项是否已经有锁以及申请的和持有的锁是否冲突决定是否为该请求授予锁</p>
+<p>若锁被授予，则申请锁的事务可以继续执行;若被拒绝，则申请锁的事务将进行等待，直到锁被其他事务释放。</p>
+<blockquote>
+<ul class="lvl-3">
+<li class="lvl-2">
+<p><strong>乐观锁</strong>: 假定其不会发生冲突，允许并发执行，直到真正发生冲突时才去解决冲突，比如让事务回滚。</p>
+</li>
+<li class="lvl-2">
+<p><strong>悲观锁</strong>: 假定其必定发生冲突，通过让事务等待(锁)或者中止(时间戳排序)的方式使并行的操作串行执行。</p>
+</li>
+<li class="lvl-2">
+<p><strong>共享锁</strong>(S 读锁):    事务T对数据A加共享锁，其他事务只能对A加共享锁但不能加排他锁。</p>
+</li>
+<li class="lvl-2">
+<p><strong>排他锁</strong>(X 写锁):   事务T对数据A加排他锁，其他事务对A既不能加共享锁也不能加排他锁</p>
+</li>
+</ul>
+</blockquote>
+</li>
+<li class="lvl-2">
+<p><strong>基于MVCC的控制</strong></p>
+<p>快照隔离是多版本并发控制(mvcc)的一种实现方式。</p>
+<p>数据库为每个数据项维护多个版本(快照)，每个事务只对属于自己的私有快照进行更新，在事务真正提交前进行有效性检查，使得事务正常提交更新或者失败回滚。</p>
+<blockquote>
+<p>由于快照隔离导致事务看不到其他事务对数据项的更新，为了避免出现丢失更新问题，可以采用以下两种方案避免：</p>
+<ul class="lvl-3">
+<li class="lvl-2"><strong>先提交者获胜</strong>:对于执行该检查的事务T，判断是否有其他事务已经将更新写入数据库，是则T回滚，否则T正常提交。</li>
+<li class="lvl-2"><strong>先更新者获胜</strong>:通过锁机制保证第一个获得锁的事务提交其更新，之后试图更新的事务中止。</li>
+</ul>
+<p>事务间的操作通过数据项不同版本的快照相互隔离，到真正要写入数据库时才进行冲突检测。这也是一种乐观并发控制。</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="MVCC-特点与挑战">MVCC 特点与挑战</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>高并发性</strong>：读操作无需加锁，读写不阻塞。</p>
+</li>
+<li class="lvl-2">
+<p><strong>避免脏读、不可重复读</strong>：通过快照隔离，天然避免这些问题（取决于隔离级别）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>支持时间点查询</strong>：可以查询历史版本（如 PostgreSQL 的 <code>pg_snapshot</code> 或 Oracle 的 Flashback Query）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>提升系统吞吐量</strong>：减少锁竞争，提高并发处理能力。</p>
+</li>
+<li class="lvl-2">
+<p><strong>回滚支持</strong>：若事务回滚，可通过 Undo Log 恢复旧版本。</p>
+</li>
+</ul>
+<p>挑战与代价：</p>
+<blockquote>
+<ol>
+<li class="lvl-3">
+<p><strong>存储开销</strong>：需要保存多个版本的数据，占用更多磁盘空间。</p>
+</li>
+<li class="lvl-3">
+<p><strong>垃圾回收</strong>（Vacuum / Purge）：旧版本数据不会立即删除，需后台进程清理（如 PostgreSQL 的 <code>VACUUM</code>，InnoDB 的 <code>Purge</code> 线程）。若清理不及时，可能导致“膨胀”（bloat）问题。</p>
+</li>
+<li class="lvl-3">
+<p><strong>写放大</strong>：每次更新都生成新版本，写入量增加。</p>
+</li>
+<li class="lvl-3">
+<p><strong>长事务问题</strong>：长时间运行的事务会阻止旧版本被回收，导致存储膨胀。</p>
+</li>
+<li class="lvl-3">
+<p><strong>写冲突</strong>：写写操作<strong>仍然</strong>会冲突——MVCC 只化解读-写冲突，写-写冲突需要开发者借助乐观锁或悲观锁自行控制（见文末）。</p>
+</li>
+</ol>
+</blockquote>
+<h2 id="MVCC-的基本思想">MVCC 的基本思想</h2>
+<p>在传统的锁机制中，读写操作通常需要加锁（读锁、写锁），这会导致读写之间互相阻塞，降低并发性能。</p>
+<p>而 MVCC 通过以下方式解决这个问题：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>写操作不阻塞读操作</strong>：当一个事务修改数据时，不会直接覆盖原数据，而是将旧值写入 <strong>Undo Log</strong>（快照），并生成新版本。</p>
+</li>
+<li class="lvl-2">
+<p><strong>读操依赖“快照”</strong>：每个事务在开始时会获得一个“一致性视图”，只能看到在它开始之前已经提交的数据版本，而看不到其他事务未提交或在其开始之后提交的更改。</p>
+</li>
+</ul>
+<p>这样，读操作无需加锁，写操作也不会被读操作阻塞，从而实现了<strong>读写不冲突</strong>。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>为了<strong>提高数据库并发性能</strong>，用更好的方式去处理<strong>读-写冲突</strong>，即使有读写冲突时，也能做到不加锁，读写可并发。</p>
+</li>
+<li class="lvl-2">
+<p>解决<strong>脏读、不可重复读</strong>；对<strong>幻读</strong>，MVCC 负责快照读一侧的可见性，另一侧（当前读）需配合 <strong>Next-Key Lock</strong> 才能真正防住；</p>
+</li>
+<li class="lvl-2">
+<p><strong>不能解决更新丢失问题</strong>（写-写并发）：无论第一类（A 撤销时覆盖 B 已提交的更新，即脏写）还是第二类（A 基于旧值覆盖 B 已提交的更新），都必须由开发者在应用层用锁或版本号控制。</p>
+</li>
+</ul>
+</blockquote>
+<h2 id="MVCC-的基础概念">MVCC 的基础概念</h2>
+<p>理解 InnoDB 的 MVCC 之前，先掌握两组地基概念：<strong>三类日志</strong>（redo / undo / binlog）与<strong>两种读</strong>（当前读 / 快照读）。</p>
+<p><strong>1. redo log（物理日志，崩溃恢复）</strong>：记录“数据页被改成了什么样”的物理修改（页号、偏移、修改后的字节内容），以<strong>循环写入</strong>方式落盘；崩溃后据此重放，恢复已提交但尚未刷盘的修改（保证<strong>持久性</strong>）。redo 与 MVCC 无直接关系，但它解释了“为什么 COMMIT 后数据仍可能停留在内存中却不会丢”。</p>
+<p><strong>2. undo log（逻辑日志，版本之源）</strong>：记录事务修改前“旧值长什么样”的逻辑反操作，是 MVCC 的<strong>版本数据来源</strong>：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>每次 UPDATE / DELETE 都把修改前的行版本写入 undo log，行记录通过 <code>DB_ROLL_PTR</code> 串成<strong>版本链</strong>；</p>
+</li>
+<li class="lvl-2">
+<p>两重使命：事务回滚时沿链反向恢复旧值（保证<strong>原子性</strong>）；快照读时沿链寻找对当前 Read View 可见的版本（支撑<strong>一致性读</strong>）——后者正是 MVCC 的原料。</p>
+</li>
+</ul>
+<blockquote>
+<p><strong>Bin log（逻辑日志，复制/恢复）</strong>：以追加方式记录语句或行级变更的二进制日志，服务于主从复制与时间点恢复。它与 undo log 的根本区别：binlog 是<strong>服务层</strong>日志、记录“变更后的结果”；undo log 是<strong>引擎层</strong>日志、记录“变更前的旧值”。</p>
+</blockquote>
+<p><strong>3. 当前读（Current Read）</strong>：读取记录的最新版本，同时对该记录加锁（悲观锁语义），保证“读到即可安全修改、修改不被并发破坏”：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"># 共享锁（S 锁）：其他事务仍可读，但不能写</span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> t <span class="keyword">WHERE</span> id <span class="operator">=</span> ? LOCK <span class="keyword">IN</span> SHARE MODE;</span><br><span class="line"># 排他锁（X 锁）：其他事务既不能读也不能写</span><br><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span> <span class="keyword">FROM</span> t <span class="keyword">WHERE</span> id <span class="operator">=</span> ? <span class="keyword">FOR</span> <span class="keyword">UPDATE</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">-- 以下写操作天然属于当前读（隐式加 X 锁）</span></span><br><span class="line"><span class="keyword">INSERT INTO</span> t <span class="keyword">VALUES</span> (...);</span><br><span class="line"><span class="keyword">UPDATE</span> t <span class="keyword">SET</span> col <span class="operator">=</span> ? <span class="keyword">WHERE</span> id <span class="operator">=</span> ?;</span><br><span class="line"><span class="keyword">DELETE</span> <span class="keyword">FROM</span> t <span class="keyword">WHERE</span> id <span class="operator">=</span> ?;</span><br></pre></td></tr></table></figure>
+<p><strong>4. 快照读（Snapshot Read）</strong>：不加锁的非阻塞读（普通 <code>SELECT</code>），读的是 Read View 允许的历史版本而非实时最新值；仅在隔离级别不是 SERIALIZABLE 时使用（SERIALIZABLE 下所有读都会被降级为加锁读）。</p>
+<p>当前读与快照读的完整对照：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>当前读</th>
+<th>快照读</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>读什么</td>
+<td>最新已提交版本</td>
+<td>Read View 内可见的版本</td>
+</tr>
+<tr>
+<td>是否加锁</td>
+<td>是（S 锁 / X 锁）</td>
+<td>否（非阻塞）</td>
+</tr>
+<tr>
+<td>典型语句</td>
+<td><code>SELECT ... FOR UPDATE</code>、<code>UPDATE</code>、<code>DELETE</code>、<code>INSERT</code></td>
+<td>普通 <code>SELECT</code></td>
+</tr>
+<tr>
+<td>幻读防线</td>
+<td>Next-Key Lock（RR 下）</td>
+<td>版本可见性（RR 下整个事务复用同一视图）</td>
+</tr>
+<tr>
+<td>典型冲突</td>
+<td>写-写冲突（锁等待、死锁）</td>
+<td>化解读-写冲突，无需加锁</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>一句话定位两者分工：<strong>MVCC（快照读）解决读-写冲突，锁（当前读）解决写-写冲突</strong>——两者共同拼出 InnoDB 并发控制的完整图景：</p>
+</blockquote>
+<blockquote>
+<img src="/imgs/db/1363214-20210220163252994-963029706.png" alt="img" style="zoom:67%;" loading='lazy'>
+</blockquote>
+<h2 id="MVCC-的原理机制">MVCC 的原理机制</h2>
+<p>MySQL InnoDB 中 MVCC 的实现机制：undo log版本链 + readview 快照读</p>
+<h3 id="隐藏字段（每行包含）">隐藏字段（每行包含）</h3>
+<p>InnoDB 为每行数据隐式添加三个系统列（用户不可见）：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>DB_TRX_ID</code>：创建该行的事务 ID（6 字节）。</p>
+</li>
+<li class="lvl-2">
+<p><code>DB_ROLL_PTR</code>（Undo Pointer）：指向 Undo Log 的指针（用于构建历史版本链）。</p>
+</li>
+<li class="lvl-2">
+<p><code>DB_ROW_ID</code>（隐藏主键）：如果数据表没有主键，InnoDB会自动以DB_ROW_ID产生一个聚簇索引（6byte）</p>
+</li>
+</ul>
+<h3 id="Undo-Log（回滚日志）">Undo Log（回滚日志）</h3>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>每次 UPDATE/DELETE 时，旧版本数据被写入 Undo Log。</p>
+</li>
+<li class="lvl-2">
+<p>形成 <strong>版本链（Version Chain）</strong>：从最新记录通过 <code>DB_ROLL_PTR</code> 一路回溯到最初版本。</p>
+</li>
+</ul>
+<blockquote>
+<p><strong>insert undo</strong> log：事务在insert时产生的undo log， 只在事务回滚时需要，并且在事务提交后可以被立即丢弃。<br>
+<strong>update undo</strong> log：事务在update或delete时产生的undo log; 不仅在事务回滚时需要，在快照读时也需要。</p>
+</blockquote>
+<pre><code class="highlight mermaid">graph LR
+    Current[当前记录 / value=B / DB_TRX_ID=100] --&gt;|undo_ptr| V1[Undo Log 1 / value=A / DB_TRX_ID=50]
+    V1 --&gt;|undo_ptr| V2[Undo Log 2 / value=X / DB_TRX_ID=30]
+    V2 --&gt;|...| NULL[NULL]</code></pre>
+<h3 id="Read-View（读视图）">Read View（读视图）</h3>
+<p>事务在<strong>首次执行读操作时</strong>（或根据隔离级别在事务开始时）创建 Read View，包含：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>m_ids</code>：当前活跃（未提交）的事务 ID 列表。</p>
+</li>
+<li class="lvl-2">
+<p><code>min_trx_id</code>：<code>m_ids</code> 中最小的事务 ID。</p>
+</li>
+<li class="lvl-2">
+<p><code>max_trx_id</code>：下一个将要分配的事务 ID（系统当前最大事务 ID + 1）。</p>
+</li>
+<li class="lvl-2">
+<p><code>creator_trx_id</code>：创建该 Read View 的事务 ID（若为只读事务则为 0）。</p>
+</li>
+</ul>
+<blockquote>
+<p>读视图，可以控制事务能看到哪些版本。读取的是版本链中的数据，而非数据库的实时数据。</p>
+</blockquote>
+<h3 id="可见性判断规则">可见性判断规则</h3>
+<p>对于某条记录的版本（其 <code>DB_TRX_ID = trx_id</code>），当前事务是否可见？通常基于以下规则：</p>
+<table>
+<thead>
+<tr>
+<th>条件</th>
+<th>是否可见</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>trx_id == creator_trx_id</code></td>
+<td>可见</td>
+<td>自己修改的，当然可见</td>
+</tr>
+<tr>
+<td><code>trx_id &lt; min_trx_id</code></td>
+<td>可见</td>
+<td>创建该版本的事务在 Read View 创建前已提交</td>
+</tr>
+<tr>
+<td><code>trx_id &gt;= max_trx_id</code></td>
+<td>不可见</td>
+<td>该版本在 Read View 创建后才创建</td>
+</tr>
+<tr>
+<td><code>trx_id ∈ m_ids</code></td>
+<td>不可见</td>
+<td>创建该版本的事务尚未提交（活跃中）</td>
+</tr>
+<tr>
+<td><code>trx_id ∉ m_ids</code>且<code>min_trx_id ≤ trx_id &lt; max_trx_id</code></td>
+<td>可见</td>
+<td>该事务已提交（不在活跃列表中）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>判断顺序（命中即返回，未命中则沿版本链回溯找上一个版本再判）</strong>：<br>
+① 自己修改的版本（<code>trx_id = creator_trx_id</code>）→ 可见；<br>
+② 未提交（在 <code>m_ids</code> 中）或“未来版本”（<code>trx_id ≥ max_trx_id</code>）→ 不可见，回溯；<br>
+③ 已提交且早于视图（<code>trx_id &lt; min_trx_id</code>），或介于中间但不在 <code>m_ids</code> → 可见，返回。</p>
+<p>简单总结：<strong>快照读只能看到 Read View 创建时点已提交的数据</strong>（自己事务的修改除外）。</p>
+</blockquote>
+<pre><code class="highlight mermaid">sequenceDiagram
+    participant T1 as 事务 T1 (trx_id=100)
+    participant T2 as 事务 T2 (只读事务，未分配 trx_id)
+    participant DB as 数据库 (InnoDB)
+    participant UndoLog as Undo Log 链
+
+    Note over T1, DB: 初始：记录 R 的值为 &quot;A&quot;，DB_TRX_ID = 50
+
+    T1-&gt;&gt;DB: UPDATE R SET value = &quot;B&quot;
+    DB-&gt;&gt;UndoLog: 写入旧值 &quot;A&quot; 到 Undo Log / （形成版本链）
+    DB-&gt;&gt;DB: 当前记录 R: value=&quot;B&quot;, DB_TRX_ID=100 / 指向 Undo Log (version &quot;A&quot;)
+
+    T2-&gt;&gt;DB: SELECT R (开启一致性读)
+    DB-&gt;&gt;T2: 创建 Read View: / - m_ids = [100]（活跃事务） / - min_trx_id = 100 / - max_trx_id = 102
+
+    T2-&gt;&gt;DB: 读取记录 R (value=&quot;B&quot;, trx_id=100)
+    alt trx_id=100 在 m_ids 中（未提交）
+        DB-&gt;&gt;UndoLog: 沿 Undo Log 链查找可见版本
+        UndoLog--&gt;&gt;DB: 找到 version &quot;A&quot; (trx_id=50)
+        alt trx_id=50 &lt; min_trx_id → 已提交且对 T2 可见
+            DB--&gt;&gt;T2: 返回 &quot;A&quot;
+        end
+    else trx_id 已提交且在 Read View 可见
+        DB--&gt;&gt;T2: 直接返回当前值
+    end</code></pre>
+<blockquote>
+<p>关键组件说明</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DB_TRX_ID</strong></td>
+<td>记录最后一次修改该行的事务 ID</td>
+</tr>
+<tr>
+<td><strong>Undo Log 链</strong></td>
+<td>存储历史版本，形成“版本链”（从新到旧）</td>
+</tr>
+<tr>
+<td><strong>Read View</strong></td>
+<td>事务开启时创建的快照视图，包含： - <code>m_ids</code>：当前活跃事务 ID 列表 - <code>min_trx_id</code>：最小活跃事务 ID - <code>max_trx_id</code>：下一个将分配的事务 ID</td>
+</tr>
+<tr>
+<td><strong>可见性规则</strong></td>
+<td>一个版本可见当且仅当：自身修改（<code>trx_id = creator_trx_id</code>），或创建于 Read View 之前且已提交（不在 <code>m_ids</code> 且 <code>&lt; max_trx_id</code>）；否则沿版本链回溯上一版本再判</td>
+</tr>
+</tbody>
+</table>
+</blockquote>
+<p>不同数据库中的 MVCC 实现：</p>
+<table>
+<thead>
+<tr>
+<th>数据库</th>
+<th>MVCC 实现机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>PostgreSQL</strong></td>
+<td>每行记录带<code>xmin</code>/<code>xmax</code>；使用 MVCC + Heap 表；依赖<code>VACUUM</code>清理死元组。</td>
+</tr>
+<tr>
+<td><strong>MySQL (InnoDB)</strong></td>
+<td>使用 Undo Log 存储旧版本；Read View 决定可见性；后台 Purge 线程清理。</td>
+</tr>
+<tr>
+<td><strong>Oracle</strong></td>
+<td>使用 Undo Segments；支持 Flashback Query；自动管理版本。</td>
+</tr>
+<tr>
+<td><strong>SQL Server</strong></td>
+<td>默认不启用 MVCC，但可通过“行版本控制隔离级别”（如 RCSI）启用。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="MVCC-与隔离级别">MVCC 与隔离级别</h2>
+<p>MVCC 主要服务于 <strong>隔离性</strong>，同时通过版本机制辅助实现 <strong>一致性</strong> 和 <strong>原子性</strong>（如回滚）。</p>
+<p>MVCC 是实现<strong>快照隔离（Snapshot Isolation）</strong> 和 <strong>可重复读（Repeatable Read）</strong> 等高级隔离级别的基础。</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>读已提交（Read Committed）</strong>：每次语句开始时获取新快照。</p>
+</li>
+<li class="lvl-2">
+<p><strong>可重复读（Repeatable Read）</strong>：事务开始时获取一次快照，整个事务中复用。</p>
+</li>
+<li class="lvl-2">
+<p><strong>串行化（Serializable）</strong>：某些数据库（如 PostgreSQL）在 MVCC 基础上增加冲突检测，实现真正的串行化。</p>
+</li>
+</ul>
+<blockquote>
+<p>MySQL InnoDB 的“可重复读”实际上提供了快照隔离语义，能避免幻读（在特定条件下）。</p>
+</blockquote>
+<p>MySQL 支持四种隔离级别，但 <strong>只有两种会使用 MVCC</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>隔离级别</th>
+<th>是否使用MVCC</th>
+<th>READ VIEW 创建时机</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>READ UNCOMMITTED</strong></td>
+<td>否</td>
+<td>—</td>
+<td>直接读最新数据（包括未提交的），<strong>可能脏读</strong></td>
+</tr>
+<tr>
+<td>READ COMMITTED (RC)</td>
+<td><strong>是</strong></td>
+<td><strong>每次 SELECT 语句开始时</strong>创建新 Read View</td>
+<td>可避免脏读，但不可重复读，可能出现幻读</td>
+</tr>
+<tr>
+<td><strong>REPEATABLE READ (RR)</strong></td>
+<td><strong>是</strong></td>
+<td><strong>事务首次 SELECT 时</strong>创建 Read View，并<strong>复用整个事务</strong></td>
+<td>可重复读，InnoDB 下基本避免幻读。 / InnoDB通过间隙锁（Gap Lock）和Next-Key Lock进一步防止幻读。</td>
+</tr>
+<tr>
+<td><strong>SERIALIZABLE</strong></td>
+<td>否（加锁）</td>
+<td>—</td>
+<td>所有 SELECT 自动转为<code>SELECT ... FOR SHARE</code>，加共享锁，完全串行化</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>MySQL InnoDB 默认隔离级别是 REPEATABLE READ</strong>，其他数据库（如 Oracle、PostgreSQL 默认为 READ COMMITTED）不同。</p>
+<ul class="lvl-1">
+<li class="lvl-2"><strong>读已提交（RC）</strong> 和 <strong>可重复读（RR）</strong> 是<strong>主要依赖MVCC</strong>来实现其特性的隔离级别。</li>
+<li class="lvl-2">它们的核心区别在于<strong>快照的生成时机</strong>：
+<ul class="lvl-3">
+<li class="lvl-4"><strong>RC</strong>：语句级快照（每次<code>SELECT</code>都新生成）。</li>
+<li class="lvl-4"><strong>RR</strong>：事务级快照（事务开始时生成，用到底）。</li>
+</ul>
+</li>
+<li class="lvl-2"><strong>读未提交</strong> 不用MVCC，它直接读最新数据。</li>
+<li class="lvl-2"><strong>串行化</strong> 主要依赖锁机制，或者使用比MVCC更复杂的算法来保证绝对的一致性。</li>
+</ul>
+</blockquote>
+<h3 id="MVCC-解决-脏读">MVCC 解决 脏读</h3>
+<p>事务 A 读取了事务 B <strong>尚未提交</strong>的修改数据，若 B 回滚，则 A 读到了“脏”数据。</p>
+<p>MVCC 通过<strong>快照读（Snapshot Read）实现一致性读。每个事务在启动时会获得一个一致性视图（Read View）</strong>，该视图决定了该事务能看到哪些版本的数据。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>事务只能看到<strong>在其开始之前已提交</strong>的数据版本。</p>
+</li>
+<li class="lvl-2">
+<p>未提交的修改对其他事务不可见，因此<strong>不可能读到未提交的数据</strong>。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="MVCC-解决-幻读">MVCC 解决 幻读</h3>
+<p>在同一事务中，两次执行相同范围查询，第二次查询返回了第一次没有的“新行”（由其他事务插入并提交）。</p>
+<p>在 <strong>REPEATABLE READ</strong> 下，MVCC 的快照读能保证同一事务内多次读取<strong>已有行</strong>的值不变。但对于<strong>新插入的行</strong>（即“幻行”），仅靠 MVCC <strong>无法完全阻止幻读</strong>，因为快照读只控制可见性，<strong>不阻止新行的物理插入</strong>。</p>
+<p>MVCC 本身<strong>不能完全解决幻读</strong>，需要配合锁机制。</p>
+<blockquote>
+<p>举例：事务 A 执行 <code>SELECT * FROM t WHERE id &gt; 10</code>，事务 B 插入 <code>id=15</code> 并提交。若 A 再次执行相同查询，在纯 MVCC 下可能仍看不到新行（因为快照读），<strong>但若 A 执行 UPDATE 或 DELETE 范围操作，则可能影响到 B 插入的行</strong>，此时就出现了“幻读”的语义问题。</p>
+</blockquote>
+<p><strong>InnoDB 的解决方案：Next-Key Lock</strong></p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>InnoDB 在 <strong>REPEATABLE READ</strong> 隔离级别下，<strong>结合 MVCC + Next-Key Lock</strong> 来防止幻读。</p>
+</li>
+<li class="lvl-2">
+<p><strong>Next-Key Lock = 记录锁（Record Lock） + 间隙锁（Gap Lock）</strong>，锁定索引记录及其前面的间隙。</p>
+</li>
+<li class="lvl-2">
+<p>当执行当前读（如 <code>SELECT ... FOR UPDATE</code>、<code>UPDATE</code>、<code>DELETE</code>）时，InnoDB 会使用 Next-Key Lock 阻止其他事务在范围内插入新记录。</p>
+</li>
+</ul>
+</blockquote>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>快照读（普通 SELECT）</strong>：靠 MVCC 避免看到新插入的行（在 RR 下）。</p>
+</li>
+<li class="lvl-2">
+<p><strong>当前读（带锁的读）</strong>：靠 Next-Key Lock 阻止插入，从而<strong>彻底防止幻读</strong>。</p>
+</li>
+</ul>
+<h3 id="MVCC-解决-不可重复读">MVCC 解决 不可重复读</h3>
+<p>在同一事务中，两次读取同一行数据，结果不一致（因为另一事务在中间提交了对该行的修改）。</p>
+<p>在 <strong>REPEATABLE READ 隔离级别下，MVCC 通过固定 Read View 避免了不可重复读</strong>。</p>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p><strong>READ COMMITTED（RC）</strong>：每次 SELECT 都生成新的 Read View，因此可能看到其他事务新提交的修改，<strong>存在不可重复读</strong>。</p>
+</li>
+<li class="lvl-2">
+<p><strong>REPEATABLE READ（RR）</strong>：事务在<strong>首次读取时</strong>创建 Read View，并在整个事务期间复用该视图，后续读取始终看到相同的数据版本（即使其他事务已提交新版本）。</p>
+</li>
+</ul>
+</blockquote>
+<h2 id="MVCC-与写写并发">MVCC 与写写并发</h2>
+<p>MVCC不能解决写-写事务并发导致的更新丢失问题，需要借助锁机制（悲观锁或乐观锁）</p>
+<p>在MVCC中写-写并发会导致其中一个失败</p>
+<blockquote>
+<p><strong>1、乐观锁解决写-写并发</strong></p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>通过增加版本号机制，利用CAS的思想来对比版本号更新。</p>
+</li>
+<li class="lvl-2">
+<p>如果更新失败报错回滚，或者自旋，新开启事务重新查询当前最新版本号，再重复利用CAS的思想来对比版本号更新。</p>
+</li>
+</ul>
+<p><strong>自旋必须开启新事务</strong>：MVCC 的 Read View 在事务内一经生成便不再变化（RR 下复用到底），同一事务里反复重查只会得到同一份旧快照——重试只有在<strong>新事务</strong>的视图下才有意义。</p>
+<p><strong>2、悲观锁解决写-写并发</strong></p>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>使用 <code>SELECT ... FOR UPDATE</code> 把“查-判-改”变成<strong>原子临界区</strong>：事务 A 拿到 X 锁之前，事务 B 对同一行的操作只能阻塞等待，从根上杜绝覆盖。</p>
+</li>
+</ul>
+</blockquote>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 扣减库存：查、判、改在同一事务内完成</span></span><br><span class="line"><span class="keyword">BEGIN</span>;</span><br><span class="line"><span class="keyword">SELECT</span> num <span class="keyword">FROM</span> stock <span class="keyword">WHERE</span> id <span class="operator">=</span> <span class="number">1</span> <span class="keyword">FOR</span> <span class="keyword">UPDATE</span>;  <span class="comment">-- 加 X 锁，并发扣减在此排队</span></span><br><span class="line"><span class="keyword">UPDATE</span> stock <span class="keyword">SET</span> num <span class="operator">=</span> num <span class="operator">-</span> ? <span class="keyword">WHERE</span> id <span class="operator">=</span> <span class="number">1</span>;</span><br><span class="line"><span class="keyword">COMMIT</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>取舍建议：悲观锁吞吐量受锁等待与死锁影响，适合<strong>冲突概率高</strong>的场景（热点库存、秒杀）；乐观锁 CAS 无阻塞、失败自旋，适合<strong>冲突概率低</strong>的场景（个人资料更新）；两者需按业务读写比权衡。</p>
+</blockquote>
+<h2 id="实践中的问题与解决方案">实践中的问题与解决方案</h2>
+<p>MVCC 在生产环境踩的坑，多数不在“可见性规则”本身，而在<strong>版本链的存储与回收</strong>以及<strong>快照与锁的双轨语义</strong>上。</p>
+<h3 id="1-长事务拖垮版本回收（最常见）">1. 长事务拖垮版本回收（最常见）</h3>
+<blockquote>
+<p><strong>现象</strong>：<code>SHOW ENGINE INNODB STATUS</code> 中 <code>History list length</code> 持续飙升；<code>information_schema.innodb_trx</code> 里躺着运行数小时的事务；undo 表空间不断膨胀，磁盘告急。</p>
+<p><strong>原因</strong>：Purge 线程只能清理“早于所有活跃 Read View”的版本。一个开了快照却不提交的长事务，等于给版本链画了一条不可越过的红线——红线之后的所有旧版本全部滞留，越积越多。</p>
+<p><strong>对策</strong>：</p>
+<ol>
+<li class="lvl-3">
+<p>监控 <code>information_schema.innodb_trx</code>，对运行超阈值（如 60s）的事务告警，必要时 <code>KILL</code>；</p>
+</li>
+<li class="lvl-3">
+<p>应用层强制事务短小：查询与写操作分离、禁止在事务内做远程调用/外部等待；</p>
+</li>
+<li class="lvl-3">
+<p>只读报表、备份类长查询迁移到只读副本，避免与主库写事务共享版本链压力。</p>
+</li>
+</ol>
+</blockquote>
+<h3 id="2-undo-空间膨胀与回收">2. undo 空间膨胀与回收</h3>
+<blockquote>
+<ul class="lvl-1">
+<li class="lvl-2">
+<p>MySQL 8.0 起 undo 独立表空间默认自动截断（<code>innodb_undo_tablespaces</code> ≥ 2 且 <code>innodb_undo_log_truncate = ON</code>），膨胀后会自动轮换截断；手工介入可 <code>ALTER UNDO TABLESPACE innodb_undo_001 SET INACTIVE</code> 后再截断；</p>
+</li>
+<li class="lvl-2">
+<p>5.7 及更早版本没有在线 truncate，收缩 undo 需要停机重建，务必先确认无长事务、避开业务高峰；</p>
+</li>
+<li class="lvl-2">
+<p>定期巡检 <code>History list length</code>（建议 &lt; 5000），超过告警阈值时优先排查长事务而非直接扩容。</p>
+</li>
+</ul>
+</blockquote>
+<h3 id="3-大事务回滚慢">3. 大事务回滚慢</h3>
+<blockquote>
+<p>一个 UPDATE 数十万行的事务回滚时，需要沿 undo 版本链逐版本逆向执行，行数越多越慢，期间持续占用 IO 与锁资源，甚至拖垮实例。对策：<strong>化大为小</strong>（分批 UPDATE + 短事务提交）；上线前用 <code>EXPLAIN</code> / <code>SELECT COUNT(*)</code> 评估影响行数；确需回滚时评估“定向补偿 SQL”是否比放任回滚更快更可控。</p>
+</blockquote>
+<h3 id="4-“先查后改”的丢失更新（读改写陷阱）">4. “先查后改”的丢失更新（读改写陷阱）</h3>
+<blockquote>
+<p>RR 的快照虽然让两次 SELECT 结果一致，但 <strong>SELECT 与 UPDATE 之间其他事务的提交仍可能被覆盖</strong>——因为快照读不锁行：</p>
+<table>
+<thead>
+<tr>
+<th>时间</th>
+<th>事务 A</th>
+<th>事务 B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>t1</td>
+<td><code>SELECT num FROM stock WHERE id=1;</code> → 10</td>
+<td></td>
+</tr>
+<tr>
+<td>t2</td>
+<td></td>
+<td><code>UPDATE stock SET num=num-2 WHERE id=1; COMMIT;</code> → 8</td>
+</tr>
+<tr>
+<td>t3</td>
+<td><code>UPDATE stock SET num=num-1 WHERE id=1; COMMIT;</code> → 9（应得 7）</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>解法三选一：① 把“查+改”合并成一条原子 SQL（<code>UPDATE ... SET num = num - ? WHERE id = ? AND num &gt;= ?</code>）；② 查询改 <code>SELECT ... FOR UPDATE</code>（当前读锁行）；③ 应用层乐观锁（<code>version</code> 字段 CAS）。这正是前文结论“MVCC 不解决写-写冲突”在业务侧的真实投影。</p>
+</blockquote>
+<h3 id="5-RR-与-RC-的工程选型">5. RR 与 RC 的工程选型</h3>
+<blockquote>
+<p>互联网大厂规范普遍建议业务默认 <strong>RC + <code>binlog_format=ROW</code></strong>：</p>
+<ul class="lvl-1">
+<li class="lvl-2">RR 的间隙锁/Next-Key Lock 在范围当前读下会放大锁范围，死锁率明显高于 RC（RC 只锁命中的记录）；</li>
+<li class="lvl-2">配合 ROW 格式 binlog，RC 下主从复制依旧一致（STATEMENT 格式在 RC 下可能出现主从不一致，这也是规范搭配 ROW 的原因）；</li>
+<li class="lvl-2">需要“事务内两次查询结果一致”的业务（对账、导出、库存盘点）再针对性使用 RR。</li>
+</ul>
+<p>特例提醒：即便在 RC 下，唯一索引冲突检查、外键检查等场景仍可能加间隙锁，不要认为 RC 完全没有间隙锁。</p>
+</blockquote>
+<h3 id="6-Read-View-的创建时机：不是事务开始">6. Read View 的创建时机：不是事务开始</h3>
+<blockquote>
+<p>常见说法“RR 在事务开始时建立快照”并不严格——InnoDB 实际在<strong>事务内第一次快照读（普通 SELECT）时才生成 Read View</strong>，此后复用；若事务先执行 UPDATE（当前读，不建一致性视图）再 SELECT，该 SELECT 才会“定版”。因此：<strong>需要稳定视图的事务，应尽早执行一次无副作用的 SELECT 把视图定下来</strong>；同时这也是 RC（每条 SELECT 重建视图）与 RR（全事务一份视图）在工程行为上最直观的差异。</p>
+</blockquote>
+<h2 id="工程实践：遇到事务问题先判断“这是快照读还是当前读”">工程实践：遇到事务问题先判断“这是快照读还是当前读”</h2>
+<p>排查锁等待、不可重复读或长事务时，建议先把 SQL 按“快照读 / 当前读 / 写操作”分类，再结合事务隔离级别分析。不要用“MVCC 解决了幻读”一句话覆盖所有场景；涉及 <code>UPDATE</code>、<code>DELETE</code>、<code>SELECT ... FOR UPDATE</code> 等当前读时，锁机制仍然是核心。</p>
+<p>生产环境还应持续关注长事务、History List、Undo 空间与事务持续时间。</p>
+<h2 id="参考资料">参考资料</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://dev.mysql.com/doc/refman/8.0/en/innodb-multi-versioning.html">https://dev.mysql.com/doc/refman/8.0/en/innodb-multi-versioning.html</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://dev.mysql.com/doc/refman/8.0/en/innodb-consistent-read.html">https://dev.mysql.com/doc/refman/8.0/en/innodb-consistent-read.html</a></p>
+</li>
+</ul>
+<h2 id="工程结论">工程结论</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>排查并发问题先给 SQL 分类：普通 <code>SELECT</code> 是快照读，走 Read View 可见性；<code>UPDATE</code>、<code>DELETE</code>、<code>SELECT ... FOR UPDATE</code> 是当前读，走锁。两类混在一起分析，结论必然出错。</p>
+</li>
+<li class="lvl-2">
+<p>MVCC 只解决读-写冲突：扣减、“先查后改”这类写-写场景，用原子 <code>UPDATE ... SET num = num - ? WHERE num &gt;= ?</code>、<code>FOR UPDATE</code> 或乐观锁版本号兜底，别指望快照替你锁行。</p>
+</li>
+<li class="lvl-2">
+<p>RC 与 RR 的差别只在快照生成时机：RR 全事务一份视图，RC 每条语句重建。对账、导出这类需要事务内两次读取一致的场景用 RR，一般业务 RC + <code>binlog_format=ROW</code> 死锁率更低。</p>
+</li>
+<li class="lvl-2">
+<p>盯住长事务：事务内不做远程调用和长时间等待，监控 <code>History list length</code>（建议 &lt; 5000）；undo 膨胀时优先排查长事务，而不是急着扩容。</p>
+</li>
+<li class="lvl-2">
+<p>大批量 UPDATE 化整为零、分批提交；确需回滚时，先评估定向补偿 SQL 是否比放任回滚更快。</p>
+</li>
+</ul>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2025/11/mysql-auto-increment/">MySQL 自增主键为何会出现空洞？分配机制与主从/分布式取舍</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/11/mysql-query-execution/">一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/09/mysql-performance-tuning/">MySQL 性能慢怎么查？从 SQL、索引到架构的分层优化路径</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/12/mysql-es-data-sync/">MySQL 如何同步到 Elasticsearch？从双写到 CDC 的方案演进与一致性</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2025/12/mysql-index-guide/">MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2025/10/mysql-mvcc-read-view/">https://pengline.cn/2025/10/mysql-mvcc-read-view/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/MySQL/">MySQL</a><a class="post-meta__tags" href="/tags/MVCC/">MVCC</a><a class="post-meta__tags" href="/tags/InnoDB/">InnoDB</a><a class="post-meta__tags" href="/tags/Read-View/">Read View</a><a class="post-meta__tags" href="/tags/Undo-Log/">Undo Log</a><a class="post-meta__tags" href="/tags/%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB/">事务隔离</a><a class="post-meta__tags" href="/tags/%E5%BF%AB%E7%85%A7%E8%AF%BB/">快照读</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small193649N6YOj1758541009.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2025/10/java-spi-service-loading/" title="Java SPI 机制如何实现服务发现与运行时动态绑定"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634203857673163420385735.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">Java SPI 机制如何实现服务发现与运行时动态绑定</div></div><div class="info-2"><div class="info-item-1">SPI 是 Java 面向接口编程的服务发现机制，供框架在运行时动态加载第三方实现而不修改源码。本文从 ServiceLoader 扫描与延迟加载原理入手，剖析 JDK SPI 的资源目录约定与实现局限，并对比 Dubbo 扩展机制，给出使用场景与升级改造的工程取舍。</div></div></div></a><a class="pagination-related" href="/2025/10/jvm-interpreter-jit/" title="JVM 解释器与 JIT 即时编译器如何协同优化运行性能"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194032xRveA1759578032.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">JVM 解释器与 JIT 即时编译器如何协同优化运行性能</div></div><div class="info-2"><div class="info-item-1">Java 通过两段编译实现跨平台，运行期由解释器与 JIT 协同决定性能。本文剖析模板解释器逐条翻译与双计数器热点检测机制，展开分层编译、OSR 即时编译与方法内联、逃逸分析、锁消除等优化，解释如何兼顾启动速度与长期运行效率。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/08/mysql-buffer-pool-flush/" title="MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1638860292714163886029214.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-08-15</div><div class="info-item-2">MySQL 为什么敢把数据先放内存？Buffer Pool 缓存与刷盘策略全景</div></div><div class="info-2"><div class="info-item-1">几百 GB 的大表跑在只有几十 GB 内存的服务器上，MySQL 为什么敢放心把数据先放在内存里？答案藏在 Buffer Pool、change buffer、redo log 与整套刷盘策略里。本文沿一条 UPDATE 的流转路径展开，讲清缓存页管理与防污染设计、WAL 预写日志与 checkpoint 节奏、双 1 配置的取舍以及 doublewrite 的存在理由，并复盘三个典型故障场景。</div></div></div></a><a class="pagination-related" href="/2025/11/mysql-query-execution/" title="一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small204025vlPNF1760100025.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-18</div><div class="info-item-2">一条 SQL 在 MySQL 里是如何执行的？从连接器到 InnoDB 的完整链路</div></div><div class="info-2"><div class="info-item-1">完整拆解一条 SQL 从客户端到存储引擎的执行链路——连接器建会话与认证、查询缓存为何在 8.0 移除、解析器进行词法与语法分析、优化器按成本模型与统计信息选索引和连接顺序、执行器逐行迭代取数，并详解三大日志分工、两阶段提交与慢定位。</div></div></div></a><a class="pagination-related" href="/2025/11/mysql-auto-increment/" title="MySQL 自增主键为何会出现空洞？分配机制与主从&#x2F;分布式取舍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634204381358163420438174.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-11-09</div><div class="info-item-2">MySQL 自增主键为何会出现空洞？分配机制与主从&#x2F;分布式取舍</div></div><div class="info-2"><div class="info-item-1">解析 MySQL 自增主键的计数器存储与分配机制、innodb_autoinc_lock_mode 三种自增锁模式在并发与批量插入下的性能取舍及完整执行流程；解读事务回滚、先申请后更新等 ID 空洞的成因并论证其无害性，给出主从复制与双主架构的一致性配置，及多实例场景改用雪花 ID、号段模式的分布式设计建议。</div></div></div></a><a class="pagination-related" href="/2025/12/mysql-index-guide/" title="MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small202824LQTsk1760099304.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-07</div><div class="info-item-2">MySQL 索引为何有的有效有的失效？从 B+Tree 到 EXPLAIN 的实战判断</div></div><div class="info-2"><div class="info-item-1">从底层到实战剖析 MySQL 索引——B+ 树与 Hash 的结构差异以及聚簇、二级索引的回表机制，最左前缀为何成立、覆盖索引与索引下推如何省去回表 IO，细数函数操作、隐式转换等导致索引失效的写法陷阱，结尾给出 EXPLAIN 各列判读方法与区分度、选择性导向的索引选列最佳实践。</div></div></div></a><a class="pagination-related" href="/2025/12/mysql-es-data-sync/" title="MySQL 如何同步到 Elasticsearch？从双写到 CDC 的方案演进与一致性"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753692691876175369269194.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-12-03</div><div class="info-item-2">MySQL 如何同步到 Elasticsearch？从双写到 CDC 的方案演进与一致性</div></div><div class="info-2"><div class="info-item-1">MySQL 同步至 ES、Redis 等异构存储的五种策略详解——应用双写、定时轮询、消息队列解耦、Binlog 解析与云托管服务，从实时性、一致性、业务侵入性与运维成本四个维度权衡，讲解各自原理、一致性补偿手段与生产演进路径，并给出适合不同数据规模与团队能力的选型建议。</div></div></div></a><a class="pagination-related" href="/2025/10/arch-tech-selection-db/" title="数据模型一致性延迟扩展性各不同业务该选哪类数据库"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small221427alvR01759155267.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2025-10-15</div><div class="info-item-2">数据模型一致性延迟扩展性各不同业务该选哪类数据库</div></div><div class="info-2"><div class="info-item-1">数据库选型错误代价高昂,需按数据模型、一致性与写入量评估。关系型稳控事务,键值追求极低延迟,列式面向分析,时序专治监控,图模型服务关系,宽表承载海量写入。本文按八大类逐一剖析 MySQL、PostgreSQL、TiDB、Redis、MongoDB、ClickHouse、InfluxDB、Neo4j 等核心特性与适用场景。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8B%E5%8A%A1%E7%AE%A1%E7%90%86"><span class="toc-number">1.</span> <span class="toc-text">事务管理</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E5%8F%91%E5%BC%82%E5%B8%B8"><span class="toc-number">1.1.</span> <span class="toc-text">并发异常</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9A%94%E7%A6%BB%E7%BA%A7%E5%88%AB"><span class="toc-number">1.2.</span> <span class="toc-text">隔离级别</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#MVCC-%E7%89%B9%E7%82%B9%E4%B8%8E%E6%8C%91%E6%88%98"><span class="toc-number">2.</span> <span class="toc-text">MVCC 特点与挑战</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#MVCC-%E7%9A%84%E5%9F%BA%E6%9C%AC%E6%80%9D%E6%83%B3"><span class="toc-number">3.</span> <span class="toc-text">MVCC 的基本思想</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#MVCC-%E7%9A%84%E5%9F%BA%E7%A1%80%E6%A6%82%E5%BF%B5"><span class="toc-number">4.</span> <span class="toc-text">MVCC 的基础概念</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#MVCC-%E7%9A%84%E5%8E%9F%E7%90%86%E6%9C%BA%E5%88%B6"><span class="toc-number">5.</span> <span class="toc-text">MVCC 的原理机制</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E9%9A%90%E8%97%8F%E5%AD%97%E6%AE%B5%EF%BC%88%E6%AF%8F%E8%A1%8C%E5%8C%85%E5%90%AB%EF%BC%89"><span class="toc-number">5.1.</span> <span class="toc-text">隐藏字段（每行包含）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Undo-Log%EF%BC%88%E5%9B%9E%E6%BB%9A%E6%97%A5%E5%BF%97%EF%BC%89"><span class="toc-number">5.2.</span> <span class="toc-text">Undo Log（回滚日志）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Read-View%EF%BC%88%E8%AF%BB%E8%A7%86%E5%9B%BE%EF%BC%89"><span class="toc-number">5.3.</span> <span class="toc-text">Read View（读视图）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AF%E8%A7%81%E6%80%A7%E5%88%A4%E6%96%AD%E8%A7%84%E5%88%99"><span class="toc-number">5.4.</span> <span class="toc-text">可见性判断规则</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#MVCC-%E4%B8%8E%E9%9A%94%E7%A6%BB%E7%BA%A7%E5%88%AB"><span class="toc-number">6.</span> <span class="toc-text">MVCC 与隔离级别</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#MVCC-%E8%A7%A3%E5%86%B3-%E8%84%8F%E8%AF%BB"><span class="toc-number">6.1.</span> <span class="toc-text">MVCC 解决 脏读</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#MVCC-%E8%A7%A3%E5%86%B3-%E5%B9%BB%E8%AF%BB"><span class="toc-number">6.2.</span> <span class="toc-text">MVCC 解决 幻读</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#MVCC-%E8%A7%A3%E5%86%B3-%E4%B8%8D%E5%8F%AF%E9%87%8D%E5%A4%8D%E8%AF%BB"><span class="toc-number">6.3.</span> <span class="toc-text">MVCC 解决 不可重复读</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#MVCC-%E4%B8%8E%E5%86%99%E5%86%99%E5%B9%B6%E5%8F%91"><span class="toc-number">7.</span> <span class="toc-text">MVCC 与写写并发</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E8%B7%B5%E4%B8%AD%E7%9A%84%E9%97%AE%E9%A2%98%E4%B8%8E%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">8.</span> <span class="toc-text">实践中的问题与解决方案</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E9%95%BF%E4%BA%8B%E5%8A%A1%E6%8B%96%E5%9E%AE%E7%89%88%E6%9C%AC%E5%9B%9E%E6%94%B6%EF%BC%88%E6%9C%80%E5%B8%B8%E8%A7%81%EF%BC%89"><span class="toc-number">8.1.</span> <span class="toc-text">1. 长事务拖垮版本回收（最常见）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-undo-%E7%A9%BA%E9%97%B4%E8%86%A8%E8%83%80%E4%B8%8E%E5%9B%9E%E6%94%B6"><span class="toc-number">8.2.</span> <span class="toc-text">2. undo 空间膨胀与回收</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E5%A4%A7%E4%BA%8B%E5%8A%A1%E5%9B%9E%E6%BB%9A%E6%85%A2"><span class="toc-number">8.3.</span> <span class="toc-text">3. 大事务回滚慢</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-%E2%80%9C%E5%85%88%E6%9F%A5%E5%90%8E%E6%94%B9%E2%80%9D%E7%9A%84%E4%B8%A2%E5%A4%B1%E6%9B%B4%E6%96%B0%EF%BC%88%E8%AF%BB%E6%94%B9%E5%86%99%E9%99%B7%E9%98%B1%EF%BC%89"><span class="toc-number">8.4.</span> <span class="toc-text">4. “先查后改”的丢失更新（读改写陷阱）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-RR-%E4%B8%8E-RC-%E7%9A%84%E5%B7%A5%E7%A8%8B%E9%80%89%E5%9E%8B"><span class="toc-number">8.5.</span> <span class="toc-text">5. RR 与 RC 的工程选型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-Read-View-%E7%9A%84%E5%88%9B%E5%BB%BA%E6%97%B6%E6%9C%BA%EF%BC%9A%E4%B8%8D%E6%98%AF%E4%BA%8B%E5%8A%A1%E5%BC%80%E5%A7%8B"><span class="toc-number">8.6.</span> <span class="toc-text">6. Read View 的创建时机：不是事务开始</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E5%AE%9E%E8%B7%B5%EF%BC%9A%E9%81%87%E5%88%B0%E4%BA%8B%E5%8A%A1%E9%97%AE%E9%A2%98%E5%85%88%E5%88%A4%E6%96%AD%E2%80%9C%E8%BF%99%E6%98%AF%E5%BF%AB%E7%85%A7%E8%AF%BB%E8%BF%98%E6%98%AF%E5%BD%93%E5%89%8D%E8%AF%BB%E2%80%9D"><span class="toc-number">9.</span> <span class="toc-text">工程实践：遇到事务问题先判断“这是快照读还是当前读”</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="toc-number">10.</span> <span class="toc-text">参考资料</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B7%A5%E7%A8%8B%E7%BB%93%E8%AE%BA"><span class="toc-number">11.</span> <span class="toc-text">工程结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">12.</span> <span class="toc-text">相关阅读</span></a></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
