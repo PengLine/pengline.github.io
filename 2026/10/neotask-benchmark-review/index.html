@@ -1,0 +1,999 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>NeoTask 1.0.5 性能实测：提交 14,657/s，完成 2,433/s，短任务默认预取只剩 1/13 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="NeoTask 1.0.5 内存后端实测：15 个主套件场景、1 组队列微基准、4 个 SQLite 边界用例。提交 14,657 tasks&#x2F;s，完成 2,433 tasks&#x2F;s，IO 1→8 workers 提升 7.76x；默认预取把短任务完成吞吐压到 181 tasks&#x2F;s，关闭后为 2,382 tasks&#x2F;s。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="NeoTask 1.0.5 性能实测：提交 14,657&#x2F;s，完成 2,433&#x2F;s，短任务默认预取只剩 1&#x2F;13">
+<meta property="og:url" content="https://pengline.cn/2026/10/neotask-benchmark-review/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="NeoTask 1.0.5 内存后端实测：15 个主套件场景、1 组队列微基准、4 个 SQLite 边界用例。提交 14,657 tasks&#x2F;s，完成 2,433 tasks&#x2F;s，IO 1→8 workers 提升 7.76x；默认预取把短任务完成吞吐压到 181 tasks&#x2F;s，关闭后为 2,382 tasks&#x2F;s。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1745746443697174574644362.webp">
+<meta property="article:published_time" content="2026-10-29T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-10-30T16:15:05.224Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="NeoTask">
+<meta property="article:tag" content="Python">
+<meta property="article:tag" content="SQLite">
+<meta property="article:tag" content="Worker并发">
+<meta property="article:tag" content="asyncio">
+<meta property="article:tag" content="任务调度">
+<meta property="article:tag" content="内存存储">
+<meta property="article:tag" content="压测">
+<meta property="article:tag" content="吞吐量">
+<meta property="article:tag" content="基准测试">
+<meta property="article:tag" content="度量口径">
+<meta property="article:tag" content="延迟分布">
+<meta property="article:tag" content="性能基准">
+<meta property="article:tag" content="批量操作">
+<meta property="article:tag" content="项目测评">
+<meta property="article:tag" content="预取">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1745746443697174574644362.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/10/neotask-benchmark-review/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'NeoTask 1.0.5 性能实测：提交 14,657/s，完成 2,433/s，短任务默认预取只剩 1/13',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">99</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">831</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">49</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> 灵犀创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1745746443697174574644362.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">NeoTask 1.0.5 性能实测：提交 14,657/s，完成 2,433/s，短任务默认预取只剩 1/13</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ol"></i><span> 项目</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://city.pengline.cn"><i class="fa-fw fas fa-building"></i><span> 智慧城市（IOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aiot.pengline.cn"><i class="fa-fw fas fa-check-circle"></i><span> 智慧安检（AIOT）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://tms.pengline.cn"><i class="fa-fw fas fa-truck"></i><span> 物流运输（TMS）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://aigc.pengline.cn"><i class="fa-fw fas fa-undo"></i><span> 灵犀创作（AIGC）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-outdent"></i><span> AI</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com"><i class="fa-fw fas fa-arrows"></i><span> 分布式任务调度（NeoTask）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com"><i class="fa-fw fas fa-file-video"></i><span> 剧本分镜 Agent（PenShot）</span></a></li><li><a class="site-page child" target="_blank" rel="external nofollow noopener noreferrer" href="https://clip.helpenx.com"><i class="fa-fw fas fa-cut"></i><span> 视频混剪 Agent（PenClip）</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-cogs"></i><span> 工具</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/json/"><i class="fa-fw fas fa-cog"></i><span> JSON 转换工具集</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/markdown/"><i class="fa-fw fas fa-code"></i><span> Markdown 编辑器</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/mermaid/"><i class="fa-fw fas fa-pie-chart"></i><span> Mermaid 绘制UML</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/tool/chart/"><i class="fa-fw fas fa-line-chart"></i><span> Json 数据转图表</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/token/"><i class="fa-fw fas fa-id-card"></i><span> JWT &amp; Token 解析</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/image/compressor/"><i class="fa-fw fas fa-image"></i><span> 图像批量压缩大小</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/watermark/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 添加文字水印</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/docu/signature/"><i class="fa-fw fas fa-file-pdf"></i><span> PDF 在线手写签名</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com/encrypted/file-encrypt/"><i class="fa-fw fas fa-file"></i><span> 文件在线加密解密</span></a></li><li><a class="site-page child" target="_blank" rel="noopener" href="https://helpoke.com"><i class="fa-fw fas fa-cogs"></i><span> 更多实用在线工具</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">NeoTask 1.0.5 性能实测：提交 14,657/s，完成 2,433/s，短任务默认预取只剩 1/13</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-10-29T16:00:00.000Z" title="发表于 2026-10-30 00:00:00">2026-10-30</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-10-30T16:15:05.224Z" title="更新于 2026-10-31 00:15:05">2026-10-31</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/">Python</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/Task/">Task</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>NeoTask 1.0.5 性能实测：提交 14,657/s，完成 2,433/s，短任务默认预取只剩 1/13</h1>
+<blockquote>
+<p>测试日期：2026-10-30<br>
+测试版本：NeoTask 1.0.5（PyPI）<br>
+测试平台：Windows 10 / Python 3.13.15<br>
+原始数据：<code>\neotask-demo\bench\results.json</code> 与 <code>\neotask-demo\bench\sqlite_results.json</code></p>
+</blockquote>
+<h2 id="1-结论">1. 结论</h2>
+<p>NeoTask 1.0.5 在内存后端、空操作执行器下的核心指标如下。主套件为多轮实测中位数，SQLite 边界探针为单轮；均为实测值，不是理论估算。</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>实测结果</th>
+<th>测试条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>提交吞吐</td>
+<td><strong>14,657 tasks/s</strong></td>
+<td>memory，noop，10 workers，N=2000</td>
+</tr>
+<tr>
+<td>完成吞吐</td>
+<td><strong>2,433 tasks/s</strong></td>
+<td>memory，noop，10 workers，N=3000</td>
+</tr>
+<tr>
+<td>空载单任务往返 P50</td>
+<td><strong>15.50 ms</strong></td>
+<td>串行提交，无积压，N=200</td>
+</tr>
+<tr>
+<td>20 ms IO 任务扩展</td>
+<td><strong>32.1 → 249.3 tasks/s</strong></td>
+<td>1 → 8 workers，7.76x</td>
+</tr>
+<tr>
+<td>5 秒持续负载</td>
+<td><strong>2,565 tasks/s</strong></td>
+<td>有界在途 200，0 失败</td>
+</tr>
+<tr>
+<td>队列 push / pop</td>
+<td><strong>262,019 / 240,136 ops/s</strong></td>
+<td>内存堆，N=5000</td>
+</tr>
+<tr>
+<td>批量 pop 提升</td>
+<td><strong>2.75x</strong></td>
+<td><code>pop(10)</code> vs <code>pop(1)</code></td>
+</tr>
+<tr>
+<td>SQLite 单 worker</td>
+<td><strong>30.1 tasks/s</strong></td>
+<td>串行提交，P50 31.31 ms</td>
+</tr>
+</tbody>
+</table>
+<p>需要先明确：<strong>提交吞吐不等于完成吞吐</strong>。提交吞吐只覆盖任务创建、落库和入队；完成吞吐覆盖排队、执行、状态落库和事件通知。两者不能混在一列比较。</p>
+<h2 id="2-测试环境">2. 测试环境</h2>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>配置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU</td>
+<td>Intel Core i7-1165G7，4 核 8 线程，2.80 GHz</td>
+</tr>
+<tr>
+<td>内存</td>
+<td>15.8 GiB</td>
+</tr>
+<tr>
+<td>磁盘</td>
+<td>NVMe SSD，512 GB</td>
+</tr>
+<tr>
+<td>操作系统</td>
+<td>Windows 10 专业版 19045，64 位</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>3.13.15，64 位</td>
+</tr>
+<tr>
+<td>NeoTask</td>
+<td>1.0.5（PyPI 安装）</td>
+</tr>
+<tr>
+<td>存储后端</td>
+<td>memory（主套件）、SQLite（边界探针）</td>
+</tr>
+<tr>
+<td>旁路组件</td>
+<td>metrics、health check、reporter、reclaimer、heartbeat、dead letter、retry 全部关闭</td>
+</tr>
+</tbody>
+</table>
+<p>测试机为单机笔记本，不是专用服务器。绝对值会随 CPU、操作系统和 Python 版本变化；本文更关注同一环境下的相对差异与扩展趋势。</p>
+<h2 id="3-测试口径">3. 测试口径</h2>
+<p>四个指标的定义如下：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">提交窗口：  第一个 submit_async ──▶ 第 N 个 submit_async 返回</span><br><span class="line">完成窗口：  第一个 submit_async ──▶ 第 N 个 task.completed 事件</span><br><span class="line">任务延迟：  单任务 submit 前 ──▶ 该任务 task.completed 事件</span><br><span class="line">等待吞吐：  N 个并发 wait_for_result_async 全部返回的速率</span><br></pre></td></tr></table></figure>
+<p>具体做法：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>每个场景独立创建 <code>TaskPool</code>，先跑 10 个预热任务，再开始计时。</p>
+</li>
+<li class="lvl-2">
+<p>主套件每个场景重复 2～3 轮，取中位数；原始每轮数据保存在 <code>results.json</code> 的 <code>notes.runs</code>。SQLite 探针为单轮，只用于确认边界。</p>
+</li>
+<li class="lvl-2">
+<p>主套件使用 <code>storage_type=&quot;memory&quot;</code>，目的是隔离调度器本身的开销，不把磁盘 I/O 混入结论。</p>
+</li>
+<li class="lvl-2">
+<p>默认关闭指标、健康检查、上报、回收、心跳、死信和重试，避免旁路任务影响测量。</p>
+</li>
+<li class="lvl-2">
+<p>执行器分为三类：<code>noop</code>（空操作）、<code>io20</code>（<code>asyncio.sleep(0.020)</code>）、<code>cpu5000</code>（5000 次同步累加）。</p>
+</li>
+<li class="lvl-2">
+<p>所有速率均以实际壁钟为分母，不写死名义时长。</p>
+</li>
+</ul>
+<blockquote>
+<p>本文只使用 1.0.5 的实测数据。旧版文档中的 1697 ops/s 等数字来自不同版本与不同口径，不能直接横向比较。</p>
+</blockquote>
+<h2 id="4-实测结果">4. 实测结果</h2>
+<h3 id="4-1-调度与执行开销">4.1 调度与执行开销</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>N</th>
+<th>Workers</th>
+<th>提交吞吐</th>
+<th>完成吞吐</th>
+<th>P50</th>
+<th>P95</th>
+<th>P99</th>
+<th>失败</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>只提交，不等待完成</td>
+<td>2000</td>
+<td>10</td>
+<td><strong>14,657/s</strong></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>0</td>
+</tr>
+<tr>
+<td>提交并等待全部完成</td>
+<td>3000</td>
+<td>10</td>
+<td>10,526/s</td>
+<td><strong>2,433/s</strong></td>
+<td>790.21 ms</td>
+<td>869.05 ms</td>
+<td>881.74 ms</td>
+<td>0</td>
+</tr>
+<tr>
+<td>串行往返，无积压</td>
+<td>200</td>
+<td>10</td>
+<td>64.3/s</td>
+<td>64.3/s</td>
+<td><strong>15.50 ms</strong></td>
+<td>16.33 ms</td>
+<td>16.55 ms</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>三点说明：</p>
+<ol>
+<li class="lvl-3">
+<p>提交 2000 个空任务仅需约 0.136 s，说明创建、落库、入队主链路的单任务开销约 68 μs。</p>
+</li>
+<li class="lvl-3">
+<p>完成 3000 个空任务时，10 个 worker 的完成吞吐约 2,433 tasks/s。此时瓶颈不在执行器，而在任务生命周期、状态落库和事件分发。</p>
+</li>
+<li class="lvl-3">
+<p>串行往返的 64.3 tasks/s 是“提交一个、等待一个”的节奏，不代表系统吞吐上限；它对应的是无积压时的单任务往返延迟，P50 为 15.50 ms。</p>
+</li>
+</ol>
+<h3 id="4-2-IO-任务扩展性">4.2 IO 任务扩展性</h3>
+<p>任务体为 <code>await asyncio.sleep(0.020)</code>，N=400。</p>
+<table>
+<thead>
+<tr>
+<th>Workers</th>
+<th>完成吞吐</th>
+<th>相对 1 worker</th>
+<th>P50</th>
+<th>P95</th>
+<th>P99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>32.1/s</td>
+<td>1.00x</td>
+<td>6,230.53 ms</td>
+<td>11,806.92 ms</td>
+<td>12,303.30 ms</td>
+</tr>
+<tr>
+<td>2</td>
+<td>64.0/s</td>
+<td>1.99x</td>
+<td>3,132.25 ms</td>
+<td>5,914.06 ms</td>
+<td>6,157.46 ms</td>
+</tr>
+<tr>
+<td>4</td>
+<td>127.0/s</td>
+<td>3.96x</td>
+<td>1,582.69 ms</td>
+<td>2,965.99 ms</td>
+<td>3,089.04 ms</td>
+</tr>
+<tr>
+<td>8</td>
+<td>249.3/s</td>
+<td><strong>7.76x</strong></td>
+<td>808.96 ms</td>
+<td>1,503.44 ms</td>
+<td>1,565.04 ms</td>
+</tr>
+</tbody>
+</table>
+<p>IO 任务随 worker 数量接近线性扩展，1 → 8 workers 获得 7.76x 提升，排队延迟同步下降。</p>
+<blockquote>
+<p>绝对值受 Windows 定时器粒度影响。<code>asyncio.sleep(0.020)</code> 在本机实测约 31 ms/任务，因此 1 worker 只有 32 tasks/s。这个偏差来自操作系统，不是 NeoTask 的调度开销；扩展效率才是本组数据的有效结论。</p>
+</blockquote>
+<h3 id="4-3-CPU-密集任务">4.3 CPU 密集任务</h3>
+<p>任务体为 5000 次同步累加，放在 async 执行器内，N=500。</p>
+<table>
+<thead>
+<tr>
+<th>Workers</th>
+<th>完成吞吐</th>
+<th>相对 1 worker</th>
+<th>P50</th>
+<th>P95</th>
+<th>P99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1,110/s</td>
+<td>1.00x</td>
+<td>244.15 ms</td>
+<td>400.61 ms</td>
+<td>406.93 ms</td>
+</tr>
+<tr>
+<td>4</td>
+<td>1,215/s</td>
+<td>1.09x</td>
+<td>196.97 ms</td>
+<td>354.56 ms</td>
+<td>367.61 ms</td>
+</tr>
+<tr>
+<td>10</td>
+<td>1,269/s</td>
+<td>1.14x</td>
+<td>207.74 ms</td>
+<td>341.30 ms</td>
+<td>350.68 ms</td>
+</tr>
+</tbody>
+</table>
+<p>增加 worker 只带来约 14% 提升。原因是同步循环直接阻塞了 async 执行器所在的事件循环，worker 再多也无法并行。</p>
+<p><strong>正确用法</strong>：CPU 密集任务应交给 thread 或 process 执行器，而不是写在 async 函数里。本组数据说明的是“错误用法下的上限”，不是 NeoTask 对 CPU 任务的扩展能力。</p>
+<h3 id="4-4-预取器配置">4.4 预取器配置</h3>
+<p>同样的 3000 个空任务、10 workers，只改变预取配置。</p>
+<table>
+<thead>
+<tr>
+<th>预取配置</th>
+<th>完成吞吐</th>
+<th>相对关闭</th>
+<th>P50</th>
+<th>P95</th>
+<th>P99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>关闭，<code>prefetch_size=1</code></td>
+<td><strong>2,382/s</strong></td>
+<td>1.00x</td>
+<td>816.05 ms</td>
+<td>938.75 ms</td>
+<td>954.97 ms</td>
+</tr>
+<tr>
+<td>开启，<code>prefetch_size=20</code>（默认）</td>
+<td>181/s</td>
+<td>0.08x</td>
+<td>8,209.44 ms</td>
+<td>15,467.42 ms</td>
+<td>16,107.71 ms</td>
+</tr>
+<tr>
+<td>开启，<code>prefetch_size=100</code></td>
+<td>864/s</td>
+<td>0.36x</td>
+<td>1,706.64 ms</td>
+<td>3,097.86 ms</td>
+<td>3,199.12 ms</td>
+</tr>
+</tbody>
+</table>
+<p>预取器会把共享队列批量搬到 worker 本地队列，减少队列争用；但补充节奏约为每 0.1 s 一批。当任务本身只有几十微秒时，<code>20 个/0.1 s</code> 就把完成吞吐限制在约 200 tasks/s，形成明显瓶颈。</p>
+<p>建议：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>任务执行时间 <strong>小于 1 ms</strong>：关闭预取，或使用很小的 <code>prefetch_size</code>。</p>
+</li>
+<li class="lvl-2">
+<p>任务执行时间 <strong>在毫秒到秒级</strong>：开启预取通常更有利，具体批量需按业务实测。</p>
+</li>
+<li class="lvl-2">
+<p>不要默认认为“预取一定更快”；它优化的是队列争用，不是极短任务的吞吐。</p>
+</li>
+</ul>
+<h3 id="4-5-结果等待方式">4.5 结果等待方式</h3>
+<p>N=3000，noop，10 workers。</p>
+<table>
+<thead>
+<tr>
+<th>等待口径</th>
+<th>速率</th>
+<th>P50</th>
+<th>P95</th>
+<th>P99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>订阅 <code>task.completed</code> 事件</td>
+<td><strong>2,433/s</strong></td>
+<td>790.21 ms</td>
+<td>869.05 ms</td>
+<td>881.74 ms</td>
+</tr>
+<tr>
+<td>3000 个并发 <code>wait_for_result_async</code></td>
+<td>759.6/s</td>
+<td>3,249.06 ms</td>
+<td>3,680.70 ms</td>
+<td>3,700.06 ms</td>
+</tr>
+</tbody>
+</table>
+<p>3000 个并发 waiter 会额外创建 3000 个协程，并引入等待器的回查开销，吞吐降到事件口径的约 31%。</p>
+<p>建议：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>观测、统计、批量任务编排优先使用事件回调。</p>
+</li>
+<li class="lvl-2">
+<p>需要逐个取结果时，用有界批次等待，不要一次挂起数千个 waiter。</p>
+</li>
+<li class="lvl-2">
+<p>这个差异是“等待方式的开销”，不是任务执行能力的下降。</p>
+</li>
+</ul>
+<h3 id="4-6-持续负载">4.6 持续负载</h3>
+<p>5 秒窗口，预热 1 秒，有界在途任务 200，noop，10 workers。</p>
+<table>
+<thead>
+<tr>
+<th>轮次</th>
+<th>窗口内完成</th>
+<th>提交总数</th>
+<th>完成总数</th>
+<th>失败</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>第 1 轮</td>
+<td>2,702/s</td>
+<td>16,518</td>
+<td>16,518</td>
+<td>0</td>
+</tr>
+<tr>
+<td>第 2 轮</td>
+<td>2,428/s</td>
+<td>15,190</td>
+<td>15,190</td>
+<td>0</td>
+</tr>
+<tr>
+<td>中位数</td>
+<td><strong>2,565/s</strong></td>
+<td>15,854</td>
+<td>15,854</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>在持续生产、且有 200 个在途任务的情况下，系统稳定在约 2,565 tasks/s，无失败、无积压失控。停止生产后，在途任务能在数秒内排空。</p>
+<h3 id="4-7-队列操作">4.7 队列操作</h3>
+<p>内存堆，N=5000，取多轮中位数。</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>实测速率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>push</code></td>
+<td><strong>262,019 ops/s</strong></td>
+</tr>
+<tr>
+<td><code>pop(1)</code></td>
+<td><strong>240,136 ops/s</strong></td>
+</tr>
+<tr>
+<td><code>pop(1)</code> 取 1000 条</td>
+<td>242,907 items/s</td>
+</tr>
+<tr>
+<td><code>pop(10)</code> 取 1000 条</td>
+<td><strong>688,895 items/s</strong></td>
+</tr>
+<tr>
+<td><code>pop(10)</code> 调用次数</td>
+<td>68,889 calls/s</td>
+</tr>
+<tr>
+<td>批量提升</td>
+<td><strong>2.75x</strong>（逐轮比值中位数）</td>
+</tr>
+</tbody>
+</table>
+<p>批量出队把每次调用的固定开销摊薄到 10 条任务上，适合 worker 一次取多条的场景。单条出队的速率已经高于调度主链路，队列本身不是常规任务的瓶颈。</p>
+<h2 id="5-SQLite-持久化边界">5. SQLite 持久化边界</h2>
+<p>SQLite 用独立探针测量（单轮），任务为 noop，数据库文件每次重建。</p>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>Workers</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>串行提交 100 条</td>
+<td>1</td>
+<td><strong>30.1 tasks/s</strong>，P50 31.31 ms，P95 66.34 ms，100/100 成功</td>
+</tr>
+<tr>
+<td>突发提交 100 条</td>
+<td>1</td>
+<td>25.5 tasks/s，100/100 成功，0 错误</td>
+</tr>
+<tr>
+<td>突发提交 100 条</td>
+<td>2</td>
+<td>第 37 次提交起 <code>database is locked</code>，33/37 完成，耗时 66.9 s</td>
+</tr>
+<tr>
+<td>突发提交 100 条</td>
+<td>4</td>
+<td>第 36 次提交起 <code>database is locked</code>，34/36 完成，耗时 61.5 s</td>
+</tr>
+</tbody>
+</table>
+<p>结论很明确：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>SQLite 适合<strong>低频、单写入者、需要本地持久化</strong>的场景，单 worker 串行约 30 tasks/s。</p>
+</li>
+<li class="lvl-2">
+<p>多 worker 并发写入时会出现 <code>database is locked</code>。任务仓储与队列仓储各持有连接，且每次写入都提交，写锁竞争会直接打断提交流程。</p>
+</li>
+<li class="lvl-2">
+<p>高并发或分布式场景应使用 Redis 后端；不要用多 worker 的 SQLite 写入链路做吞吐测试。</p>
+</li>
+</ul>
+<h2 id="6-配置建议">6. 配置建议</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>极短任务（&lt;1 ms）</td>
+<td><code>enable_prefetch=False</code>，<code>prefetch_size=1</code>；不要直接沿用默认预取</td>
+</tr>
+<tr>
+<td>IO 密集任务</td>
+<td>开启预取，<code>prefetch_size</code> 按 20～100 起步实测；worker 数可设为 CPU 核心数的 2～4 倍</td>
+</tr>
+<tr>
+<td>CPU 密集任务</td>
+<td>使用 thread 或 process 执行器；worker 数接近物理核心数</td>
+</tr>
+<tr>
+<td>大批量结果回收</td>
+<td>优先订阅 <code>task.completed</code>；需要等待时使用有界批次，避免数千个并发 waiter</td>
+</tr>
+<tr>
+<td>本地持久化、低并发</td>
+<td>SQLite，单 worker，控制写入频率</td>
+</tr>
+<tr>
+<td>高并发、分布式</td>
+<td>Redis；不要在多 worker 写入链路上使用 SQLite</td>
+</tr>
+<tr>
+<td>生产环境</td>
+<td>按需开启 metrics、health check、reporter；基准测试中应关闭</td>
+</tr>
+</tbody>
+</table>
+<p>核心原则：<strong>默认参数是通用起点，不是所有负载的最优解。</strong> 任务粒度、IO/CPU 比例、结果回收方式，都会改变最佳配置。</p>
+<h2 id="7-复现">7. 复现</h2>
+<figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">cd</span> E:\neotask<span class="literal">-demo</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 安装最新版</span></span><br><span class="line">.\.venv\Scripts\python.exe <span class="literal">-m</span> pip install <span class="literal">--upgrade</span> neotask</span><br><span class="line"></span><br><span class="line"><span class="comment"># 主套件（内存后端，约 130 秒）</span></span><br><span class="line">.\.venv\Scripts\python.exe bench\bench_runner.py</span><br><span class="line"></span><br><span class="line"><span class="comment"># SQLite 边界探针（约 135 秒）</span></span><br><span class="line">.\.venv\Scripts\python.exe bench\sqlite_probe.py</span><br></pre></td></tr></table></figure>
+<p>输出文件：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>bench/results.json</code>：主套件每轮原始数据与中位数。</p>
+</li>
+<li class="lvl-2">
+<p><code>bench/run.log</code>：主套件控制台摘要。</p>
+</li>
+<li class="lvl-2">
+<p><code>bench/sqlite_results.json</code>：SQLite 串行与突发结果。</p>
+</li>
+</ul>
+<p>建议在目标机器上重跑一次，并以本机结果作为容量规划依据。</p>
+<h2 id="8-结论与边界">8. 结论与边界</h2>
+<p><strong>结论</strong></p>
+<ol>
+<li class="lvl-3">
+<p>NeoTask 的调度主链路开销很低：空任务提交可达 14,657 tasks/s，单任务提交开销约 68 μs。</p>
+</li>
+<li class="lvl-3">
+<p>IO 任务扩展性良好：1 → 8 workers 获得 7.76x 提升，适合异步 IO 型业务。</p>
+</li>
+<li class="lvl-3">
+<p>队列不是瓶颈：push/pop 均在 240,000 ops/s 以上，批量出队可再提升 2.75x。</p>
+</li>
+<li class="lvl-3">
+<p>持续负载稳定：5 秒窗口 2,565 tasks/s、15,854 个任务、0 失败。</p>
+</li>
+<li class="lvl-3">
+<p>配置对结果影响很大：极短任务下默认预取会把完成吞吐压到 181 tasks/s；关闭预取可恢复到 2,382 tasks/s。</p>
+</li>
+</ol>
+<p><strong>边界</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>数据来自单台 Windows 10 笔记本，绝对值不能直接外推到服务器或容器环境。</p>
+</li>
+<li class="lvl-2">
+<p>主套件使用 memory + noop，测的是调度与生命周期开销；真实业务执行时间会主导结果。</p>
+</li>
+<li class="lvl-2">
+<p>Windows 定时器粒度使 20 ms IO 任务实测约 31 ms，IO 绝对值仅作参考。</p>
+</li>
+<li class="lvl-2">
+<p>3000 个并发 waiter 的 759.6 tasks/s 是等待方式的开销，不代表任务执行上限。</p>
+</li>
+<li class="lvl-2">
+<p>SQLite 多 worker 并发写入存在 <code>database is locked</code>，不适合高并发写负载。</p>
+</li>
+<li class="lvl-2">
+<p>本文不与旧版或其他口径的数字做横向比较。</p>
+</li>
+</ul>
+<p>在上述边界内，NeoTask 1.0.5 的调度开销、IO 扩展性和持续负载表现均可复现，可以作为轻量级异步任务队列的选型依据。</p>
+<hr>
+<p>这份报告想坚持的态度和系列方法论篇一致：<strong>测评的诚实不只在于敢不敢贴低数字，而在于敢不敢说明每个数字被什么限制。</strong></p>
+<blockquote>
+<p>相关链接：<a target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com">NeoTask 官网</a> | <a target="_blank" rel="external nofollow noopener noreferrer" href="https://task.helpenx.com/docs/v1.0/benchmarks.html">NeoTask 性能基准文档</a> | <a target="_blank" rel="noopener" href="https://github.com/neopen/neotask">GitHub 仓库</a></p>
+</blockquote>
+<!-- related-posts -->
+<h2 id="9-相关阅读">9. 相关阅读</h2>
+<p>单点拆解：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2026/10/neotask-prefetch-short-tasks/">默认预取让短任务慢 13 倍</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/10/neotask-sqlite-database-locked/">SQLite 多 Worker 为什么会 database is locked</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/10/neotask-waiter-throughput/">3000 个 waiter 只剩 31% 吞吐</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/10/neotask-benchmark-numbers-not-comparable/">1697 ops/s 与 2,433 tasks/s 为什么不能直接比</a></p>
+</li>
+</ul>
+<p>背景与选型：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2026/04/neotask-overview/">嵌入式任务池凭啥省掉 Broker？NeoTask 调度链路与边界</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/09/neotask-lock-watchdog/">同一任务被执行两次才是事故：NeoTask 分布式锁与看门狗实战</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/09/neotask-embed-quickstart/">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/04/neotask-vs-celery/">Celery 三件套为何偏重？NeoTask 1.0.5 进程模型与选型边界</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/10/neotask-benchmark-review/">https://pengline.cn/2026/10/neotask-benchmark-review/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Python/">Python</a><a class="post-meta__tags" href="/tags/NeoTask/">NeoTask</a><a class="post-meta__tags" href="/tags/%E6%80%A7%E8%83%BD%E5%9F%BA%E5%87%86/">性能基准</a><a class="post-meta__tags" href="/tags/%E5%BA%A6%E9%87%8F%E5%8F%A3%E5%BE%84/">度量口径</a><a class="post-meta__tags" href="/tags/%E5%8E%8B%E6%B5%8B/">压测</a><a class="post-meta__tags" href="/tags/%E5%90%9E%E5%90%90%E9%87%8F/">吞吐量</a><a class="post-meta__tags" href="/tags/%E5%9F%BA%E5%87%86%E6%B5%8B%E8%AF%95/">基准测试</a><a class="post-meta__tags" href="/tags/asyncio/">asyncio</a><a class="post-meta__tags" href="/tags/Worker%E5%B9%B6%E5%8F%91/">Worker并发</a><a class="post-meta__tags" href="/tags/%E9%A2%84%E5%8F%96/">预取</a><a class="post-meta__tags" href="/tags/SQLite/">SQLite</a><a class="post-meta__tags" href="/tags/%E5%86%85%E5%AD%98%E5%AD%98%E5%82%A8/">内存存储</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">任务调度</a><a class="post-meta__tags" href="/tags/%E5%BB%B6%E8%BF%9F%E5%88%86%E5%B8%83/">延迟分布</a><a class="post-meta__tags" href="/tags/%E6%89%B9%E9%87%8F%E6%93%8D%E4%BD%9C/">批量操作</a><a class="post-meta__tags" href="/tags/%E9%A1%B9%E7%9B%AE%E6%B5%8B%E8%AF%84/">项目测评</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1745746443697174574644362.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/10/neotask-prefetch-short-tasks/" title="默认预取让短任务慢 13 倍：NeoTask 短任务预取的实测边界"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small073833O6Jvi1754869113.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">默认预取让短任务慢 13 倍：NeoTask 短任务预取的实测边界</div></div><div class="info-2"><div class="info-item-1">NeoTask 1.0.5 实测：3,000 个 noop 任务、10 个 Worker，关闭预取完成吞吐 2,382 tasks/s，默认 prefetch_size=20 只有 181 tasks/s，相差 13 倍。预取器是全局单例、按 0.1 秒节奏补货，任务太快时瓶颈从队列争用变成补货节奏。</div></div></div></a><a class="pagination-related" href="/2026/10/neotask-performance-tuning/" title="NeoTask 1.0.5 优化指南：短任务关预取快 13 倍，IO 1→8 workers 快 7.76 倍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small082829wjhIN1756340909.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">NeoTask 1.0.5 优化指南：短任务关预取快 13 倍，IO 1→8 workers 快 7.76 倍</div></div><div class="info-2"><div class="info-item-1">基于 NeoTask 1.0.5 实测数据，按优先级给出六项可落地优化：执行器与任务类型匹配、短任务关闭预取、按目标吞吐计算 prefetch_size、按 IO/CPU 类型设置 worker、用事件代替数千 waiter、按并发级别选择存储后端。包含配置模板、上线验收清单与最小测量脚本。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/10/neotask-performance-tuning/" title="NeoTask 1.0.5 优化指南：短任务关预取快 13 倍，IO 1→8 workers 快 7.76 倍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small082829wjhIN1756340909.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-30</div><div class="info-item-2">NeoTask 1.0.5 优化指南：短任务关预取快 13 倍，IO 1→8 workers 快 7.76 倍</div></div><div class="info-2"><div class="info-item-1">基于 NeoTask 1.0.5 实测数据，按优先级给出六项可落地优化：执行器与任务类型匹配、短任务关闭预取、按目标吞吐计算 prefetch_size、按 IO/CPU 类型设置 worker、用事件代替数千 waiter、按并发级别选择存储后端。包含配置模板、上线验收清单与最小测量脚本。</div></div></div></a><a class="pagination-related" href="/2026/10/neotask-benchmark-numbers-not-comparable/" title="1697 ops&#x2F;s 与 2,433 tasks&#x2F;s 为什么不能直接比：任务队列性能口径拆解"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1753762867382175376286799.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-30</div><div class="info-item-2">1697 ops&#x2F;s 与 2,433 tasks&#x2F;s 为什么不能直接比：任务队列性能口径拆解</div></div><div class="info-2"><div class="info-item-1">官网旧版 benchmarks 页面的 1697 ops/s、64.6 ops/s 与 NeoTask 1.0.5 的 2,433 tasks/s、2,565 tasks/s 不是同一口径：版本、场景、存储、计时方式和统计对象都不同。读性能数字前，先确认起止点、负载和版本，再决定能不能横向比较。</div></div></div></a><a class="pagination-related" href="/2026/10/neotask-prefetch-short-tasks/" title="默认预取让短任务慢 13 倍：NeoTask 短任务预取的实测边界"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small073833O6Jvi1754869113.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-30</div><div class="info-item-2">默认预取让短任务慢 13 倍：NeoTask 短任务预取的实测边界</div></div><div class="info-2"><div class="info-item-1">NeoTask 1.0.5 实测：3,000 个 noop 任务、10 个 Worker，关闭预取完成吞吐 2,382 tasks/s，默认 prefetch_size=20 只有 181 tasks/s，相差 13 倍。预取器是全局单例、按 0.1 秒节奏补货，任务太快时瓶颈从队列争用变成补货节奏。</div></div></div></a><a class="pagination-related" href="/2026/09/neotask-embed-quickstart/" title="耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small222532YQ65J1754317532.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-23</div><div class="info-item-2">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</div></div><div class="info-2"><div class="info-item-1">耗时任务排队传统方案要引 Celery 加 Redis/RabbitMQ，运维成本高。NeoTask 1.0.5 用纯 Python 异步任务池把调度内嵌进应用：即时、延时、Cron、四级优先级、自动重试开箱即用，内存/SQLite/Redis 按需切换，进度上报与手动重试已接线。本文覆盖三种使用范式、四类任务、背压语义与升级信号。</div></div></div></a><a class="pagination-related" href="/2026/10/neotask-sqlite-database-locked/" title="SQLite 多 Worker 为什么会 database is locked：一次 NeoTask 存储边界实测"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1744010580430174401058043.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-30</div><div class="info-item-2">SQLite 多 Worker 为什么会 database is locked：一次 NeoTask 存储边界实测</div></div><div class="info-2"><div class="info-item-1">NeoTask 1.0.5 的 SQLite 边界实测：单 Worker 串行约 30.1 tasks/s；突发 100 条时，2 个 Worker 从第 37 次、4 个 Worker 从第 36 次提交起报 database is locked。根因是双连接逐次 commit 加缺少 WAL/busy_timeout 的写锁竞争。</div></div></div></a><a class="pagination-related" href="/2026/09/neotask-lock-watchdog/" title="同一任务被执行两次才是事故：NeoTask 分布式锁与看门狗实战"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small220807fLgw21759154887.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-26</div><div class="info-item-2">同一任务被执行两次才是事故：NeoTask 分布式锁与看门狗实战</div></div><div class="info-2"><div class="info-item-1">分布式任务调度里最隐蔽的事故不是丢任务，而是同一任务被执行两次。本文以 NeoTask 1.0.5 的实现为蓝本拆解防重复执行的三层防线：SET NX EX 与 Lua 原子释放、看门狗为长任务续命的 0.3 倍续期节奏、锁续期失败后任务的真实去向、回收器与死信队列的兜底链路，以及"出队"与"加锁"为什么要分开。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">NeoTask 1.0.5 性能实测：提交 14,657&#x2F;s，完成 2,433&#x2F;s，短任务默认预取只剩 1&#x2F;13</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#1-%E7%BB%93%E8%AE%BA"><span class="toc-number">1.1.</span> <span class="toc-text">1. 结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83"><span class="toc-number">1.2.</span> <span class="toc-text">2. 测试环境</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-%E6%B5%8B%E8%AF%95%E5%8F%A3%E5%BE%84"><span class="toc-number">1.3.</span> <span class="toc-text">3. 测试口径</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-%E5%AE%9E%E6%B5%8B%E7%BB%93%E6%9E%9C"><span class="toc-number">1.4.</span> <span class="toc-text">4. 实测结果</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E8%B0%83%E5%BA%A6%E4%B8%8E%E6%89%A7%E8%A1%8C%E5%BC%80%E9%94%80"><span class="toc-number">1.4.1.</span> <span class="toc-text">4.1 调度与执行开销</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-IO-%E4%BB%BB%E5%8A%A1%E6%89%A9%E5%B1%95%E6%80%A7"><span class="toc-number">1.4.2.</span> <span class="toc-text">4.2 IO 任务扩展性</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-CPU-%E5%AF%86%E9%9B%86%E4%BB%BB%E5%8A%A1"><span class="toc-number">1.4.3.</span> <span class="toc-text">4.3 CPU 密集任务</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-4-%E9%A2%84%E5%8F%96%E5%99%A8%E9%85%8D%E7%BD%AE"><span class="toc-number">1.4.4.</span> <span class="toc-text">4.4 预取器配置</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-5-%E7%BB%93%E6%9E%9C%E7%AD%89%E5%BE%85%E6%96%B9%E5%BC%8F"><span class="toc-number">1.4.5.</span> <span class="toc-text">4.5 结果等待方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-6-%E6%8C%81%E7%BB%AD%E8%B4%9F%E8%BD%BD"><span class="toc-number">1.4.6.</span> <span class="toc-text">4.6 持续负载</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-7-%E9%98%9F%E5%88%97%E6%93%8D%E4%BD%9C"><span class="toc-number">1.4.7.</span> <span class="toc-text">4.7 队列操作</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#5-SQLite-%E6%8C%81%E4%B9%85%E5%8C%96%E8%BE%B9%E7%95%8C"><span class="toc-number">1.5.</span> <span class="toc-text">5. SQLite 持久化边界</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-%E9%85%8D%E7%BD%AE%E5%BB%BA%E8%AE%AE"><span class="toc-number">1.6.</span> <span class="toc-text">6. 配置建议</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#7-%E5%A4%8D%E7%8E%B0"><span class="toc-number">1.7.</span> <span class="toc-text">7. 复现</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#8-%E7%BB%93%E8%AE%BA%E4%B8%8E%E8%BE%B9%E7%95%8C"><span class="toc-number">1.8.</span> <span class="toc-text">8. 结论与边界</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#9-%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">1.9.</span> <span class="toc-text">9. 相关阅读</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
