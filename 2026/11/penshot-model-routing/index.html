@@ -1,0 +1,722 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>PenShot 模型路由：按片段选型，而不是全片赌一个模型 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="PenShot v0.4.5 的模型路由机制拆解：五模型静态能力表、确定性路由特征、规则优先级与时长兜底、按最终模型重建提示词包，以及两段式图生视频的首帧语义和真实边界。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="PenShot 模型路由：按片段选型，而不是全片赌一个模型">
+<meta property="og:url" content="https://pengline.cn/2026/11/penshot-model-routing/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="PenShot v0.4.5 的模型路由机制拆解：五模型静态能力表、确定性路由特征、规则优先级与时长兜底、按最终模型重建提示词包，以及两段式图生视频的首帧语义和真实边界。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp">
+<meta property="article:published_time" content="2026-11-04T16:00:00.000Z">
+<meta property="article:modified_time" content="2026-11-04T16:00:00.000Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Kling">
+<meta property="article:tag" content="Luma">
+<meta property="article:tag" content="PenShot">
+<meta property="article:tag" content="Pika">
+<meta property="article:tag" content="Runway">
+<meta property="article:tag" content="Sora">
+<meta property="article:tag" content="分镜">
+<meta property="article:tag" content="图生视频">
+<meta property="article:tag" content="模型路由">
+<meta property="article:tag" content="源码分析">
+<meta property="article:tag" content="目标模型适配">
+<meta property="article:tag" content="能力表">
+<meta property="article:tag" content="首帧">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/11/penshot-model-routing/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'PenShot 模型路由：按片段选型，而不是全片赌一个模型',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">896</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">49</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">PenShot 模型路由：按片段选型，而不是全片赌一个模型</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">PenShot 模型路由：按片段选型，而不是全片赌一个模型</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-11-04T16:00:00.000Z" title="发表于 2026-11-05 00:00:00">2026-11-05</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-11-04T16:00:00.000Z" title="更新于 2026-11-05 00:00:00">2026-11-05</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/">AI</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/">Agent</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/AI/Agent/PenShot/">PenShot</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>PenShot 模型路由：按片段选型，而不是全片赌一个模型</h1>
+<p>PenShot 相关链接：<a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">GitHub</a> | <a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/overview.html">文档</a> | <a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/">官网</a></p>
+<blockquote>
+<p><strong>文档定位</strong>：这是一篇机制文档，拆的是 <code>ROUTE_MODEL</code> 节点背后的确定性规则，不讨论&quot;哪个模型更好&quot;的主观排名。<br>
+<strong>事实边界</strong>：路由是 0.4.3 引入、0.4.5 收口的。它输出的是可执行的计划指令，不是已经渲染好的视频。<br>
+<strong>代码标记</strong>：文中的能力分数、兜底顺序、字段名均来自 <code>origin/main</code> 的 <code>model_adapter</code> 目录；示例 JSON 仅说明结构。</p>
+</blockquote>
+<h2 id="读完本文后，你应该知道什么">读完本文后，你应该知道什么</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>路由特征是怎么抽出来的，为什么它不调用 LLM；</p>
+</li>
+<li class="lvl-2">
+<p>规则命中、模型未注册、时长不足三种情况分别怎么兜底；</p>
+</li>
+<li class="lvl-2">
+<p>为什么选完模型后还要重新适配一次提示词；</p>
+</li>
+<li class="lvl-2">
+<p>两段式图生视频在什么条件下触发，首帧与动作如何拆开；</p>
+</li>
+<li class="lvl-2">
+<p><code>RoutePlan</code> 里哪些字段是给下游消费的，哪些只是解释性信息；</p>
+</li>
+<li class="lvl-2">
+<p>路由失败为什么不阻断主流程，以及由此带来的下游责任。</p>
+</li>
+</ul>
+<h2 id="一、问题不是-选最好的模型-，而是-每个片段都别选错">一、问题不是&quot;选最好的模型&quot;，而是&quot;每个片段都别选错&quot;</h2>
+<p>一个 60 秒的短剧，切完可能是十几个片段。每个片段的诉求并不一样：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>有的片段有特写台词卡，必须把屏幕上的字渲对；</p>
+</li>
+<li class="lvl-2">
+<p>有的片段是打斗或追逐，动作复杂度高；</p>
+</li>
+<li class="lvl-2">
+<p>有的片段只有一个角色站在走廊，人物一致性比画质更重要；</p>
+</li>
+<li class="lvl-2">
+<p>有的片段时长超过 10 秒，而多数模型单次只能生成 5 到 10 秒。</p>
+</li>
+</ul>
+<p>如果整片只绑一个模型，结果通常是&quot;大部分片段还行，少数片段明显不对&quot;。0.4.3 的 <code>ROUTE_MODEL</code> 节点就是把这层选择拆到片段级：先按规则算出每个片段该给哪个模型、用哪种生成模式，再把决策写进 <code>RoutePlan</code>。</p>
+<h2 id="二、五模型能力表：路由的公共依据">二、五模型能力表：路由的公共依据</h2>
+<p><code>capability_registry.py</code> 是一张静态表，目前注册了五个模型。分数是 0 到 1 的相对主观值，用于路由比较，不是官方 benchmark：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>最大时长</th>
+<th>图生视频</th>
+<th>相机控制</th>
+<th>文字渲染</th>
+<th>人物一致性</th>
+<th>美学倾向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>runway_gen4</code></td>
+<td>10s</td>
+<td>支持</td>
+<td>支持</td>
+<td>0.5</td>
+<td>0.8</td>
+<td>cinematic</td>
+</tr>
+<tr>
+<td><code>kling_3</code></td>
+<td>10s</td>
+<td>支持</td>
+<td>支持</td>
+<td>0.7</td>
+<td>0.9</td>
+<td>realistic</td>
+</tr>
+<tr>
+<td><code>luma_dream</code></td>
+<td>5s</td>
+<td>支持</td>
+<td>支持</td>
+<td>0.6</td>
+<td>0.7</td>
+<td>cinematic</td>
+</tr>
+<tr>
+<td><code>sora_2</code></td>
+<td>60s</td>
+<td>不支持</td>
+<td>不支持</td>
+<td>0.95</td>
+<td>0.85</td>
+<td>realistic</td>
+</tr>
+<tr>
+<td><code>pika_2</code></td>
+<td>4s</td>
+<td>支持</td>
+<td>支持</td>
+<td>0.4</td>
+<td>0.6</td>
+<td>anime</td>
+</tr>
+</tbody>
+</table>
+<p>这张表有两个用途：</p>
+<ol>
+<li class="lvl-3">
+<p>规则匹配前先确认模型已注册。规则里写了一个表里没有的模型，会被直接跳过，避免产出下游无法消费的路由；</p>
+</li>
+<li class="lvl-3">
+<p>时长不够时做兜底选择。候选集是所有 <code>max_duration &gt;= 片段时长</code> 的模型，排序键是&quot;人物一致性从高到低，其次最大时长从短到长&quot;。</p>
+</li>
+</ol>
+<p>第二点的排序细节值得注意：一致性优先，其次才是时长。这说明路由的目标不是&quot;找能覆盖时长的最便宜模型&quot;，而是&quot;在不截断时长的前提下，优先保住人物一致&quot;。</p>
+<h2 id="三、路由特征：确定性规则，不调-LLM">三、路由特征：确定性规则，不调 LLM</h2>
+<p><code>extract_route_features</code> 只做字符串与结构化字段判断，因此同一条提示词每次得到同样的特征，路由结果可复现、可解释。</p>
+<table>
+<thead>
+<tr>
+<th>特征</th>
+<th>判定方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>has_critical_text</code></td>
+<td>是否明确要求渲染可读文字</td>
+</tr>
+<tr>
+<td><code>motion_complexity</code></td>
+<td>高复杂度关键词命中即 high；中复杂度词命中即 medium；否则 low</td>
+</tr>
+<tr>
+<td><code>character_consistency_need</code></td>
+<td>主角色有外观锚点→high；有主角色无锚点→medium；无主角色→low</td>
+</tr>
+<tr>
+<td><code>style_bias</code></td>
+<td>风格声明与提示词里的关键词映射到 anime / realistic / cinematic</td>
+</tr>
+<tr>
+<td><code>duration</code></td>
+<td>片段时长</td>
+</tr>
+<tr>
+<td><code>needs_first_last_frame</code></td>
+<td>是否需要两段式首帧控制</td>
+</tr>
+</tbody>
+</table>
+<p><code>has_critical_text</code> 在 0.4.5 修过一个很典型的误报：旧逻辑用宽子串匹配，<code>texture</code>、<code>exit sign</code>、<code>TV screen</code> 都可能被当成&quot;要渲染文字&quot;，于是普通氛围镜头被错误地推到两段式。现在的判定要求明确出现&quot;文字/字迹/地址/招牌/海报&quot;这类可读内容词，英文按整词边界匹配，<code>texture</code> 这种词不会再命中。</p>
+<p>特征不是从剧本原文抽的，而是从已经转换好的 <code>AIVideoPrompt</code> 抽的。也就是说，路由看到的是&quot;最终要发给视频模型的提示词&quot;，不是中间稿。</p>
+<h2 id="四、规则匹配：优先级、跳过与三层兜底">四、规则匹配：优先级、跳过与三层兜底</h2>
+<p>路由规则来自 <code>settings.routing.rules</code>，每条规则包含：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>model</code>：目标模型；</p>
+</li>
+<li class="lvl-2">
+<p><code>mode</code>：<code>text_to_video</code> 或 <code>image_to_video</code>；</p>
+</li>
+<li class="lvl-2">
+<p><code>priority</code>：优先级，数值越大越先匹配；</p>
+</li>
+<li class="lvl-2">
+<p><code>conditions</code>：可选条件，包括关键文字、人物一致性需求、动作复杂度、风格倾向、最小时长、最大时长、是否需要首尾帧。</p>
+</li>
+</ul>
+<p>匹配顺序是优先级降序、同优先级按名称排序。第一条&quot;条件全满足且模型已注册&quot;的规则胜出。</p>
+<p>没命中规则时，还有两层兜底：</p>
+<ol>
+<li class="lvl-3">
+<p>当前提示词包的目标模型未注册 → 用 <code>settings.routing.default_model</code>，原因记为 <code>fallback_default_model</code>；</p>
+</li>
+<li class="lvl-3">
+<p>当前模型已注册 → 保持当前模型，原因记为 <code>fallback_current_model</code>。</p>
+</li>
+</ol>
+<p>命中规则后还要过一道时长检查：如果片段原始时长超过目标模型上限，就触发 <code>_duration_fallback</code>，并把原因追加成 <code>规则名+duration_fallback:新模型</code>。这样下游看到 <code>reason</code> 就能还原&quot;为什么最后不是规则里写的那个模型&quot;。</p>
+<p>有一个边界需要明确：路由层不校验&quot;规则声明的生成模式是否被目标模型支持&quot;。例如规则可以把一个片段路由到 <code>sora_2</code> 并声明 <code>image_to_video</code>，但能力表里 <code>sora_2</code> 的 <code>supports_image_to_video</code> 是 false。代码不会在这里拦下来，能力字段主要用于时长兜底和下游判断。写规则时需要自己保证模式与模型匹配。</p>
+<h2 id="五、选完模型，为什么还要重新适配一次">五、选完模型，为什么还要重新适配一次</h2>
+<p><code>AdaptedPromptPackage</code> 是&quot;某个片段面向某个模型&quot;的提示词包。路由改变目标模型后，原来的包就不再匹配了：不同模型对镜头语言、负向提示词、参数结构的要求并不一样。</p>
+<p>所以 <code>build_route_plan</code> 在确定最终模型后，会调用 <code>get_adapter(target_model).adapt(prompt)</code> 重建提示词包。重建时有两类信息必须手工搬过去：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>图生视频相关字段：<code>asset_ref</code>、<code>references</code>、<code>image_prompt</code>、<code>motion_prompt</code>、<code>first_frame_instruction</code>；</p>
+</li>
+<li class="lvl-2">
+<p>构建期告警与阻断状态：<code>warnings</code>、<code>status</code>。</p>
+</li>
+</ul>
+<p>第二点不是洁癖。如果重建时把 <code>warnings</code> 丢了，Gate 1 之外已经发现的告警会静默消失；如果 <code>status</code> 丢了，就会出现&quot;告警说已阻断、状态却是 ready&quot;的自相矛盾。</p>
+<p>生成模式也会在重建后被重新应用：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>text_to_video</code>：清空 <code>references</code>、<code>asset_ref</code>、<code>image_prompt</code>、<code>motion_prompt</code>、<code>first_frame_instruction</code>，避免下游拿到失效的两段式资产；</p>
+</li>
+<li class="lvl-2">
+<p><code>image_to_video</code>：如果包内还没有首帧指令，就用静态截面提示词与动作提示词补一套，保证&quot;图生视频&quot;不会退化成&quot;只有一句通用提示词&quot;。</p>
+</li>
+</ul>
+<h2 id="六、两段式图生视频：先有一张对的首帧，再谈动作">六、两段式图生视频：先有一张对的首帧，再谈动作</h2>
+<p><code>apply_image_to_video_routing</code> 在规则路由之前执行，负责把满足条件的片段标记为两段式。触发条件有三个，满足任意一个即可：</p>
+<ol>
+<li class="lvl-3">
+<p>片段含 <code>critical_text</code>，需要精确渲染文字；</p>
+</li>
+<li class="lvl-3">
+<p>主角色在契约中登记了外观锚点，且存在三视图资产或场景首帧，能够真正兑现身份约束；</p>
+</li>
+<li class="lvl-3">
+<p>片段所属场景已有场景资产，可作为首帧视觉锚点。</p>
+</li>
+</ol>
+<p>第二条有一个容易忽略的退回分支：只有外观锚点、既没有三视图资产也没有场景首帧时，路由不会硬上两段式，而是继续走文生视频。原因是这种情况下拿不到任何身份参考，标成图生视频也执行不了。</p>
+<p>第三条是 0.4.4 补上的：早期版本在没有主角色的片段上容易退化成纯文生视频，即使场景资产已经存在。现在的判断是&quot;有场景首帧也算有锚点&quot;。</p>
+<p>触发之后，包内会写入三样东西：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>image_prompt</code>：首帧静帧提示词，由景别、角色外观、场景地点、时间、天气、静态截面、风格维度拼成；</p>
+</li>
+<li class="lvl-2">
+<p><code>motion_prompt</code>：首帧之后的动作序列；</p>
+</li>
+<li class="lvl-2">
+<p><code>references</code>：声明式资产引用，角色三视图是 <code>identity_reference</code>，场景锚点是 <code>first_frame</code>，道具是 <code>prop</code>。</p>
+</li>
+</ul>
+<p>首帧与动作的拆分来自 <code>split_static_motion</code>：找到第一个动作线索（驶入、打开、回头、渐黑等），它之前的内容进首帧，之后的内容进动作提示词。纯音效、纯广播、纯运镜的子句会被清洗掉；清洗后没有任何可入画内容时，首帧用 <code>empty scene, no people</code> 兜底，而不是把&quot;广播响起&quot;这种声音描述硬塞进静帧。</p>
+<p><code>asset_ref</code> 在这里有一个容易误解的收紧：它只承载下游回填清单里的场景首帧绑定。角色三视图哪怕已经生成，也不会写进 <code>asset_ref</code>。下游要判断首帧，应该看 <code>references</code> 里 <code>as_first_frame=true</code> 的那一条。</p>
+<h2 id="七、0-4-5-补上的几处硬边">七、0.4.5 补上的几处硬边</h2>
+<p>路由链路在 0.4.5 收口时补了几个容易被忽略的边界：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>场景锚定不一致会阻断</strong>：片段文本明确写到另一个场景、且没提到当前首帧场景时，唯一命中就自动替换场景资产并重建首帧提示词；命中多个或没有对应资产则标 <code>needs_manual_fix</code>，汇总进 <code>blocked_fragments</code>。</p>
+</li>
+<li class="lvl-2">
+<p><strong>服装信息不足会降级</strong>：角色服装的类型、颜色、材质缺失时，引用该角色的片段会拿到 <code>degraded_assets</code> 约束，要求剪影/背影，不允许生成正脸与服装细节。</p>
+</li>
+<li class="lvl-2">
+<p><strong>告警与阻断状态跨重建保留</strong>：前面已经说过，这里再强调一次，因为它直接决定下游看到的 <code>RouteDecision.status</code> 是否可信。</p>
+</li>
+<li class="lvl-2">
+<p><strong>可读文字判定收窄</strong>：<code>texture</code>、<code>exit sign</code> 这类词不再触发两段式，减少无意义的首帧生成开销。</p>
+</li>
+</ul>
+<h2 id="八、RoutePlan-怎么读">八、RoutePlan 怎么读</h2>
+<p><code>RoutePlan</code> 是路由节点的最终产物，落到 <code>prompt_converter_result.json</code> 的 <code>instructions.route_plan</code>。它的 <code>schema_version</code> 同样是契约版本 <code>0.4.4</code>，在 v0.4.5 里不会随产品版本号变化。核心字段：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;schema_version&quot;</span><span class="punctuation">:</span> <span class="string">&quot;0.4.4&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;source_model&quot;</span><span class="punctuation">:</span> <span class="string">&quot;kling_3&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;decisions&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">    <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;fragment_id&quot;</span><span class="punctuation">:</span> <span class="string">&quot;frag_007&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;target_model&quot;</span><span class="punctuation">:</span> <span class="string">&quot;sora_2&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;critical_text_rule+duration_fallback:sora_2&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;mode&quot;</span><span class="punctuation">:</span> <span class="string">&quot;text_to_video&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="string">&quot;ready&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;warnings&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;degraded_assets&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">]</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;adapted_packages&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;warnings&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;blocked_fragments&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p>下游至少要消费四个字段：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><code>target_model</code> 与 <code>mode</code>：决定调哪个服务、走文生还是图生；</p>
+</li>
+<li class="lvl-2">
+<p><code>adapted_packages</code>：真正要发给模型的提示词、首帧指令与引用；</p>
+</li>
+<li class="lvl-2">
+<p><code>blocked_fragments</code>：不得进入渲染队列的片段；</p>
+</li>
+<li class="lvl-2">
+<p><code>degraded_assets</code>：需要执行降级约束的资产。</p>
+</li>
+</ul>
+<p><code>reason</code> 是解释字段，不是执行字段。它的取值包括规则名、<code>fallback_default_model</code>、<code>fallback_current_model</code>，以及带 <code>duration_fallback</code> 后缀的组合。把它写进日志，比事后猜&quot;为什么这个片段换了模型&quot;要省事得多。</p>
+<h2 id="九、边界与常见误读">九、边界与常见误读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>路由不等于渲染</strong>：<code>RoutePlan</code> 只说明&quot;该用谁、怎么发&quot;，不包含任何视频文件。</p>
+</li>
+<li class="lvl-2">
+<p><strong>能力分数是相对值</strong>：五个模型的分数用于比较排序，不是跨厂商的绝对评测结论，可以随实测调整。</p>
+</li>
+<li class="lvl-2">
+<p><strong>规则写错不会报错</strong>：引用未注册模型的规则会被静默跳过；模式与模型能力不匹配也不会在路由层拦截。规则配置需要自己校验。</p>
+</li>
+<li class="lvl-2">
+<p><strong>路由失败不阻断主流程</strong>：异常会被捕获，<code>route_plan</code> 置空，只记一条告警。下游必须能处理 <code>route_plan</code> 缺失的情况，而不是默认它一定存在。</p>
+</li>
+<li class="lvl-2">
+<p><strong>两段式不等于资产已就绪</strong>：<code>mode=image_to_video</code> 只说明该片段适合先出首帧；如果场景资产还是 <code>pending</code>，<code>asset_ref</code> 仍为空，首帧指令会退化成&quot;先生成再作首帧&quot;的文本形态。</p>
+</li>
+<li class="lvl-2">
+<p><strong>首帧文本会清洗</strong>：动作、音效、运镜描述不会原样进首帧；想看完整动作，要读 <code>motion_prompt</code>。</p>
+</li>
+</ul>
+<h2 id="十、结论">十、结论</h2>
+<p>PenShot 的模型路由不是&quot;给全片挑一个最强模型&quot;，而是把选择拆成三步：</p>
+<ol>
+<li class="lvl-3">
+<p>用确定性特征描述每个片段的需求；</p>
+</li>
+<li class="lvl-3">
+<p>用带优先级的规则匹配模型与生成模式，再用能力表兜底时长与未注册模型；</p>
+</li>
+<li class="lvl-3">
+<p>按最终模型重建提示词包，并把首帧、动作、引用、告警、阻断状态一并交给下游。</p>
+</li>
+</ol>
+<p>这三步里最容易被低估的是第三步。选型只决定&quot;发给谁&quot;，重建才决定&quot;发出去的东西是否真的适配那个模型&quot;。判断路由是否可用，不要只看 <code>target_model</code> 变了没有，要看 <code>adapted_packages</code> 里的首帧字段、<code>status</code> 与 <code>blocked_fragments</code> 是否一致。</p>
+<hr>
+<h2 id="相关链接">相关链接</h2>
+<p><strong>核心文档</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/model-routing.html">PenShot 模型路由</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/first-frame.html">PenShot 首帧与图生视频</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/asset-handoff.html">PenShot 资产计划与交接</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/nodes.html">PenShot 工作流节点详解</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/changelog.html">PenShot 更新日志</a></p>
+</li>
+</ul>
+<p><strong>技术专题</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/consistency.html">全局一致性策略</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/architecture.html">PenShot 技术架构与设计</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/integration.html">PenShot 集成使用指南</a></p>
+</li>
+</ul>
+<p><strong>外部链接</strong></p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a target="_blank" rel="noopener" href="https://github.com/neopen/story-shot-agent">PenShot GitHub</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com/docs/overview.html">PenShot 文档</a></p>
+</li>
+<li class="lvl-2">
+<p><a target="_blank" rel="external nofollow noopener noreferrer" href="https://shot.helpenx.com">PenShot 官网</a></p>
+</li>
+</ul>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2026/11/penshot-asset-handoff/">PenShot 资产交接：asset_plan 是合同，不是图片</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/04/penshot-consistency/">PenShot 多智能体一致性：七大策略里，哪些真的在跑？</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/02/penshot-overview/">PenShot 剧本分镜智能体：八段工作流如何把任意剧本拆成连贯视频片段</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/10/penshot-version-evolution/">PenShot 版本演进：从 MVP 到 0.4.x 的七次转向</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/11/penshot-model-routing/">https://pengline.cn/2026/11/penshot-model-routing/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90/">源码分析</a><a class="post-meta__tags" href="/tags/PenShot/">PenShot</a><a class="post-meta__tags" href="/tags/%E6%A8%A1%E5%9E%8B%E8%B7%AF%E7%94%B1/">模型路由</a><a class="post-meta__tags" href="/tags/%E7%9B%AE%E6%A0%87%E6%A8%A1%E5%9E%8B%E9%80%82%E9%85%8D/">目标模型适配</a><a class="post-meta__tags" href="/tags/%E8%83%BD%E5%8A%9B%E8%A1%A8/">能力表</a><a class="post-meta__tags" href="/tags/%E5%9B%BE%E7%94%9F%E8%A7%86%E9%A2%91/">图生视频</a><a class="post-meta__tags" href="/tags/%E9%A6%96%E5%B8%A7/">首帧</a><a class="post-meta__tags" href="/tags/Runway/">Runway</a><a class="post-meta__tags" href="/tags/Kling/">Kling</a><a class="post-meta__tags" href="/tags/Sora/">Sora</a><a class="post-meta__tags" href="/tags/Luma/">Luma</a><a class="post-meta__tags" href="/tags/Pika/">Pika</a><a class="post-meta__tags" href="/tags/%E5%88%86%E9%95%9C/">分镜</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/1745748274531174574827442.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related" href="/2026/11/penshot-asset-handoff/" title="PenShot 资产交接：asset_plan 是合同，不是图片"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small073833O6Jvi1754869113.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of previous post" loading='lazy'><div class="info"><div class="info-1"><div class="info-item-1">上一篇</div><div class="info-item-2">PenShot 资产交接：asset_plan 是合同，不是图片</div></div><div class="info-2"><div class="info-item-1">PenShot v0.4.5 的资产链路拆解：声明式 asset_plan 默认不生成图片，下游用 asset_manifest 回填真实引用，asset_ref 只代表首帧场景资产，以及场景锚定、降级约束与引用校验的真实边界。</div></div></div></a><a class="pagination-related" href="/2026/10/penshot-version-evolution/" title="PenShot 版本演进：从 MVP 到 0.4.x 的七次转向"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">PenShot 版本演进：从 MVP 到 0.4.x 的七次转向</div></div><div class="info-2"><div class="info-item-1">从 2025 年 10 月到 v0.4.5，PenShot 的演进不是直线：先跑通流水线，再补质量与检查点，随后接入 RAG、三层记忆与 MCP，接着收敛部署，最后完成目标模型适配、声明式资产计划与模型路由。本文按 Git 与 CHANGELOG 还原已发布能力，并单列仍未接线的部分。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/11/penshot-asset-handoff/" title="PenShot 资产交接：asset_plan 是合同，不是图片"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small073833O6Jvi1754869113.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-11-12</div><div class="info-item-2">PenShot 资产交接：asset_plan 是合同，不是图片</div></div><div class="info-2"><div class="info-item-1">PenShot v0.4.5 的资产链路拆解：声明式 asset_plan 默认不生成图片，下游用 asset_manifest 回填真实引用，asset_ref 只代表首帧场景资产，以及场景锚定、降级约束与引用校验的真实边界。</div></div></div></a><a class="pagination-related" href="/2026/10/penshot-recall-silent-failure/" title="PenShot 召回评测：三层记忆的真实接线与静默失效"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1634265801642163426580161.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-29</div><div class="info-item-2">PenShot 召回评测：三层记忆的真实接线与静默失效</div></div><div class="info-2"><div class="info-item-1">三层记忆听起来完整，真机上却可能安静地少做事：长期记忆靠成功样本喂养，中期摘要读写文件名不一致，重排序与混合检索已实现但生产链路未接线。本文按 v0.4.5 源码复核召回链路，并补充 0.4.4 模板锚点召回的变化与最小可复现评测方法。</div></div></div></a><a class="pagination-related" href="/2026/02/penshot-overview/" title="PenShot 剧本分镜智能体：八段工作流如何把任意剧本拆成连贯视频片段"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-02-12</div><div class="info-item-2">PenShot 剧本分镜智能体：八段工作流如何把任意剧本拆成连贯视频片段</div></div><div class="info-2"><div class="info-item-1">PenShot 是一个基于 LangGraph 的剧本分镜智能体：把任意长剧本拆成 5 秒级 AI 视频片段，用八段工作流、声明式资产计划与模型路由保证角色、场景与动作连贯。本文给出架构总览、源码模块地图、快速上手示例、八段链路解读与工程边界，全部基于 v0.4.5 源码。</div></div></div></a><a class="pagination-related" href="/2026/09/penshot-review/" title="PenShot 全面测评：分镜 Agent 的架构成色、工程短板与演进路线"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194442zl9VR1758541482.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-14</div><div class="info-item-2">PenShot 全面测评：分镜 Agent 的架构成色、工程短板与演进路线</div></div><div class="info-2"><div class="info-item-1">从源码、依赖与部署配置出发，对 PenShot 进行 30 个维度的工程测评，并给出 v0.4.5 复评：覆盖 Agent 架构、LangGraph 工作流、资产计划与模型路由、RAG 与三层记忆、多模型接入、MCP 生态、Docker 安全、测试体系与商业化潜力，逐项给出评分依据、不足清单与演进路线。</div></div></div></a><a class="pagination-related" href="/2026/04/penshot-consistency/" title="PenShot 多智能体一致性：七大策略里，哪些真的在跑？"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1704301678924170430167898.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-04-21</div><div class="info-item-2">PenShot 多智能体一致性：七大策略里，哪些真的在跑？</div></div><div class="info-2"><div class="info-item-1">PenShot 多智能体一致性体系在 v0.4.5 下的真实形态：八节点流水线、声明式资产计划与首帧语义、已接通的连续性修复回流、锚点召回与质量门禁，以及仍然未接线的状态快照、哑参数 rerank 与三套审计口径。</div></div></div></a><a class="pagination-related" href="/2026/10/penshot-version-evolution/" title="PenShot 版本演进：从 MVP 到 0.4.x 的七次转向"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small193155ePROc1759577515.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-31</div><div class="info-item-2">PenShot 版本演进：从 MVP 到 0.4.x 的七次转向</div></div><div class="info-2"><div class="info-item-1">从 2025 年 10 月到 v0.4.5，PenShot 的演进不是直线：先跑通流水线，再补质量与检查点，随后接入 RAG、三层记忆与 MCP，接着收敛部署，最后完成目标模型适配、声明式资产计划与模型路由。本文按 Git 与 CHANGELOG 还原已发布能力，并单列仍未接线的部分。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">PenShot 模型路由：按片段选型，而不是全片赌一个模型</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%AF%BB%E5%AE%8C%E6%9C%AC%E6%96%87%E5%90%8E%EF%BC%8C%E4%BD%A0%E5%BA%94%E8%AF%A5%E7%9F%A5%E9%81%93%E4%BB%80%E4%B9%88"><span class="toc-number">1.1.</span> <span class="toc-text">读完本文后，你应该知道什么</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E9%97%AE%E9%A2%98%E4%B8%8D%E6%98%AF-%E9%80%89%E6%9C%80%E5%A5%BD%E7%9A%84%E6%A8%A1%E5%9E%8B-%EF%BC%8C%E8%80%8C%E6%98%AF-%E6%AF%8F%E4%B8%AA%E7%89%87%E6%AE%B5%E9%83%BD%E5%88%AB%E9%80%89%E9%94%99"><span class="toc-number">1.2.</span> <span class="toc-text">一、问题不是&quot;选最好的模型&quot;，而是&quot;每个片段都别选错&quot;</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E4%BA%94%E6%A8%A1%E5%9E%8B%E8%83%BD%E5%8A%9B%E8%A1%A8%EF%BC%9A%E8%B7%AF%E7%94%B1%E7%9A%84%E5%85%AC%E5%85%B1%E4%BE%9D%E6%8D%AE"><span class="toc-number">1.3.</span> <span class="toc-text">二、五模型能力表：路由的公共依据</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E8%B7%AF%E7%94%B1%E7%89%B9%E5%BE%81%EF%BC%9A%E7%A1%AE%E5%AE%9A%E6%80%A7%E8%A7%84%E5%88%99%EF%BC%8C%E4%B8%8D%E8%B0%83-LLM"><span class="toc-number">1.4.</span> <span class="toc-text">三、路由特征：确定性规则，不调 LLM</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E8%A7%84%E5%88%99%E5%8C%B9%E9%85%8D%EF%BC%9A%E4%BC%98%E5%85%88%E7%BA%A7%E3%80%81%E8%B7%B3%E8%BF%87%E4%B8%8E%E4%B8%89%E5%B1%82%E5%85%9C%E5%BA%95"><span class="toc-number">1.5.</span> <span class="toc-text">四、规则匹配：优先级、跳过与三层兜底</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E9%80%89%E5%AE%8C%E6%A8%A1%E5%9E%8B%EF%BC%8C%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%98%E8%A6%81%E9%87%8D%E6%96%B0%E9%80%82%E9%85%8D%E4%B8%80%E6%AC%A1"><span class="toc-number">1.6.</span> <span class="toc-text">五、选完模型，为什么还要重新适配一次</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E4%B8%A4%E6%AE%B5%E5%BC%8F%E5%9B%BE%E7%94%9F%E8%A7%86%E9%A2%91%EF%BC%9A%E5%85%88%E6%9C%89%E4%B8%80%E5%BC%A0%E5%AF%B9%E7%9A%84%E9%A6%96%E5%B8%A7%EF%BC%8C%E5%86%8D%E8%B0%88%E5%8A%A8%E4%BD%9C"><span class="toc-number">1.7.</span> <span class="toc-text">六、两段式图生视频：先有一张对的首帧，再谈动作</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%810-4-5-%E8%A1%A5%E4%B8%8A%E7%9A%84%E5%87%A0%E5%A4%84%E7%A1%AC%E8%BE%B9"><span class="toc-number">1.8.</span> <span class="toc-text">七、0.4.5 补上的几处硬边</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81RoutePlan-%E6%80%8E%E4%B9%88%E8%AF%BB"><span class="toc-number">1.9.</span> <span class="toc-text">八、RoutePlan 怎么读</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B9%9D%E3%80%81%E8%BE%B9%E7%95%8C%E4%B8%8E%E5%B8%B8%E8%A7%81%E8%AF%AF%E8%AF%BB"><span class="toc-number">1.10.</span> <span class="toc-text">九、边界与常见误读</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8D%81%E3%80%81%E7%BB%93%E8%AE%BA"><span class="toc-number">1.11.</span> <span class="toc-text">十、结论</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%93%BE%E6%8E%A5"><span class="toc-number">1.12.</span> <span class="toc-text">相关链接</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">1.13.</span> <span class="toc-text">相关阅读</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>

@@ -1,0 +1,539 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>NeoTask 1.1：断点续跑、业务失败与成本核算实测 | 余一叶知秋尽</title><meta name="author" content="余一叶知秋尽"><meta name="copyright" content="余一叶知秋尽"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="NeoTask 1.1 实测：checkpoint 在自动重试与手动 retry 中恢复，业务失败跳过自动重试，成本按任务聚合；另验证 1.1.1 老库自动补列与 Blackboard 仅内存两条边界。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="NeoTask 1.1：断点续跑、业务失败与成本核算实测">
+<meta property="og:url" content="https://pengline.cn/2026/11/neotask-1-1-checkpoint-cost-failure/">
+<meta property="og:site_name" content="余一叶知秋尽">
+<meta property="og:description" content="NeoTask 1.1 实测：checkpoint 在自动重试与手动 retry 中恢复，业务失败跳过自动重试，成本按任务聚合；另验证 1.1.1 老库自动补列与 Blackboard 仅内存两条边界。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp">
+<meta property="article:published_time" content="2026-11-17T12:00:00.000Z">
+<meta property="article:modified_time" content="2026-11-17T11:36:04.700Z">
+<meta property="article:author" content="余一叶知秋尽">
+<meta property="article:tag" content="Blackboard">
+<meta property="article:tag" content="LLM 成本">
+<meta property="article:tag" content="NeoTask">
+<meta property="article:tag" content="Python">
+<meta property="article:tag" content="SQLite 自动迁移">
+<meta property="article:tag" content="asyncio">
+<meta property="article:tag" content="checkpoint">
+<meta property="article:tag" content="contextvars">
+<meta property="article:tag" content="业务失败">
+<meta property="article:tag" content="任务调度">
+<meta property="article:tag" content="任务队列">
+<meta property="article:tag" content="实测">
+<meta property="article:tag" content="容错设计">
+<meta property="article:tag" content="成本核算">
+<meta property="article:tag" content="断点续跑">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp"><link rel="shortcut icon" href="/img/logo.png"><link rel="canonical" href="https://pengline.cn/2026/11/neotask-1-1-checkpoint-cost-failure/"><link rel="preconnect" href="//cdn.jsdelivr.net"><link rel="preconnect" href="//busuanzi.ibruce.info"><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/css/all.min.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.min.css" media="print" onload="this.media='all'"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          const mediaQueryDark = window.matchMedia('(prefers-color-scheme: dark)')
+          const mediaQueryLight = window.matchMedia('(prefers-color-scheme: light)')
+
+          if (theme === undefined) {
+            if (mediaQueryLight.matches) activateLightMode()
+            else if (mediaQueryDark.matches) activateDarkMode()
+            else {
+              const hour = new Date().getHours()
+              const isNight = hour <= 19 || hour >= 7
+              isNight ? activateDarkMode() : activateLightMode()
+            }
+            mediaQueryDark.addEventListener('change', () => {
+              if (saveToLocal.get('theme') === undefined) {
+                e.matches ? activateDarkMode() : activateLightMode()
+              }
+            })
+          } else {
+            theme === 'light' ? activateLightMode() : activateDarkMode()
+          }
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: {"path":"/search.xml","preload":true,"top_n_per_article":1,"unescape":false,"languages":{"hits_empty":"未找到符合您查询的内容：${query}","hits_stats":"共找到 ${hits} 篇文章"}},
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":false},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":30,"languages":{"author":"作者: 余一叶知秋尽","link":"链接: ","source":"来源: 余一叶知秋尽","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: 'NeoTask 1.1：断点续跑、业务失败与成本核算实测',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><link rel="stylesheet" href="/css/font.css?v=20260929"><link rel="stylesheet" href="/css/custom.css?v=20260929"><link rel="dns-prefetch" href="https://pagead2.googlesyndication.com"><link rel="dns-prefetch" href="https://googleads.g.doubleclick.net"><link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin><link rel="preconnect" href="https://googleads.g.doubleclick.net" crossorigin><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2048978820706528" crossorigin="anonymous"></script><svg aria-hidden="true" style="position:absolute; overflow:hidden; width:0; height:0"><symbol id="icon-sun" viewbox="0 0 1024 1024"><path d="M960 512l-128 128v192h-192l-128 128-128-128H192v-192l-128-128 128-128V192h192l128-128 128 128h192v192z" fill="#FFD878" p-id="8420"/><path d="M736 512a224 224 0 1 0-448 0 224 224 0 1 0 448 0z" fill="#FFE4A9" p-id="8421"/><path d="M512 109.248L626.752 224H800v173.248L914.752 512 800 626.752V800h-173.248L512 914.752 397.248 800H224v-173.248L109.248 512 224 397.248V224h173.248L512 109.248M512 64l-128 128H192v192l-128 128 128 128v192h192l128 128 128-128h192v-192l128-128-128-128V192h-192l-128-128z" fill="#4D5152" p-id="8422"/><path d="M512 320c105.888 0 192 86.112 192 192s-86.112 192-192 192-192-86.112-192-192 86.112-192 192-192m0-32a224 224 0 1 0 0 448 224 224 0 0 0 0-448z" fill="#4D5152" p-id="8423"/></symbol><symbol id="icon-moon" viewbox="0 0 1024 1024"><path d="M611.370667 167.082667a445.013333 445.013333 0 0 1-38.4 161.834666 477.824 477.824 0 0 1-244.736 244.394667 445.141333 445.141333 0 0 1-161.109334 38.058667 85.077333 85.077333 0 0 0-65.066666 135.722666A462.08 462.08 0 1 0 747.093333 102.058667a85.077333 85.077333 0 0 0-135.722666 65.024z" fill="#FFB531" p-id="11345"/><path d="M329.728 274.133333l35.157333-35.157333a21.333333 21.333333 0 1 0-30.165333-30.165333l-35.157333 35.157333-35.114667-35.157333a21.333333 21.333333 0 0 0-30.165333 30.165333l35.114666 35.157333-35.114666 35.157334a21.333333 21.333333 0 1 0 30.165333 30.165333l35.114667-35.157333 35.157333 35.157333a21.333333 21.333333 0 1 0 30.165333-30.165333z" fill="#030835" p-id="11346"/></symbol></svg><!-- hexo injector head_end start -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.12.0/dist/katex.min.css">
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/hexo-math@4.0.0/dist/style.css">
+<!-- hexo injector head_end end --><meta name="generator" content="Hexo 8.1.2"><link rel="alternate" href="/atom.xml" title="余一叶知秋尽" type="application/atom+xml">
+</head><body><div id="web_bg" style="background: LightGray;"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/logo.webp" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar" loading='lazy'></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">108</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">896</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">49</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/logo.png" alt="Logo" loading='lazy'><span class="site-name">余一叶知秋尽</span></a><a class="nav-page-title" href="/"><span class="site-name">NeoTask 1.1：断点续跑、业务失败与成本核算实测</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div id="search-button"><span class="site-page social-icon search"><i class="fas fa-search fa-fw"></i><span> 搜索</span></span></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 首页</span></a></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-list-ul"></i><span> 归档</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> 时间轴</span></a></li><li><a class="site-page child" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类别</span></a></li><li><a class="site-page child" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签集</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-pencil-square"></i><span> 文学</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/literature/poems"><i class="fa-fw fas fa-align-center"></i><span> 三行诗集</span></a></li><li><a class="site-page child" href="/literature/classical"><i class="fa-fw fas fa-align-justify"></i><span> 诗词歌赋</span></a></li><li><a class="site-page child" href="/literature/modern"><i class="fa-fw fas fa-align-left"></i><span> 现代诗歌</span></a></li><li><a class="site-page child" href="/literature/journal"><i class="fa-fw fas fa-align-right"></i><span> 随心随笔</span></a></li><li><a class="site-page child" href="/literature/incomplete"><i class="fa-fw fas fa-columns"></i><span> 忘梦残句</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-commenting"></i><span> 交流</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/link/"><i class="fa-fw fas fa-link"></i><span> 友链</span></a></li><li><a class="site-page child" href="/messageboard/"><i class="fa-fw fas fa-paper-plane"></i><span> 留言板</span></a></li></ul></div><div class="menus_item"><span class="site-page group"><i class="fa-fw fas fa-heart"></i><span> 关于</span><i class="fas fa-chevron-down"></i></span><ul class="menus_item_child"><li><a class="site-page child" href="/about/"><i class="fa-fw fas fa-heart"></i><span> 关于我们</span></a></li><li><a class="site-page child" href="/contact/"><i class="fa-fw fas fa-envelope"></i><span> 联系我们</span></a></li><li><a class="site-page child" href="/privacy-policy/"><i class="fa-fw fas fa-shield-alt"></i><span> 隐私政策</span></a></li></ul></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">NeoTask 1.1：断点续跑、业务失败与成本核算实测</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-11-17T12:00:00.000Z" title="发表于 2026-11-17 20:00:00">2026-11-17</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-11-17T11:36:04.700Z" title="更新于 2026-11-17 19:36:04">2026-11-17</time></span></div><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/">Python</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/Python/Task/">Task</a></span><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id data-flag-title><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1>断点续跑、业务失败与成本核算实测</h1>
+<blockquote>
+<p>版本基线：NeoTask 1.1.1（PyPI，2026-11-15）；1.1.0（2026-11-13）引入本文涉及的 API。<br>
+测试环境：Windows 10 / Python 3.13 / Memory 与 SQLite 后端，探针使用 1.1.1 wheel。<br>
+口径说明：本文数字来自本机探针，只用于确认行为，不构成性能承诺。</p>
+</blockquote>
+<p>先说结论：<strong>1.1 新增的不是三个“更好用的回调”，而是三件以前必须由业务自己兜底的事。</strong> 断点续跑把“失败后从头再来”改成“从最近一步继续”；业务失败把“重试没有意义的失败”从自动重试链路里摘出来；成本核算把散落在业务日志里的 token 与费用变成可按任务聚合的字段。</p>
+<p>这三件事在 1.0.x 里都只能靠业务代码打补丁：自己存进度、自己判断异常类型、自己写用量表。1.1 把它们收进任务模型后，代价是多出几条必须弄清楚的边界——本文用探针逐条确认。</p>
+<h2 id="一、三个原语各自解决什么">一、三个原语各自解决什么</h2>
+<table>
+<thead>
+<tr>
+<th>原语</th>
+<th>入口</th>
+<th>1.0.x 的做法</th>
+<th>1.1 的变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>断点续跑</td>
+<td><code>save_checkpoint</code> / <code>load_checkpoint</code></td>
+<td>业务自己写进度表，再按业务主键查回</td>
+<td>状态存进 checkpoint 仓储，重试时自动注入 <code>task.data[&quot;__checkpoint__&quot;]</code></td>
+</tr>
+<tr>
+<td>业务失败</td>
+<td><code>report_failure(reason, detail)</code></td>
+<td>抛异常，和系统故障一起走自动重试</td>
+<td>标记 <code>failure_reason</code>，直接 <code>FAILED</code>，不消耗重试预算</td>
+</tr>
+<tr>
+<td>成本核算</td>
+<td><code>report_cost(...)</code> / <code>get_cost_summary()</code></td>
+<td>另建用量表或在日志里打点</td>
+<td>累加到 <code>estimated_cost</code> / <code>cost_tracking</code>，可按任务或批次汇总</td>
+</tr>
+</tbody>
+</table>
+<p>判断标准很简单：<strong>如果失败重试一次结果还是一样，用业务失败；如果重试有意义但代价高，用断点续跑；如果一次执行消耗了外部资源，用成本核算。</strong></p>
+<h2 id="二、断点续跑：状态存在哪，谁把它放回去">二、断点续跑：状态存在哪，谁把它放回去</h2>
+<p>执行体里只需两个调用：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> neotask <span class="keyword">import</span> load_checkpoint, save_checkpoint</span><br><span class="line"></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">crawl</span>(<span class="params">data</span>):</span><br><span class="line">    state = <span class="keyword">await</span> load_checkpoint() <span class="keyword">or</span> &#123;<span class="string">&quot;page&quot;</span>: <span class="number">1</span>&#125;</span><br><span class="line">    <span class="keyword">while</span> state[<span class="string">&quot;page&quot;</span>] &lt;= data[<span class="string">&quot;pages&quot;</span>]:</span><br><span class="line">        <span class="keyword">await</span> fetch_page(state[<span class="string">&quot;page&quot;</span>])</span><br><span class="line">        state[<span class="string">&quot;page&quot;</span>] += <span class="number">1</span></span><br><span class="line">        <span class="keyword">await</span> save_checkpoint(state)</span><br><span class="line">    <span class="keyword">return</span> &#123;<span class="string">&quot;pages&quot;</span>: data[<span class="string">&quot;pages&quot;</span>]&#125;</span><br></pre></td></tr></table></figure>
+<p><code>save_checkpoint</code> 是异步函数（🔧 <code>core/checkpoint.py:129</code>），<code>load_checkpoint</code> 在同一文件 <code>:149</code>。写入的状态会被 JSON 序列化后存进 checkpoint 仓储；恢复时不是“覆盖任务数据”，而是塞进一个保留键：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">task.data[&quot;__checkpoint__&quot;] = &lt;最近一次 checkpoint&gt;</span><br></pre></td></tr></table></figure>
+<p>保留键定义在 <code>core/checkpoint.py:21</code>。业务数据里不要使用 <code>__checkpoint__</code> 这个键，否则会被覆盖。</p>
+<h3 id="2-1-自动重试与手动-retry-都会注入">2.1 自动重试与手动 retry 都会注入</h3>
+<p>Worker 处理失败时，如果还有重试预算，会先把最近 checkpoint 注入 <code>task.data</code> 并落库，再重新入队（🔧 <code>worker/pool.py:677</code>）。手动 <code>pool.retry(task_id)</code> 走另一条路径：终态任务先由 <code>reset_for_retry</code> 重置为 <code>PENDING</code>，同样在重置时注入 checkpoint（🔧 <code>core/lifecycle.py:997</code>，注入在 <code>:1020</code>）。</p>
+<p>探针把 <code>max_retries</code> 设为 0，让第一次执行直接进入终态，再手动 retry：</p>
+<table>
+<thead>
+<tr>
+<th>执行轮次</th>
+<th><code>load_checkpoint()</code> 读到</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>第 1 次</td>
+<td><code>None</code></td>
+<td>保存 <code>{&quot;cursor&quot;: 42}</code> 后抛 <code>RuntimeError</code></td>
+</tr>
+<tr>
+<td>第 2 次（<code>pool.retry</code>）</td>
+<td><code>{&quot;cursor&quot;: 42}</code></td>
+<td>成功，<code>checkpoint_version=1</code></td>
+</tr>
+</tbody>
+</table>
+<p>第二轮的返回值里可以看到 <code>resumed_from: {&quot;cursor&quot;: 42, &quot;grade&quot;: &quot;B&quot;}</code>，说明恢复的是业务状态本身，不是执行器自己推断的位置。</p>
+<h3 id="2-2-失败后不要用同一个-task-id-重新-submit">2.2 失败后不要用同一个 task_id 重新 submit</h3>
+<p>这是实测里最容易踩的坑。任务进入终态后记录仍在，再次 <code>submit(..., task_id=&quot;job-a&quot;)</code> 会直接抛：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">TaskAlreadyExistsError: Task already exists: job-a</span><br></pre></td></tr></table></figure>
+<p><code>resume_from_checkpoint=True</code> 不是“绕过已存在检查”的开关。它服务的场景是 <strong>task_id 还没有记录、但仓储里已有该 ID 的 checkpoint</strong>（例如另一个进程留下了进度）。分发器会先创建任务、注入 checkpoint 落库、再入队，避免 Worker 在数据写回前抢跑（🔧 <code>core/dispatcher.py:78-88</code>）。</p>
+<p>所以正确的恢复顺序是：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">try</span>:</span><br><span class="line">    pool.wait_for_result(task_id, timeout=<span class="number">10</span>)</span><br><span class="line"><span class="keyword">except</span> Exception:</span><br><span class="line">    <span class="keyword">pass</span>  <span class="comment"># 任务已 FAILED，checkpoint 仍在</span></span><br><span class="line"></span><br><span class="line">pool.retry(task_id)  <span class="comment"># 终态 -&gt; PENDING，自动注入最近 checkpoint</span></span><br></pre></td></tr></table></figure>
+<p>也不要“先删除再同 ID 提交”：删除任务会连带删除它的 checkpoint（🔧 <code>core/lifecycle.py:1184-1185</code>），删完就真的只能从头跑了。</p>
+<h3 id="2-3-版本号是单调递增的，不是只保留-5-个就停在-5">2.3 版本号是单调递增的，不是只保留 5 个就停在 5</h3>
+<p>默认 <code>checkpoint_keep_versions=5</code>（🔧 <code>models/config.py:293</code>），但它是“保留最近 5 个版本记录”，不是“版本号最大到 5”。探针连续保存 7 次：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">latest checkpoint: &#123;&#x27;cursor&#x27;: 7&#125;  version: 7</span><br></pre></td></tr></table></figure>
+<p>读到的始终是最新状态，<code>checkpoint_version</code> 一路涨到 7，历史记录按保留策略清理。排查问题时不要用“版本号 ≤ 5”判断有没有 checkpoint。</p>
+<h3 id="2-4-四条边界">2.4 四条边界</h3>
+<ol>
+<li class="lvl-3">
+<p><strong>进程执行器拿不到上下文。</strong> <code>save_checkpoint()</code> / <code>load_checkpoint()</code> 依赖 Worker 绑定的 contextvar，<code>ProcessExecutor</code> 在独立进程里运行，需改用 <code>pool.save_checkpoint(task_id, state)</code> / <code>pool.load_checkpoint(task_id)</code>（🔧 <code>api/task_pool.py:1181</code>）。</p>
+</li>
+<li class="lvl-3">
+<p><strong>状态必须可 JSON 序列化。</strong> 不要把连接、文件句柄、ORM 对象塞进去。</p>
+</li>
+<li class="lvl-3">
+<p><strong>Memory 后端退出即丢。</strong> checkpoint 和任务一起在内存里，进程重启后没有可恢复的状态。</p>
+</li>
+<li class="lvl-3">
+<p><strong>终态清理会删 checkpoint。</strong> 默认 <code>enable_terminal_cleanup=True</code>、<code>terminal_retention_seconds=0</code>，即按任务自身 ttl 清理（默认 ttl 3600 秒）。如果人工介入的重试窗口比这更长，任务和 checkpoint 会一起消失，retry 自然失败。</p>
+</li>
+</ol>
+<p>第 4 条尤其要注意：它把“失败后随时可以 retry”变成了“失败后要在保留期内 retry”。需要长期保留失败现场时，把 <code>terminal_retention_seconds</code> 调大，或在业务侧先归档 checkpoint。</p>
+<h2 id="三、业务失败：让“重试没意义”的失败直接定稿">三、业务失败：让“重试没意义”的失败直接定稿</h2>
+<p>系统异常和业务判定失败是两类事。数据库超时值得重试；内容审核不通过，重试一百次还是同样的输入。1.1 用 <code>failure_reason</code> 把后者单独标出来：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> neotask <span class="keyword">import</span> report_failure</span><br><span class="line"></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">review</span>(<span class="params">data</span>):</span><br><span class="line">    score = <span class="keyword">await</span> grade(data[<span class="string">&quot;text&quot;</span>])</span><br><span class="line">    <span class="keyword">if</span> score &lt; <span class="number">60</span>:</span><br><span class="line">        report_failure(<span class="string">&quot;qa_failed&quot;</span>, <span class="string">f&quot;score=<span class="subst">&#123;score&#125;</span>&quot;</span>)</span><br><span class="line">        <span class="keyword">return</span> &#123;<span class="string">&quot;score&quot;</span>: score&#125;</span><br><span class="line">    <span class="keyword">return</span> &#123;<span class="string">&quot;score&quot;</span>: score, <span class="string">&quot;passed&quot;</span>: <span class="literal">True</span>&#125;</span><br></pre></td></tr></table></figure>
+<p><code>report_failure</code> 是同步函数（🔧 <code>core/failure.py:84</code>），登记后任务函数继续执行到自然返回，Worker 收尾时按登记原因把任务判为 <code>FAILED</code>（🔧 <code>worker/pool.py:543</code>）。探针在 <code>max_retries=3</code> 下验证：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">biz fail: failed  retry_count 0  failure_reason qa_failed  error qa_failed: score=58</span><br></pre></td></tr></table></figure>
+<p><code>retry_count</code> 保持 0，说明没有消耗重试预算；<code>error</code> 保留了原因和明细，<code>failure_reason</code> 则是可查询的稳定标识。业务失败也不投递死信——它已经能按 <code>failure_reason</code> 筛出来，和“系统异常重试耗尽”区分开。</p>
+<p>从任务外部（编排层、进程执行器的父进程）也可以用 <code>pool.report_failure(task_id, reason, detail)</code>，但它<strong>只对 RUNNING 状态生效</strong>（🔧 <code>api/task_pool.py:1055</code>）。还在排队的任务应先 <code>cancel()</code>，否则调用返回 <code>False</code>。</p>
+<h2 id="四、成本核算：按任务聚合，而不是只写日志">四、成本核算：按任务聚合，而不是只写日志</h2>
+<p>执行体里上报用量：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> neotask <span class="keyword">import</span> report_cost</span><br><span class="line"></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">summarize</span>(<span class="params">data</span>):</span><br><span class="line">    result = <span class="keyword">await</span> call_llm(data[<span class="string">&quot;prompt&quot;</span>])</span><br><span class="line">    report_cost(</span><br><span class="line">        tokens_in=result.usage.input_tokens,</span><br><span class="line">        tokens_out=result.usage.output_tokens,</span><br><span class="line">        estimated_cost=result.usage.cost,</span><br><span class="line">        currency=<span class="string">&quot;USD&quot;</span>,</span><br><span class="line">    )</span><br><span class="line">    <span class="keyword">return</span> result.text</span><br></pre></td></tr></table></figure>
+<p><code>report_cost</code>（🔧 <code>core/cost.py:92</code>）会把同一任务内的多次上报累加。探针结果：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">cost summary: &#123;&#x27;task_count&#x27;: 1, &#x27;tasks_with_cost&#x27;: 1, &#x27;tokens_in&#x27;: 100, &#x27;tokens_out&#x27;: 20,</span><br><span class="line">               &#x27;api_calls&#x27;: 0, &#x27;estimated_cost&#x27;: 0.002, &#x27;currency&#x27;: &#x27;USD&#x27;&#125;</span><br><span class="line">task cost fields: 0.002 &#123;&quot;tokens_in&quot;: 100, &quot;tokens_out&quot;: 20, &quot;api_calls&quot;: 0, &quot;currency&quot;: &quot;USD&quot;&#125;</span><br></pre></td></tr></table></figure>
+<p>两点设计值得注意：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><strong>金额与用量分列存储。</strong> <code>estimated_cost</code> 是独立列，<code>cost_tracking</code> 存 token、调用次数、币种等明细；聚合时用 <code>pool.get_cost_summary(task_ids)</code>（🔧 <code>api/task_pool.py:1155</code>），不传 <code>task_ids</code> 就汇总全部任务。</p>
+</li>
+<li class="lvl-2">
+<p><strong>终态任务仍可追加成本。</strong> <code>apply_cost</code> 不限制 RUNNING（🔧 <code>core/lifecycle.py:709-730</code>），因为进程执行器的父进程往往在子进程结束后才拿到用量。币种不一致时汇总结果的 <code>currency</code> 会变成 <code>MIXED</code>，不要把它当真实币种展示。</p>
+</li>
+</ul>
+<p>进程执行器同样拿不到 <code>report_cost()</code> 的 contextvar，需在父进程调用 <code>pool.report_cost(task_id, ...)</code>。</p>
+<h2 id="五、父子关联与外部队列-ID">五、父子关联与外部队列 ID</h2>
+<p><code>submit(parent_task_id=&quot;...&quot;)</code> 只建立关联，不做自动汇总（🔧 <code>api/task_pool.py:703</code>）。子任务列表用 <code>pool.get_children(task_id)</code> 查，按创建时间升序，同样不递归（🔧 <code>api/task_pool.py:979</code>）。如果要把子任务的成本汇总到父任务，需要自己取 <code>get_children()</code> 再调 <code>get_cost_summary(children)</code>。</p>
+<p>外部生成的 <code>task_id</code> 也可以直接传。它适合把业务主键当幂等键：重复提交会明确抛 <code>TaskAlreadyExistsError</code>，不会静默产生第二条任务。这个“明确失败”比“假装成功”更好排查，但调用方要接住这个异常。</p>
+<h2 id="六、1-1-1-的升级点：老库自动补列">六、1.1.1 的升级点：老库自动补列</h2>
+<p>1.1 新增了 <code>failure_reason</code>、<code>checkpoint_version</code>、<code>parent_task_id</code>、<code>estimated_cost</code>、<code>cost_tracking</code>、<code>queue_wait_ms</code>、<code>duration_ms</code> 七个任务列。1.1.1 在启动期检查老库并逐条 <code>ALTER TABLE ADD COLUMN</code>（🔧 <code>storage/sqlite.py:201-216</code>）。</p>
+<p>探针用一个只含 1.0.x 列的 SQLite 文件验证：启动后七列补齐，旧任务仍可读取，新任务可以写入 <code>parent_task_id</code>。</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">after drop:  14 列（无 failure_reason / checkpoint_version / ...）</span><br><span class="line">after upgrade: 21 列，old-row 仍可读，new-row.parent_task_id = old-row</span><br></pre></td></tr></table></figure>
+<p>这条升级路径只做“新增列 + 默认值”，不搬运数据，也不做跨后端迁移；老库里的历史任务不会凭空获得 checkpoint 或成本信息。</p>
+<p>顺带一提，SQLite 的并发边界在 1.0.8 已经改过：默认启用 WAL、<code>busy_timeout=30000</code>，并在进程内串行化写连接（🔧 <code>utils/sqlite_compat.py:33-40</code>）。1.0.5 时代“多 Worker 很快报 <code>database is locked</code>”的结论，不应再直接套到当前版本上。</p>
+<h2 id="七、Blackboard-只在内存后端">七、Blackboard 只在内存后端</h2>
+<p><code>pool.context_set/get/delete</code> 提供进程内共享上下文，带可选 TTL，采用惰性过期（🔧 <code>storage/memory.py:484</code>）。它的定位是“同进程内多个任务共享一点状态”，不是分布式共享内存：</p>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>只有 Memory 后端有；SQLite 后端调用会抛 <code>UnsupportedFeatureError: blackboard is not supported by the 'sqlite' backend</code>。</p>
+</li>
+<li class="lvl-2">
+<p>值在写入和读取时深拷贝，不会因为共享引用被就地修改。</p>
+</li>
+<li class="lvl-2">
+<p>进程退出即丢，不能当持久化存储或跨进程通信。</p>
+</li>
+</ul>
+<p>如果状态需要跨 Worker、跨重启，仍应回到任务数据或 checkpoint。</p>
+<h2 id="八、把四个能力串起来">八、把四个能力串起来</h2>
+<p>一个典型的内容生产流水线可以这样组合：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">parent_job</span>(<span class="params">data</span>):</span><br><span class="line">    child_ids = [</span><br><span class="line">        <span class="keyword">await</span> pool.submit_async(&#123;<span class="string">&quot;doc&quot;</span>: doc&#125;, parent_task_id=<span class="string">&quot;batch-1&quot;</span>)</span><br><span class="line">        <span class="keyword">for</span> doc <span class="keyword">in</span> data[<span class="string">&quot;docs&quot;</span>]</span><br><span class="line">    ]</span><br><span class="line">    <span class="keyword">for</span> task_id <span class="keyword">in</span> child_ids:</span><br><span class="line">        <span class="keyword">await</span> pool.wait_for_result_async(task_id, timeout=<span class="number">60</span>)</span><br><span class="line"></span><br><span class="line">    summary = <span class="keyword">await</span> pool.get_cost_summary_async(child_ids)</span><br><span class="line">    <span class="keyword">return</span> &#123;<span class="string">&quot;children&quot;</span>: <span class="built_in">len</span>(child_ids), <span class="string">&quot;cost&quot;</span>: summary&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">async</span> <span class="keyword">def</span> <span class="title function_">child_job</span>(<span class="params">data</span>):</span><br><span class="line">    state = <span class="keyword">await</span> load_checkpoint() <span class="keyword">or</span> &#123;<span class="string">&quot;step&quot;</span>: <span class="number">0</span>&#125;</span><br><span class="line">    <span class="keyword">try</span>:</span><br><span class="line">        ...  <span class="comment"># 每完成一步 await save_checkpoint(state)</span></span><br><span class="line">    <span class="keyword">except</span> TransientError:</span><br><span class="line">        <span class="keyword">raise</span>                 <span class="comment"># 系统异常：交给自动重试，checkpoint 会续上</span></span><br><span class="line">    <span class="keyword">if</span> <span class="keyword">not</span> passed:</span><br><span class="line">        report_failure(<span class="string">&quot;qa_failed&quot;</span>)  <span class="comment"># 业务失败：不重试</span></span><br></pre></td></tr></table></figure>
+<p>边界在于：父子关联只是标签，不会替你做失败传播；父任务要不要因为某个子任务失败而失败，需要自己判断。成本汇总也不会自动包含后代，必须显式传 <code>task_ids</code>。</p>
+<h2 id="九、复现与边界">九、复现与边界</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p>源码与行为以 NeoTask 1.1.1 为准；官网文档目前仍以 1.0.8 为基线，1.1 的接口建议直接对照源码。</p>
+</li>
+<li class="lvl-2">
+<p>本文只验证了 Memory 与 SQLite 后端、单进程探针；Redis 后端、多进程并发和进程执行器下的恢复链路没有覆盖，上线前应在预发环境按同样步骤复测。</p>
+</li>
+<li class="lvl-2">
+<p>“自动注入 checkpoint”依赖任务记录仍存在。终态清理、手动删除都会连带删除 checkpoint，长保留期的失败现场要提前配置 <code>terminal_retention_seconds</code>。</p>
+</li>
+</ul>
+<!-- related-posts -->
+<h2 id="相关阅读">相关阅读</h2>
+<ul class="lvl-0">
+<li class="lvl-2">
+<p><a href="/2026/10/neotask-prefetch-short-tasks/">短任务预取：NeoTask 从慢 13 倍到快 12.7%</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/10/neotask-benchmark-review/">NeoTask 1.0.5 性能实测：提交 14,657/s，完成 2,433/s</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/10/neotask-sqlite-database-locked/">SQLite 多 Worker 为什么会 database is locked</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/09/neotask-lock-watchdog/">同一任务被执行两次才是事故：NeoTask 分布式锁与看门狗实战</a></p>
+</li>
+<li class="lvl-2">
+<p><a href="/2026/04/neotask-overview/">嵌入式任务池凭啥省掉 Broker？NeoTask 调度链路与边界</a></p>
+</li>
+</ul>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pengline.cn">余一叶知秋尽</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pengline.cn/2026/11/neotask-1-1-checkpoint-cost-failure/">https://pengline.cn/2026/11/neotask-1-1-checkpoint-cost-failure/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="external nofollow noopener noreferrer">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pengline.cn" target="_blank">余一叶知秋尽</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/Python/">Python</a><a class="post-meta__tags" href="/tags/NeoTask/">NeoTask</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E9%98%9F%E5%88%97/">任务队列</a><a class="post-meta__tags" href="/tags/%E6%96%AD%E7%82%B9%E7%BB%AD%E8%B7%91/">断点续跑</a><a class="post-meta__tags" href="/tags/checkpoint/">checkpoint</a><a class="post-meta__tags" href="/tags/%E4%B8%9A%E5%8A%A1%E5%A4%B1%E8%B4%A5/">业务失败</a><a class="post-meta__tags" href="/tags/%E6%88%90%E6%9C%AC%E6%A0%B8%E7%AE%97/">成本核算</a><a class="post-meta__tags" href="/tags/contextvars/">contextvars</a><a class="post-meta__tags" href="/tags/Blackboard/">Blackboard</a><a class="post-meta__tags" href="/tags/SQLite-%E8%87%AA%E5%8A%A8%E8%BF%81%E7%A7%BB/">SQLite 自动迁移</a><a class="post-meta__tags" href="/tags/asyncio/">asyncio</a><a class="post-meta__tags" href="/tags/%E4%BB%BB%E5%8A%A1%E8%B0%83%E5%BA%A6/">任务调度</a><a class="post-meta__tags" href="/tags/%E5%AE%B9%E9%94%99%E8%AE%BE%E8%AE%A1/">容错设计</a><a class="post-meta__tags" href="/tags/LLM-%E6%88%90%E6%9C%AC/">LLM 成本</a><a class="post-meta__tags" href="/tags/%E5%AE%9E%E6%B5%8B/">实测</a></div><div class="post-share"><div class="social-share" data-image="https://tool.pengline.cn/imgs/blog/essay/small214149B2GZf1759930909.webp" data-sites="wechat,weibo,qq,qzone,facebook,twitter"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related full-width" href="/2026/11/penshot-asset-handoff/" title="PenShot 资产交接：asset_plan 是合同，不是图片"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small073833O6Jvi1754869113.webp" onerror="onerror=null;src='https://tool.pengline.cn/imgs/blog/k3zssqvjw2d.jpg'" alt="cover of next post" loading='lazy'><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">PenShot 资产交接：asset_plan 是合同，不是图片</div></div><div class="info-2"><div class="info-item-1">PenShot v0.4.5 的资产链路拆解：声明式 asset_plan 默认不生成图片，下游用 asset_manifest 回填真实引用，asset_ref 只代表首帧场景资产，以及场景锚定、降级约束与引用校验的真实边界。</div></div></div></a></nav><div class="relatedPosts"><div class="headline"><i class="fas fa-thumbs-up fa-fw"></i><span>相关推荐</span></div><div class="relatedPosts-list"><a class="pagination-related" href="/2026/10/neotask-prefetch-short-tasks/" title="短任务预取：NeoTask 从慢 13 倍到快 12.7%"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1757474425779175747442528.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-30</div><div class="info-item-2">短任务预取：NeoTask 从慢 13 倍到快 12.7%</div></div><div class="info-2"><div class="info-item-1">NeoTask 1.0.5 默认预取让 3,000 个短任务慢 13 倍；1.0.8 改为需求驱动补货后，20,000 任务压测下开预取反快 12.7%，空闲唤醒中位 1.3 ms。本文保留旧实测，并标出版本分水岭。</div></div></div></a><a class="pagination-related" href="/2026/10/neotask-performance-tuning/" title="NeoTask 1.0.5 优化指南：短任务关预取快 13 倍，IO 1→8 workers 快 7.76 倍"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small204229In3bP1756557749.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-30</div><div class="info-item-2">NeoTask 1.0.5 优化指南：短任务关预取快 13 倍，IO 1→8 workers 快 7.76 倍</div></div><div class="info-2"><div class="info-item-1">基于 NeoTask 1.0.5 实测数据，按优先级给出六项可落地优化：执行器与任务类型匹配、短任务关闭预取、按目标吞吐计算 prefetch_size、按 IO/CPU 类型设置 worker、用事件代替数千 waiter、按并发级别选择存储后端。包含配置模板、上线验收清单与最小测量脚本。</div></div></div></a><a class="pagination-related" href="/2026/10/neotask-benchmark-review/" title="NeoTask 1.0.5 性能实测：提交 14,657&#x2F;s，完成 2,433&#x2F;s，短任务默认预取只剩 1&#x2F;13"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1743560732214174356073226.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-30</div><div class="info-item-2">NeoTask 1.0.5 性能实测：提交 14,657&#x2F;s，完成 2,433&#x2F;s，短任务默认预取只剩 1&#x2F;13</div></div><div class="info-2"><div class="info-item-1">NeoTask 1.0.5 内存后端实测：15 个主套件场景、1 组队列微基准、4 个 SQLite 边界用例。提交 14,657 tasks/s，完成 2,433 tasks/s，IO 1→8 workers 提升 7.76x；默认预取把短任务完成吞吐压到 181 tasks/s，关闭后为 2,382 tasks/s。</div></div></div></a><a class="pagination-related" href="/2026/09/neotask-lock-watchdog/" title="同一任务被执行两次才是事故：NeoTask 分布式锁与看门狗实战"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/171084628467171084628487.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-26</div><div class="info-item-2">同一任务被执行两次才是事故：NeoTask 分布式锁与看门狗实战</div></div><div class="info-2"><div class="info-item-1">分布式任务调度里最隐蔽的事故不是丢任务，而是同一任务被执行两次。本文以 NeoTask 1.0.5 的实现为蓝本拆解防重复执行的三层防线：SET NX EX 与 Lua 原子释放、看门狗为长任务续命的 0.3 倍续期节奏、锁续期失败后任务的真实去向、回收器与死信队列的兜底链路，以及"出队"与"加锁"为什么要分开。</div></div></div></a><a class="pagination-related" href="/2026/09/neotask-embed-quickstart/" title="耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/small194106Azz0h1758541266.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-09-23</div><div class="info-item-2">耗时任务排队不想引 Celery？用 NeoTask 嵌入式任务池四步跑通</div></div><div class="info-2"><div class="info-item-1">耗时任务排队传统方案要引 Celery 加 Redis/RabbitMQ，运维成本高。NeoTask 1.0.5 用纯 Python 异步任务池把调度内嵌进应用：即时、延时、Cron、四级优先级、自动重试开箱即用，内存/SQLite/Redis 按需切换，进度上报与手动重试已接线。本文覆盖三种使用范式、四类任务、背压语义与升级信号。</div></div></div></a><a class="pagination-related" href="/2026/10/neotask-benchmark-numbers-not-comparable/" title="1697 ops&#x2F;s 与 2,433 tasks&#x2F;s 为什么不能直接比：任务队列性能口径拆解"><img class="cover" src="https://tool.pengline.cn/imgs/blog/essay/1755144020384175514402028.webp" alt="cover" loading='lazy'><div class="info text-center"><div class="info-1"><div class="info-item-1"><i class="far fa-calendar-alt fa-fw"></i> 2026-10-30</div><div class="info-item-2">1697 ops&#x2F;s 与 2,433 tasks&#x2F;s 为什么不能直接比：任务队列性能口径拆解</div></div><div class="info-2"><div class="info-item-1">官网旧版 benchmarks 页面的 1697 ops/s、64.6 ops/s 与 NeoTask 1.0.5 的 2,433 tasks/s、2,565 tasks/s 不是同一口径：版本、场景、存储、计时方式和统计对象都不同。读性能数字前，先确认起止点、负载和版本，再决定能不能横向比较。</div></div></div></a></div></div><hr class="custom-hr"><div id="post-comment"><div class="comment-head"><div class="comment-headline"><i class="fas fa-comments fa-fw"></i><span> 评论</span></div></div><div class="comment-wrap"><div><div id="giscus-wrap"></div></div></div></div></div><div class="aside-content" id="aside-content"><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text">断点续跑、业务失败与成本核算实测</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E4%B8%89%E4%B8%AA%E5%8E%9F%E8%AF%AD%E5%90%84%E8%87%AA%E8%A7%A3%E5%86%B3%E4%BB%80%E4%B9%88"><span class="toc-number">1.1.</span> <span class="toc-text">一、三个原语各自解决什么</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E6%96%AD%E7%82%B9%E7%BB%AD%E8%B7%91%EF%BC%9A%E7%8A%B6%E6%80%81%E5%AD%98%E5%9C%A8%E5%93%AA%EF%BC%8C%E8%B0%81%E6%8A%8A%E5%AE%83%E6%94%BE%E5%9B%9E%E5%8E%BB"><span class="toc-number">1.2.</span> <span class="toc-text">二、断点续跑：状态存在哪，谁把它放回去</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-%E8%87%AA%E5%8A%A8%E9%87%8D%E8%AF%95%E4%B8%8E%E6%89%8B%E5%8A%A8-retry-%E9%83%BD%E4%BC%9A%E6%B3%A8%E5%85%A5"><span class="toc-number">1.2.1.</span> <span class="toc-text">2.1 自动重试与手动 retry 都会注入</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E5%A4%B1%E8%B4%A5%E5%90%8E%E4%B8%8D%E8%A6%81%E7%94%A8%E5%90%8C%E4%B8%80%E4%B8%AA-task-id-%E9%87%8D%E6%96%B0-submit"><span class="toc-number">1.2.2.</span> <span class="toc-text">2.2 失败后不要用同一个 task_id 重新 submit</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-%E7%89%88%E6%9C%AC%E5%8F%B7%E6%98%AF%E5%8D%95%E8%B0%83%E9%80%92%E5%A2%9E%E7%9A%84%EF%BC%8C%E4%B8%8D%E6%98%AF%E5%8F%AA%E4%BF%9D%E7%95%99-5-%E4%B8%AA%E5%B0%B1%E5%81%9C%E5%9C%A8-5"><span class="toc-number">1.2.3.</span> <span class="toc-text">2.3 版本号是单调递增的，不是只保留 5 个就停在 5</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-4-%E5%9B%9B%E6%9D%A1%E8%BE%B9%E7%95%8C"><span class="toc-number">1.2.4.</span> <span class="toc-text">2.4 四条边界</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E4%B8%9A%E5%8A%A1%E5%A4%B1%E8%B4%A5%EF%BC%9A%E8%AE%A9%E2%80%9C%E9%87%8D%E8%AF%95%E6%B2%A1%E6%84%8F%E4%B9%89%E2%80%9D%E7%9A%84%E5%A4%B1%E8%B4%A5%E7%9B%B4%E6%8E%A5%E5%AE%9A%E7%A8%BF"><span class="toc-number">1.3.</span> <span class="toc-text">三、业务失败：让“重试没意义”的失败直接定稿</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E6%88%90%E6%9C%AC%E6%A0%B8%E7%AE%97%EF%BC%9A%E6%8C%89%E4%BB%BB%E5%8A%A1%E8%81%9A%E5%90%88%EF%BC%8C%E8%80%8C%E4%B8%8D%E6%98%AF%E5%8F%AA%E5%86%99%E6%97%A5%E5%BF%97"><span class="toc-number">1.4.</span> <span class="toc-text">四、成本核算：按任务聚合，而不是只写日志</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E7%88%B6%E5%AD%90%E5%85%B3%E8%81%94%E4%B8%8E%E5%A4%96%E9%83%A8%E9%98%9F%E5%88%97-ID"><span class="toc-number">1.5.</span> <span class="toc-text">五、父子关联与外部队列 ID</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%811-1-1-%E7%9A%84%E5%8D%87%E7%BA%A7%E7%82%B9%EF%BC%9A%E8%80%81%E5%BA%93%E8%87%AA%E5%8A%A8%E8%A1%A5%E5%88%97"><span class="toc-number">1.6.</span> <span class="toc-text">六、1.1.1 的升级点：老库自动补列</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81Blackboard-%E5%8F%AA%E5%9C%A8%E5%86%85%E5%AD%98%E5%90%8E%E7%AB%AF"><span class="toc-number">1.7.</span> <span class="toc-text">七、Blackboard 只在内存后端</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AB%E3%80%81%E6%8A%8A%E5%9B%9B%E4%B8%AA%E8%83%BD%E5%8A%9B%E4%B8%B2%E8%B5%B7%E6%9D%A5"><span class="toc-number">1.8.</span> <span class="toc-text">八、把四个能力串起来</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B9%9D%E3%80%81%E5%A4%8D%E7%8E%B0%E4%B8%8E%E8%BE%B9%E7%95%8C"><span class="toc-number">1.9.</span> <span class="toc-text">九、复现与边界</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB"><span class="toc-number">1.10.</span> <span class="toc-text">相关阅读</span></a></li></ol></li></ol></div></div></div></div></main><footer id="footer"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 余一叶知秋尽</span><span class="framework-info"><span>框架 </span><a target="_blank" rel="external nofollow noopener noreferrer" href="https://hexo.io">Hexo 8.1.2</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly 5.4.3</a></span></div><div class="footer_custom_text"><p><a style="margin-inline:5px" rel="sponsored nofollow noopener" target="_blank" href="https://github.com/"><img src="/img/badge/Hosted-Github-brightgreen.svg" title="本站项目由Gtihub托管" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://hexo.io/"><img src="/img/badge/Frame-Hexo-blue.svg" title="博客框架为Hexo" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://butterfly.js.org/"><img src="/img/badge/Theme-Butterfly-6513df.svg" title="主题采用butterfly" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="https://giscus.app/zh-CN/"><img src="/img/badge/Comment-Giscus-2873df.svg" title="评论系统为Giscus" loading='lazy'></a><a style="margin-inline:5px" rel="external nofollow noopener noreferrer" target="_blank" href="http://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="/img/badge/Copyright-BY--NC--SA4.svg" title="本站采用知识共享署名-非商业性使用-相同方式共享4.0国际许可协议进行许可" loading='lazy'></a></p></div><script src="https://unpkg.com/mermaid@11.5.0/dist/mermaid.min.js"></script><script>if (window.mermaid) {
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: '[object Object]',
+    securityLevel: 'loose',
+    flowchart: { useMaxWidth: true, htmlLabels: true }
+  });
+}</script></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><a class="icon-V hidden" onclick="switchNightMode()" title="日间和夜间模式切换"><svg width="25" height="25" viewbox="0 0 1024 1024"><use id="modeicon" xlink:href="#icon-moon"/></svg></a><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><a id="to_comment" href="#post-comment" title="前往评论"><i class="fas fa-comments"></i></a><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox/fancybox.umd.min.js"></script><div class="js-pjax"><script>(() => {
+  const loadMathjax = () => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          tags: 'ams',
+        },
+        chtml: {
+          scale: 1.1
+        },
+        options: {
+          enableMenu: true,
+          renderActions: {
+            findScript: [10, doc => {
+              for (const node of document.querySelectorAll('script[type^="math/tex"]')) {
+                const display = !!node.type.match(/; *mode=display/)
+                const math = new doc.options.MathItem(node.textContent, doc.inputJax[0], display)
+                const text = document.createTextNode('')
+                node.parentNode.replaceChild(text, node)
+                math.start = {node: text, delim: '', n: 0}
+                math.end = {node: text, delim: '', n: 0}
+                doc.math.push(math)
+              }
+            }, '']
+          }
+        }
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
+      script.id = 'MathJax-script'
+      script.async = true
+      document.head.appendChild(script)
+    } else {
+      MathJax.startup.document.state(0)
+      MathJax.texReset()
+      MathJax.typesetPromise()
+    }
+  }
+
+  btf.addGlobalFn('encrypt', loadMathjax, 'mathjax')
+  window.pjax ? loadMathjax() : window.addEventListener('load', loadMathjax)
+})()</script><script>(() => {
+  const runMermaid = ele => {
+    window.loadMermaid = true
+    const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default'
+
+    ele.forEach((item, index) => {
+      const mermaidSrc = item.firstElementChild
+      const mermaidThemeConfig = `%%{init:{ 'theme':'${theme}'}}%%\n`
+      const mermaidID = `mermaid-${index}`
+      const mermaidDefinition = mermaidThemeConfig + mermaidSrc.textContent
+
+      const renderFn = mermaid.render(mermaidID, mermaidDefinition)
+      const renderMermaid = svg => {
+        mermaidSrc.insertAdjacentHTML('afterend', svg)
+      }
+
+      // mermaid v9 and v10 compatibility
+      typeof renderFn === 'string' ? renderMermaid(renderFn) : renderFn.then(({ svg }) => renderMermaid(svg))
+    })
+  }
+
+  const codeToMermaid = () => {
+    const codeMermaidEle = document.querySelectorAll('pre > code.mermaid')
+    if (codeMermaidEle.length === 0) return
+
+    codeMermaidEle.forEach(ele => {
+      const preEle = document.createElement('pre')
+      preEle.className = 'mermaid-src'
+      preEle.hidden = true
+      preEle.textContent = ele.textContent
+      const newEle = document.createElement('div')
+      newEle.className = 'mermaid-wrap'
+      newEle.appendChild(preEle)
+      ele.parentNode.replaceWith(newEle)
+    })
+  }
+
+  const loadMermaid = () => {
+    if (true) codeToMermaid()
+    const $mermaid = document.querySelectorAll('#article-container .mermaid-wrap')
+    if ($mermaid.length === 0) return
+
+    const runMermaidFn = () => runMermaid($mermaid)
+    btf.addGlobalFn('themeChange', runMermaidFn, 'mermaid')
+    window.loadMermaid ? runMermaidFn() : btf.getScript('https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js').then(runMermaidFn)
+  }
+
+  btf.addGlobalFn('encrypt', loadMermaid, 'mermaid')
+  window.pjax ? loadMermaid() : document.addEventListener('DOMContentLoaded', loadMermaid)
+})()</script><script>(() => {
+  const isShuoshuo = GLOBAL_CONFIG_SITE.pageType === 'shuoshuo'
+  const option = null
+
+  const getGiscusTheme = theme => theme === 'dark' ? 'dark' : 'light'
+
+  const createScriptElement = config => {
+    const ele = document.createElement('script')
+    Object.entries(config).forEach(([key, value]) => {
+      ele.setAttribute(key, value)
+    })
+    return ele
+  }
+
+  const loadGiscus = (el = document, key) => {
+    const mappingConfig = isShuoshuo
+      ? { 'data-mapping': 'specific', 'data-term': key }
+      : { 'data-mapping': (option && option['data-mapping']) || 'pathname' }
+
+    const giscusConfig = {
+      src: 'https://giscus.app/client.js',
+      'data-repo': 'pengline/pengline.github.io',
+      'data-repo-id': 'R_kgDOPqG50w',
+      'data-category-id': 'DIC_kwDOPqG5084Cu_K9',
+      'data-theme': getGiscusTheme(document.documentElement.getAttribute('data-theme')),
+      'data-reactions-enabled': '1',
+      crossorigin: 'anonymous',
+      'data-lang': 'zh-CN',
+      'data-input-position': 'top',
+      async: true,
+      ...option,
+      ...mappingConfig
+    }
+
+    const scriptElement = createScriptElement(giscusConfig)
+
+    el.querySelector('#giscus-wrap').appendChild(scriptElement)
+
+    if (isShuoshuo) {
+      window.shuoshuoComment.destroyGiscus = () => {
+        if (el.children.length) {
+          el.innerHTML = ''
+          el.classList.add('no-comment')
+        }
+      }
+    }
+  }
+
+  const changeGiscusTheme = theme => {
+    const iframe = document.querySelector('#giscus-wrap iframe')
+    if (iframe) {
+      const message = {
+        giscus: {
+          setConfig: {
+            theme: getGiscusTheme(theme),
+            lang: 'zh-CN'
+          }
+        }
+      }
+      iframe.contentWindow.postMessage(message, 'https://giscus.app')
+    }
+  }
+
+  btf.addGlobalFn('themeChange', changeGiscusTheme, 'giscus')
+
+  if (isShuoshuo) {
+    'Giscus' === 'Giscus'
+      ? window.shuoshuoComment = { loadComment: loadGiscus }
+      : window.loadOtherComment = loadGiscus
+    return
+  }
+
+  if ('Giscus' === 'Giscus' || !true) {
+    if (true) btf.loadComment(document.getElementById('giscus-wrap'), loadGiscus)
+    else loadGiscus()
+  } else {
+    window.loadOtherComment = loadGiscus
+  }
+})()</script></div><script src="/js/custom/sun_moon.js?v=20260929" defer></script><script src="/js/custom/auto_dark.js?v=20260929" defer></script><script src="/js/custom/mermaid_zoom.js?v=20260929" defer></script><script id="canvas_nest" defer="defer" color="0,0,255" opacity="0.7" zindex="-1" count="99" mobile="true" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc/dist/canvas-nest.min.js"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><div id="local-search"><div class="search-dialog"><nav class="search-nav"><span class="search-dialog-title">搜索</span><span id="loading-status"></span><button class="search-close-button"><i class="fas fa-times"></i></button></nav><div class="text-center" id="loading-database"><i class="fas fa-spinner fa-pulse"></i><span>  数据加载中</span></div><div class="search-wrap"><div id="local-search-input"><div class="local-search-box"><input class="local-search-box--input" placeholder="搜索文章" type="text"></div></div><hr><div id="local-search-results"></div><div id="local-search-stats-wrap"></div></div></div><div id="search-mask"></div><script src="/js/search/local-search.js"></script></div></div></body></html>
